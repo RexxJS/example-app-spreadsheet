@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RexxJS Spreadsheet POC</title>
+    <style>
+        #debug-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: #f0f0f0;
+            border: 2px solid #333;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 10000;
+            max-width: 90%;
+            white-space: pre-wrap;
+        }
+        #debug-info.error {
+            background: #fee;
+            border-color: #c00;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug-info">Loading...</div>
+    <div id="root"></div>
+
+    <!-- Debug and Load RexxJS Bundle -->
+    <script>
+        const debugDiv = document.getElementById('debug-info');
+        function debug(msg, isError = false) {
+            console.log(msg);
+            debugDiv.textContent += '\n' + msg;
+            if (isError) debugDiv.classList.add('error');
+        }
+
+        // Show environment info
+        debug('URL: ' + window.location.href);
+        debug('Protocol: ' + window.location.protocol);
+
+        // Determine RexxJS bundle path based on environment
+        const isProduction = !window.location.href.includes('localhost:5173');
+        debug('Production mode: ' + isProduction);
+
+        const rexxScriptPath = isProduction
+            ? './rexxjs.bundle.js'  // In dist folder for Tauri
+            : '../../core/src/repl/dist/rexxjs.bundle.js';  // Dev mode
+
+        debug('Loading RexxJS from: ' + rexxScriptPath);
+
+        const script = document.createElement('script');
+        script.src = rexxScriptPath;
+        script.onerror = function() {
+            debug('ERROR: Failed to load RexxJS bundle from: ' + rexxScriptPath, true);
+        };
+        script.onload = function() {
+            debug('✓ RexxJS bundle loaded');
+            // Hide debug overlay after 5 seconds
+            setTimeout(() => {
+                debugDiv.style.display = 'none';
+            }, 5000);
+        };
+        document.head.appendChild(script);
+    </script>
+
+    <!-- Load Spreadsheet Model and Adapter as globals (for compatibility) -->
+    <script>
+        // These need to be available globally for the SpreadsheetApp
+        if (typeof window !== 'undefined') {
+            // Models and adapters will be available as window.SpreadsheetModel, etc.
+            // The bundled app will include these
+        }
+    </script>
+
+    <!-- Vite will inject the bundled React app here -->
+    <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
