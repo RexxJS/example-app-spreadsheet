@@ -1,0 +1,214 @@
+{
+  "name": "Linear Regression Demo - Sales Forecasting",
+  "setupScript": "/* PyOdide Linear Regression Demo */\nSAY 'Linear regression analysis using PY_LINREGRESS()'",
+  "cells": {
+    "A1": {
+      "content": "📈 Linear Regression: Sales Forecasting",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "18px",
+        "backgroundColor": "#1976d2",
+        "color": "white",
+        "textAlign": "center"
+      }
+    },
+    "A2": {
+      "content": "Uses PY_LINREGRESS() from scipy.stats for accurate regression analysis",
+      "style": {
+        "fontStyle": "italic",
+        "color": "#666",
+        "fontSize": "12px"
+      }
+    },
+    "A4": {
+      "content": "Month",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B4": {
+      "content": "Sales ($)",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A5": "1",
+    "B5": "100",
+    "A6": "2",
+    "B6": "150",
+    "A7": "3",
+    "B7": "180",
+    "A8": "4",
+    "B8": "220",
+    "A9": "5",
+    "B9": "250",
+    "A10": "6",
+    "B10": "290",
+    "D4": {
+      "content": "Regression Analysis",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#e3f2fd"
+      }
+    },
+    "D5": {
+      "content": "Slope (growth rate):",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E5": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).slope",
+      "format": "#,##0.00",
+      "comment": "Average sales growth per month"
+    },
+    "D6": {
+      "content": "Intercept:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E6": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).intercept",
+      "format": "#,##0.00",
+      "comment": "Starting value at month 0"
+    },
+    "D7": {
+      "content": "R² (fit quality):",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E7": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).r_squared",
+      "format": "0.00%",
+      "comment": "Coefficient of determination (100% = perfect fit)",
+      "styleExpression": "STYLE_IF(E7 > 0.95, GREEN_BG(), YELLOW_BG())"
+    },
+    "D8": {
+      "content": "P-value:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E8": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).p_value",
+      "format": "0.0000",
+      "comment": "Statistical significance (< 0.05 = significant)",
+      "styleExpression": "STYLE_IF(E8 < 0.05, GREEN_BG(), RED_BG())"
+    },
+    "D9": {
+      "content": "Std Error:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E9": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).std_err",
+      "format": "#,##0.00",
+      "comment": "Standard error of the estimate"
+    },
+    "D10": {
+      "content": "Equation:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E10": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).equation",
+      "style": {
+        "fontFamily": "monospace",
+        "backgroundColor": "#f0f0f0"
+      },
+      "comment": "Regression equation in y = mx + b format"
+    },
+    "D12": {
+      "content": "Forecasting",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#fff3e0"
+      }
+    },
+    "D13": {
+      "content": "Month 7 forecast:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E13": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).slope * 7 + PY_LINREGRESS(A5:A10, B5:B10).intercept",
+      "format": "$#,##0.00",
+      "comment": "Predicted sales for month 7",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "D14": {
+      "content": "Month 8 forecast:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E14": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).slope * 8 + PY_LINREGRESS(A5:A10, B5:B10).intercept",
+      "format": "$#,##0.00",
+      "comment": "Predicted sales for month 8",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "D15": {
+      "content": "Month 12 forecast:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E15": {
+      "content": "=PY_LINREGRESS(A5:A10, B5:B10).slope * 12 + PY_LINREGRESS(A5:A10, B5:B10).intercept",
+      "format": "$#,##0.00",
+      "comment": "Predicted sales for month 12",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A12": {
+      "content": "💡 Tips",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#e8f5e9"
+      }
+    },
+    "A13": {
+      "content": "• R² > 0.95 indicates excellent fit",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A14": {
+      "content": "• P-value < 0.05 means statistically significant",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A15": {
+      "content": "• Slope shows growth rate per time period",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A16": {
+      "content": "• Use equation for forecasting future values",
+      "style": {
+        "fontSize": "11px"
+      }
+    }
+  }
+}

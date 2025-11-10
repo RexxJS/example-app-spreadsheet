@@ -1,0 +1,225 @@
+{
+  "name": "FFT Demo - Audio Frequency Analysis",
+  "setupScript": "/* PyOdide FFT Demo */\nSAY 'Fast Fourier Transform using numpy.fft'",
+  "cells": {
+    "A1": {
+      "content": "📊 Fast Fourier Transform: Audio Signal Analysis",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "18px",
+        "backgroundColor": "#7b1fa2",
+        "color": "white",
+        "textAlign": "center"
+      }
+    },
+    "A2": {
+      "content": "Uses PY_FFT() from numpy.fft for frequency domain analysis",
+      "style": {
+        "fontStyle": "italic",
+        "color": "#666",
+        "fontSize": "12px"
+      }
+    },
+    "A4": {
+      "content": "Time (s)",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B4": {
+      "content": "Signal",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A5": "0.000",
+    "B5": "0.0",
+    "A6": "0.001",
+    "B6": "=SIN(2 * 3.14159 * 10 * A6)",
+    "A7": "0.002",
+    "B7": "=SIN(2 * 3.14159 * 10 * A7)",
+    "A8": "0.003",
+    "B8": "=SIN(2 * 3.14159 * 10 * A8)",
+    "A9": "0.004",
+    "B9": "=SIN(2 * 3.14159 * 10 * A9)",
+    "A10": "0.005",
+    "B10": "=SIN(2 * 3.14159 * 10 * A10)",
+    "A11": "0.006",
+    "B11": "=SIN(2 * 3.14159 * 10 * A11)",
+    "A12": "0.007",
+    "B12": "=SIN(2 * 3.14159 * 10 * A12)",
+    "A13": "0.008",
+    "B13": "=SIN(2 * 3.14159 * 10 * A13)",
+    "A14": "0.009",
+    "B14": "=SIN(2 * 3.14159 * 10 * A14)",
+    "A15": "0.010",
+    "B15": "=SIN(2 * 3.14159 * 10 * A15)",
+    "D4": {
+      "content": "FFT Analysis (10 Hz sine wave)",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#f3e5f5"
+      }
+    },
+    "D5": {
+      "content": "Sample Rate:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E5": {
+      "content": "1000",
+      "comment": "1000 Hz sample rate"
+    },
+    "F5": "Hz",
+    "D6": {
+      "content": "Dominant Frequency:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E6": {
+      "content": "=PY_FFT(B5:B15, E5).dominant_freq",
+      "format": "#,##0.0",
+      "comment": "Frequency with highest magnitude",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#7b1fa2",
+        "fontSize": "14px"
+      }
+    },
+    "F6": "Hz",
+    "D7": {
+      "content": "Dominant Magnitude:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E7": {
+      "content": "=PY_FFT(B5:B15, E5).dominant_magnitude",
+      "format": "#,##0.00",
+      "comment": "Strength of dominant frequency"
+    },
+    "D8": {
+      "content": "DC Component:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E8": {
+      "content": "=PY_FFT(B5:B15, E5).dc_component",
+      "format": "#,##0.00",
+      "comment": "Average value (0 Hz component)"
+    },
+    "A17": {
+      "content": "🎵 Musical Note Frequencies",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#e8f5e9"
+      }
+    },
+    "A18": {
+      "content": "Note",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B18": {
+      "content": "Frequency",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A19": "A4",
+    "B19": "440 Hz",
+    "A20": "C4",
+    "B20": "261.6 Hz",
+    "A21": "E4",
+    "B21": "329.6 Hz",
+    "A22": "G4",
+    "B22": "392 Hz",
+    "D10": {
+      "content": "Complex Signal (10 Hz + 25 Hz)",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#fff3e0"
+      }
+    },
+    "D11": {
+      "content": "Mixed Signal:",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E11": {
+      "content": "=SIN(2*3.14159*10*0.005) + 0.5*SIN(2*3.14159*25*0.005)",
+      "format": "#,##0.000",
+      "comment": "10 Hz + 25 Hz mixed signal at t=0.005s"
+    },
+    "D13": {
+      "content": "💡 FFT Use Cases",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "12px",
+        "backgroundColor": "#e3f2fd"
+      }
+    },
+    "D14": {
+      "content": "• Audio analysis & pitch detection",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "D15": {
+      "content": "• Vibration analysis in engineering",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "D16": {
+      "content": "• Signal processing & noise filtering",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "D17": {
+      "content": "• Spectrum analysis in physics",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A24": {
+      "content": "Try This:",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "12px",
+        "backgroundColor": "#ffe0b2"
+      }
+    },
+    "A25": {
+      "content": "1. Change the frequency in B6-B15 formulas (e.g., 20 instead of 10)",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A26": {
+      "content": "2. Watch E6 update with the new dominant frequency",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A27": {
+      "content": "3. Add multiple sine waves for complex signals",
+      "style": {
+        "fontSize": "11px"
+      }
+    }
+  }
+}

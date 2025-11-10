@@ -12,6 +12,7 @@ class SpreadsheetRexxAdapter {
     constructor(spreadsheetModel) {
         this.model = spreadsheetModel;
         this.interpreter = null;
+        this.pyodideFunctions = null;
     }
 
     /**
@@ -33,6 +34,37 @@ class SpreadsheetRexxAdapter {
         this.injectCellReferenceFunctions();
 
         return this.interpreter;
+    }
+
+    /**
+     * Initialize PyOdide functions (optional)
+     * Call this to enable Python-powered scientific computing functions
+     */
+    async initializePyOdide() {
+        if (typeof PyOdideFunctions === 'undefined') {
+            console.warn('PyOdideFunctions not loaded. PyOdide functions will not be available.');
+            return false;
+        }
+
+        if (!this.pyodideFunctions) {
+            this.pyodideFunctions = new PyOdideFunctions();
+        }
+
+        try {
+            await this.pyodideFunctions.initialize();
+            // Install PyOdide functions into the interpreter
+            const pyFunctions = this.pyodideFunctions.getFunctions();
+            Object.entries(pyFunctions).forEach(([name, func]) => {
+                if (!this.interpreter.customFunctions) {
+                    this.interpreter.customFunctions = {};
+                }
+                this.interpreter.customFunctions[name] = func;
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize PyOdide:', error);
+            return false;
+        }
     }
 
     /**
@@ -245,6 +277,96 @@ class SpreadsheetRexxAdapter {
             // Get row height in pixels
             GETROWHEIGHT: function(row) {
                 return self.model.getRowHeight(parseInt(row));
+            },
+
+            // ===== STYLING FUNCTIONS =====
+
+            // Create a style object with specified properties
+            // Usage: STYLE("backgroundColor", "red", "color", "white")
+            // Or: STYLE("color", "red")
+            STYLE: function(...args) {
+                const style = {};
+                for (let i = 0; i < args.length; i += 2) {
+                    if (i + 1 < args.length) {
+                        const prop = args[i];
+                        const value = args[i + 1];
+                        style[prop] = value;
+                    }
+                }
+                return style;
+            },
+
+            // Conditional styling based on a condition
+            // Usage: STYLE_IF(A1 < 0, STYLE("color", "red"), STYLE("color", "green"))
+            STYLE_IF: function(condition, trueStyle, falseStyle) {
+                return condition ? trueStyle : (falseStyle || {});
+            },
+
+            // Background color shortcuts
+            BG_COLOR: function(color) {
+                return { backgroundColor: color };
+            },
+
+            // Text color shortcuts
+            TEXT_COLOR: function(color) {
+                return { color: color };
+            },
+
+            // Bold text
+            BOLD: function() {
+                return { fontWeight: 'bold' };
+            },
+
+            // Italic text
+            ITALIC: function() {
+                return { fontStyle: 'italic' };
+            },
+
+            // Text alignment
+            ALIGN_LEFT: function() {
+                return { textAlign: 'left' };
+            },
+            ALIGN_CENTER: function() {
+                return { textAlign: 'center' };
+            },
+            ALIGN_RIGHT: function() {
+                return { textAlign: 'right' };
+            },
+
+            // Merge multiple style objects
+            MERGE_STYLES: function(...styles) {
+                return Object.assign({}, ...styles);
+            },
+
+            // Common color presets
+            RED_TEXT: function() {
+                return { color: '#d32f2f' };
+            },
+            GREEN_TEXT: function() {
+                return { color: '#388e3c' };
+            },
+            BLUE_TEXT: function() {
+                return { color: '#1976d2' };
+            },
+            ORANGE_TEXT: function() {
+                return { color: '#f57c00' };
+            },
+
+            // Background color presets
+            RED_BG: function() {
+                return { backgroundColor: '#ffebee' };
+            },
+            GREEN_BG: function() {
+                return { backgroundColor: '#e8f5e9' };
+            },
+            BLUE_BG: function() {
+                return { backgroundColor: '#e3f2fd' };
+            },
+            YELLOW_BG: function() {
+                return { backgroundColor: '#fff9c4' };
+            },
+            ORANGE_BG: function() {
+                return { backgroundColor: '#ffe0b2' };
             }
         };
     }

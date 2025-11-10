@@ -42,6 +42,9 @@ See **[BUILDING-BINARY.md](BUILDING-BINARY.md)** for instructions on building an
 
 ### Sample Files
 
+RexxSheet supports both `.json` and `.rexxsheet` file extensions. The `.rexxsheet` extension is recommended for filesystem use to enable file associations.
+
+**Basic Examples:**
 - **`test-sheet.json`** - Simple test spreadsheet with basic formulas
   - Numbers, text, SUM_RANGE, UPPER functions
   - Good for quick testing and learning
@@ -51,6 +54,31 @@ See **[BUILDING-BINARY.md](BUILDING-BINARY.md)** for instructions on building an
   - Demonstrates setupScript with global variables
   - Cell dependencies and complex formulas
   - Uses SUM_RANGE for totals
+
+- **`example-formatted.json`** - Formatting and styling demonstration
+  - Conditional formatting with RexxJS expressions
+  - Number formats (currency, percentage, dates)
+  - Cell styling (colors, fonts, alignment)
+  - Account ledger and sales performance examples
+
+**PyOdide Scientific Computing Examples:**
+- **`example-regression.rexxsheet`** - Linear regression and sales forecasting
+  - PY_LINREGRESS() for regression analysis
+  - Statistical metrics (R², p-value, slope, intercept)
+  - Forecasting future values using regression equation
+  - Real scipy.stats algorithms
+
+- **`example-fft.rexxsheet`** - Fast Fourier Transform for signal analysis
+  - PY_FFT() for frequency domain analysis
+  - Audio frequency detection (musical notes)
+  - Dominant frequency and magnitude detection
+  - Real numpy.fft algorithms
+
+- **`example-solve.rexxsheet`** - Symbolic equation solving
+  - PY_SOLVE() for exact symbolic solutions
+  - Linear, quadratic, and complex equations
+  - Engineering applications (projectile motion, circuit analysis, finance)
+  - Real sympy symbolic mathematics
 
 ### File Format
 
@@ -65,6 +93,8 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 - **Range Functions**: Built-in functions for working with cell ranges
 - **Dependency Tracking**: Automatic recalculation when referenced cells change
 - **Cell Comments & Formats**: Attach metadata to cells for documentation
+- **🎨 Cell Formatting & Styling**: Number formats (currency, percentage, dates), custom styles (colors, fonts, alignment)
+- **✨ Conditional Formatting**: RexxJS expressions for dynamic cell styling based on values
 - **Named Variables**: Define constants in Setup Script (e.g., `LET TAX_RATE = 0.07`)
 - **Enhanced Info Panel**: Shows cell details, dependencies, type, comments
 - **View Mode Hotkeys**: Press V/E/F/N to toggle between different views
@@ -388,6 +418,109 @@ Cells can have metadata attached:
 
 Access these via the Info Panel when a cell is selected, or hover over cells to see tooltips.
 
+### Cell Formatting & Styling
+
+#### Number Formatting
+
+Format cell values using format strings. Use the **🔢 Format** toolbar button or set the `format` property in JSON.
+
+**Available Formats:**
+- **Currency**: `$#,##0.00` - Displays numbers as currency with thousand separators
+- **Percentage**: `0.00%` - Displays decimals as percentages (e.g., 0.85 → 85.00%)
+- **Number**: `#,##0.00` - Displays numbers with thousand separators and 2 decimals
+- **Integer**: `#,##0` - Displays whole numbers with thousand separators
+- **Date (ISO)**: `yyyy-mm-dd` - Displays dates in ISO format
+- **Date (US)**: `mm/dd/yyyy` - Displays dates in US format
+
+**Example:**
+```json
+{
+  "A1": {
+    "content": "1234.56",
+    "format": "$#,##0.00"
+  }
+}
+```
+Displays as: **$1,234.56**
+
+#### Cell Styling
+
+Apply visual styles to cells using the **🎨 Style** toolbar button or set the `style` property in JSON.
+
+**Supported Style Properties:**
+- `backgroundColor` - Cell background color (e.g., `"#ffebee"`)
+- `color` - Text color (e.g., `"#d32f2f"`)
+- `fontWeight` - Font weight (`"bold"` or `"normal"`)
+- `fontStyle` - Font style (`"italic"` or `"normal"`)
+- `textAlign` - Text alignment (`"left"`, `"center"`, or `"right"`)
+- `border` - Cell border (e.g., `"1px solid #000"`)
+
+**Example:**
+```json
+{
+  "A1": {
+    "content": "Important",
+    "style": {
+      "backgroundColor": "#ffebee",
+      "color": "#d32f2f",
+      "fontWeight": "bold"
+    }
+  }
+}
+```
+
+#### Conditional Formatting with RexxJS
+
+Use RexxJS expressions to dynamically style cells based on their values. Set the `styleExpression` property to a RexxJS expression that returns a style object.
+
+**Example: Color negative numbers red, positive green**
+```json
+{
+  "A1": {
+    "content": "-150",
+    "format": "$#,##0.00",
+    "styleExpression": "STYLE_IF(A1 < 0, RED_TEXT(), GREEN_TEXT())"
+  }
+}
+```
+
+**Available Style Functions:**
+- `STYLE("property", "value", ...)` - Create style object
+- `STYLE_IF(condition, trueStyle, falseStyle)` - Conditional styling
+- `RED_TEXT()`, `GREEN_TEXT()`, `BLUE_TEXT()`, `ORANGE_TEXT()` - Color presets
+- `RED_BG()`, `GREEN_BG()`, `BLUE_BG()`, `YELLOW_BG()`, `ORANGE_BG()` - Background presets
+- `BOLD()`, `ITALIC()` - Font styling
+- `ALIGN_LEFT()`, `ALIGN_CENTER()`, `ALIGN_RIGHT()` - Alignment
+- `BG_COLOR(color)`, `TEXT_COLOR(color)` - Custom colors
+- `MERGE_STYLES(style1, style2, ...)` - Combine multiple styles
+
+**Examples:**
+
+```rexx
+// Traffic light style based on percentage
+STYLE_IF(A1 >= 0.8, GREEN_BG(), STYLE_IF(A1 >= 0.5, YELLOW_BG(), RED_BG()))
+
+// Custom style for temperature
+STYLE("backgroundColor", "#ffccbc", "color", "#bf360c")
+
+// Merge multiple styles
+MERGE_STYLES(BOLD(), RED_TEXT(), ALIGN_CENTER())
+
+// Credits/Debits example
+STYLE_IF(Amount < 0,
+  MERGE_STYLES(RED_TEXT(), BOLD()),
+  GREEN_TEXT()
+)
+```
+
+**Complete Example Spreadsheet:**
+
+See `example-formatted.json` for a complete demonstration including:
+- Account ledger with conditional coloring for debits/credits
+- Sales performance with traffic light styling
+- Custom temperature status indicators
+- Number formatting (currency, percentages)
+
 ### Sheet Name via Hash Parameter
 
 The sheet name is specified via the URL hash:
@@ -521,13 +654,15 @@ PLAYWRIGHT_HTML_OPEN=never npx playwright test examples/spreadsheet-poc/tests/
 - ✅ Named variables via Setup Script
 - ✅ Control Bus for remote scripting (web mode: iframe postMessage, Tauri mode: HTTP API on port 2410)
 - ✅ Static binary build for production deployment (`./rexxsheet-static`)
+- ✅ Number formatting (currency, percentage, dates)
+- ✅ Visual cell styling (colors, fonts, alignment, borders)
+- ✅ Conditional formatting with RexxJS expressions
 
 ### Potential Enhancements
 - Save/export to JSON file (complement the load feature)
 - Undo/redo functionality
 - Paste from clipboard
 - Add more Excel-like functions (IF, VLOOKUP via extras/functions/excel)
-- Visual cell formatting (colors, fonts, borders)
 - Multi-sheet support (tabs)
 - Import/export CSV format
 - Collaborative editing
@@ -569,6 +704,7 @@ Always available without any setup:
 
 Spreadsheet-specific functions for working with cell ranges:
 
+**Range Functions:**
 - `SUM_RANGE(rangeRef)` - Sum cells in range (e.g., `SUM_RANGE("A1:A5")`)
 - `AVERAGE_RANGE(rangeRef)` - Average of cells in range
 - `COUNT_RANGE(rangeRef)` - Count non-empty cells
@@ -577,6 +713,24 @@ Spreadsheet-specific functions for working with cell ranges:
 - `CELL(ref)` - Get cell value by reference
 - `ROW(ref)` - Get row number of cell
 - `COLUMN(ref)` - Get column number of cell
+
+**Style Functions (for conditional formatting):**
+- `STYLE(prop1, val1, prop2, val2, ...)` - Create style object
+- `STYLE_IF(condition, trueStyle, falseStyle)` - Conditional styling
+- `BG_COLOR(color)` - Set background color
+- `TEXT_COLOR(color)` - Set text color
+- `BOLD()` - Bold font style
+- `ITALIC()` - Italic font style
+- `ALIGN_LEFT()`, `ALIGN_CENTER()`, `ALIGN_RIGHT()` - Text alignment
+- `MERGE_STYLES(...styles)` - Combine multiple style objects
+- `RED_TEXT()`, `GREEN_TEXT()`, `BLUE_TEXT()`, `ORANGE_TEXT()` - Color presets
+- `RED_BG()`, `GREEN_BG()`, `BLUE_BG()`, `YELLOW_BG()`, `ORANGE_BG()` - Background presets
+
+**Layout Functions:**
+- `SETCOLWIDTH(col, width)` - Set column width in pixels
+- `GETCOLWIDTH(col)` - Get column width in pixels
+- `SETROWHEIGHT(row, height)` - Set row height in pixels
+- `GETROWHEIGHT(row)` - Get row height in pixels
 
 ### 3. Extra Function Libraries (from `extras/functions/*`)
 
@@ -734,6 +888,164 @@ All numpy functions are available with the `NP_` prefix:
 #### Example Page
 
 See `numpy-example.html` for a complete example with NumPy integration.
+
+### 5. PyOdide Scientific Computing Functions
+
+The spreadsheet includes **Python-powered scientific computing functions** via PyOdide, providing advanced statistical analysis, signal processing, and symbolic mathematics capabilities.
+
+#### Features
+
+- **🔬 Linear Regression**: Compute slope, intercept, R², p-values using scipy.stats
+- **📊 Fast Fourier Transform**: Frequency analysis using numpy.fft
+- **🧮 Symbolic Equation Solving**: Exact symbolic solutions using sympy
+- **100% Python Accurate**: Uses real Python libraries (scipy, numpy, sympy)
+- **Integrated with RexxJS**: Use in formulas just like any spreadsheet function
+
+#### Installation
+
+1. Load PyOdide in your HTML:
+```html
+<!-- Load PyOdide -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+<!-- Load PyOdide Functions -->
+<script src="pyodide-functions.js"></script>
+```
+
+2. Initialize PyOdide in your spreadsheet:
+```javascript
+// Initialize PyOdide functions
+await adapter.initializePyOdide();
+```
+
+#### Available Functions
+
+**PY_LINREGRESS** - Linear regression analysis
+
+```rexx
+=PY_LINREGRESS(x_values, y_values)
+```
+
+Returns an object with regression statistics:
+- `slope` - Slope of regression line
+- `intercept` - Y-intercept
+- `r_value` - Correlation coefficient (-1 to 1)
+- `r_squared` - Coefficient of determination (0 to 1)
+- `p_value` - Two-sided p-value for hypothesis test
+- `std_err` - Standard error of the estimate
+- `equation` - Formatted equation string (e.g., "y = 2.5x + 3.0")
+
+**PY_FFT** - Fast Fourier Transform (frequency analysis)
+
+```rexx
+=PY_FFT(data, sample_rate)
+```
+
+Returns an object with FFT results:
+- `frequencies` - Array of frequency bins (Hz)
+- `magnitudes` - Magnitude spectrum
+- `phases` - Phase spectrum (radians)
+- `power` - Power spectrum
+- `dominant_freq` - Frequency with highest magnitude
+- `dominant_magnitude` - Magnitude at dominant frequency
+- `dc_component` - DC offset (average value)
+
+**PY_SOLVE** - Symbolic equation solving
+
+```rexx
+=PY_SOLVE(equation, variable)
+```
+
+Returns an object with solutions:
+- `solutions` - Array of exact symbolic solutions (e.g., ["sqrt(2)", "-sqrt(2)"])
+- `numeric_solutions` - Numeric approximations where possible
+- `equation_latex` - LaTeX representation
+- `solution_count` - Number of solutions
+
+#### Example Formulas
+
+**Linear Regression: Sales Forecasting**
+```rexx
+// Given months in A2:A7 and sales in B2:B7
+=PY_LINREGRESS(A2:A7, B2:B7).slope
+// Returns: 38.0 (growth rate per month)
+
+=PY_LINREGRESS(A2:A7, B2:B7).r_squared
+// Returns: 0.998 (excellent fit, 99.8%)
+
+=PY_LINREGRESS(A2:A7, B2:B7).equation
+// Returns: "y = 38.0000x + 62.0000"
+```
+
+**FFT: Audio Frequency Analysis**
+```rexx
+// Analyze audio signal in B2:B801 sampled at 8000 Hz
+=PY_FFT(B2:B801, 8000).dominant_freq
+// Returns: 440.0 (A note)
+
+=PY_FFT(B2:B801, 8000).dominant_magnitude
+// Returns: 1250.5 (signal strength)
+```
+
+**Symbolic Solving: Engineering Calculations**
+```rexx
+// Solve quadratic equation
+=PY_SOLVE("x**2 - 16 = 0", "x").numeric_solutions
+// Returns: [-4, 4]
+
+// Solve for exact symbolic answer
+=PY_SOLVE("x**2 - 2 = 0", "x").solutions
+// Returns: ["sqrt(2)", "-sqrt(2)"]
+
+// Solve linear equation
+=PY_SOLVE("5*t + 3 = 18", "t").numeric_solutions[0]
+// Returns: 3
+```
+
+**Using with RexxJS Pipelines**
+```rexx
+// Extract and format regression slope
+=PY_LINREGRESS(X_data, Y_data) |> GET("slope") |> ROUND(4)
+
+// Find dominant frequency and format
+=PY_FFT(signal, 1000) |> GET("dominant_freq") |> FORMAT("#,##0.00 Hz")
+
+// Get first solution from equation
+=PY_SOLVE("x**2 - 9 = 0", "x") |> GET("numeric_solutions") |> FIRST()
+```
+
+**Comprehensive Analysis Workflow**
+```rexx
+// Step 1: Run regression
+A2: =PY_LINREGRESS(Data_X, Data_Y)
+
+// Step 2: Get regression parameters
+A3: =A2.slope
+A4: =A2.intercept
+A5: =A2.r_squared
+
+// Step 3: Make prediction using equation
+A6: =A3 * 10 + A4  /* Predict value at x=10 */
+
+// Step 4: Check residuals with FFT
+A7: =PY_FFT(Residuals, 100).dominant_freq
+```
+
+#### Performance Notes
+
+- **First load**: ~10 seconds (loading PyOdide, scipy, numpy, sympy)
+- **Subsequent calls**: ~50-200ms per function (Python execution overhead)
+- **Accuracy**: 100% identical to native Python scipy/numpy/sympy
+- **Bundle size**: ~25MB (PyOdide + scientific packages)
+- **Initialization**: Lazy loading - only loads when first PY_ function is called
+
+#### Use Cases
+
+- **Data Science**: Linear regression, correlation analysis, statistical testing
+- **Signal Processing**: Audio analysis, frequency detection, noise filtering
+- **Engineering**: Symbolic equation solving, exact mathematical solutions
+- **Scientific Research**: Accurate Python algorithms without approximations
+- **Education**: Teaching statistics, signal processing, and algebra with real tools
 
 ## Development
 
