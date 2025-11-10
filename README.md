@@ -903,20 +903,42 @@ The spreadsheet includes **Python-powered scientific computing functions** via P
 
 #### Installation
 
-1. Load PyOdide in your HTML:
+PyOdide functions are split into three modules for selective loading:
+
+**Option 1: Load all modules (numpy, scipy, sympy)**
 ```html
 <!-- Load PyOdide -->
 <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
 
-<!-- Load PyOdide Functions -->
-<script src="pyodide-functions.js"></script>
+<!-- Load PyOdide Functions (choose which modules you need) -->
+<script src="pyodide-numpy-functions.js"></script>   <!-- For PY_FFT -->
+<script src="pyodide-scipy-functions.js"></script>   <!-- For PY_LINREGRESS -->
+<script src="pyodide-sympy-functions.js"></script>   <!-- For PY_SOLVE -->
 ```
 
-2. Initialize PyOdide in your spreadsheet:
 ```javascript
-// Initialize PyOdide functions
+// Initialize all PyOdide functions
 await adapter.initializePyOdide();
 ```
+
+**Option 2: Load only what you need**
+```html
+<!-- Load PyOdide -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+<!-- Load only NumPy for FFT -->
+<script src="pyodide-numpy-functions.js"></script>
+```
+
+```javascript
+// Initialize only NumPy functions
+await adapter.initializePyOdideNumpy();
+```
+
+**Module Dependencies:**
+- `pyodide-numpy-functions.js` - Requires: **numpy**
+- `pyodide-scipy-functions.js` - Requires: **numpy, scipy**
+- `pyodide-sympy-functions.js` - Requires: **sympy**
 
 #### Available Functions
 
@@ -1033,11 +1055,26 @@ A7: =PY_FFT(Residuals, 100).dominant_freq
 
 #### Performance Notes
 
-- **First load**: ~10 seconds (loading PyOdide, scipy, numpy, sympy)
+**Loading Times (per module):**
+- **PyOdide base**: ~3 seconds
+- **NumPy module**: ~2-3 seconds (PY_FFT)
+- **SciPy module**: ~4-5 seconds (PY_LINREGRESS, includes numpy)
+- **SymPy module**: ~3-4 seconds (PY_SOLVE)
+
+**Execution:**
 - **Subsequent calls**: ~50-200ms per function (Python execution overhead)
 - **Accuracy**: 100% identical to native Python scipy/numpy/sympy
-- **Bundle size**: ~25MB (PyOdide + scientific packages)
-- **Initialization**: Lazy loading - only loads when first PY_ function is called
+
+**Bundle Sizes:**
+- **PyOdide base**: ~6MB
+- **numpy**: ~8MB
+- **scipy**: ~10MB (includes numpy dependencies)
+- **sympy**: ~5MB
+- **Total (all modules)**: ~25MB
+
+**Optimization:**
+- Load only the modules you need to reduce bundle size and initialization time
+- Each module initializes independently and lazily (only on first use)
 
 #### Use Cases
 

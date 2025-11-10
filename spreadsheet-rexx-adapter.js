@@ -12,7 +12,9 @@ class SpreadsheetRexxAdapter {
     constructor(spreadsheetModel) {
         this.model = spreadsheetModel;
         this.interpreter = null;
-        this.pyodideFunctions = null;
+        this.pyodideNumpyFunctions = null;
+        this.pyodideScipyFunctions = null;
+        this.pyodideSympyFunctions = null;
     }
 
     /**
@@ -37,23 +39,23 @@ class SpreadsheetRexxAdapter {
     }
 
     /**
-     * Initialize PyOdide functions (optional)
-     * Call this to enable Python-powered scientific computing functions
+     * Initialize PyOdide NumPy functions (PY_FFT)
+     * Dependencies: numpy
      */
-    async initializePyOdide() {
-        if (typeof PyOdideFunctions === 'undefined') {
-            console.warn('PyOdideFunctions not loaded. PyOdide functions will not be available.');
+    async initializePyOdideNumpy() {
+        if (typeof PyOdideNumpyFunctions === 'undefined') {
+            console.warn('PyOdideNumpyFunctions not loaded. NumPy functions will not be available.');
             return false;
         }
 
-        if (!this.pyodideFunctions) {
-            this.pyodideFunctions = new PyOdideFunctions();
+        if (!this.pyodideNumpyFunctions) {
+            this.pyodideNumpyFunctions = new PyOdideNumpyFunctions();
         }
 
         try {
-            await this.pyodideFunctions.initialize();
-            // Install PyOdide functions into the interpreter
-            const pyFunctions = this.pyodideFunctions.getFunctions();
+            await this.pyodideNumpyFunctions.initialize();
+            // Install NumPy functions into the interpreter
+            const pyFunctions = this.pyodideNumpyFunctions.getFunctions();
             Object.entries(pyFunctions).forEach(([name, func]) => {
                 if (!this.interpreter.customFunctions) {
                     this.interpreter.customFunctions = {};
@@ -62,9 +64,86 @@ class SpreadsheetRexxAdapter {
             });
             return true;
         } catch (error) {
-            console.error('Failed to initialize PyOdide:', error);
+            console.error('Failed to initialize PyOdide NumPy:', error);
             return false;
         }
+    }
+
+    /**
+     * Initialize PyOdide SciPy functions (PY_LINREGRESS)
+     * Dependencies: numpy, scipy
+     */
+    async initializePyOdideScipy() {
+        if (typeof PyOdideScipyFunctions === 'undefined') {
+            console.warn('PyOdideScipyFunctions not loaded. SciPy functions will not be available.');
+            return false;
+        }
+
+        if (!this.pyodideScipyFunctions) {
+            this.pyodideScipyFunctions = new PyOdideScipyFunctions();
+        }
+
+        try {
+            await this.pyodideScipyFunctions.initialize();
+            // Install SciPy functions into the interpreter
+            const pyFunctions = this.pyodideScipyFunctions.getFunctions();
+            Object.entries(pyFunctions).forEach(([name, func]) => {
+                if (!this.interpreter.customFunctions) {
+                    this.interpreter.customFunctions = {};
+                }
+                this.interpreter.customFunctions[name] = func;
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize PyOdide SciPy:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Initialize PyOdide SymPy functions (PY_SOLVE)
+     * Dependencies: sympy
+     */
+    async initializePyOdideSympy() {
+        if (typeof PyOdideSympyFunctions === 'undefined') {
+            console.warn('PyOdideSympyFunctions not loaded. SymPy functions will not be available.');
+            return false;
+        }
+
+        if (!this.pyodideSympyFunctions) {
+            this.pyodideSympyFunctions = new PyOdideSympyFunctions();
+        }
+
+        try {
+            await this.pyodideSympyFunctions.initialize();
+            // Install SymPy functions into the interpreter
+            const pyFunctions = this.pyodideSympyFunctions.getFunctions();
+            Object.entries(pyFunctions).forEach(([name, func]) => {
+                if (!this.interpreter.customFunctions) {
+                    this.interpreter.customFunctions = {};
+                }
+                this.interpreter.customFunctions[name] = func;
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize PyOdide SymPy:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Initialize all PyOdide functions (convenience method)
+     * Loads numpy, scipy, and sympy modules
+     */
+    async initializePyOdide() {
+        const results = await Promise.allSettled([
+            this.initializePyOdideNumpy(),
+            this.initializePyOdideScipy(),
+            this.initializePyOdideSympy()
+        ]);
+
+        const allSucceeded = results.every(r => r.status === 'fulfilled' && r.value === true);
+        return allSucceeded;
     }
 
     /**
