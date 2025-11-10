@@ -54,7 +54,7 @@ function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, he
         // Show only literal values, blank if formula
         displayValue = cell.expression ? '' : (formattedValue || cell.value || '');
         showCell = !cell.expression || cell.value === '';
-    } else if (viewMode === 'expressions') {
+    } else if (viewMode === 'formulas') {
         // Show only formulas, hide value cells
         displayValue = cell.expression ? '=' + cell.expression : '';
         showCell = !!cell.expression;
@@ -317,9 +317,10 @@ function Grid({ model, selectedCell, onSelectCell, onEditCell, visibleRows, visi
 /**
  * Formatting Toolbar Component
  */
-function FormattingToolbar({ selectedCell, model, onApplyFormat, onApplyStyle }) {
+function FormattingToolbar({ selectedCell, model, onApplyFormat, onApplyStyle, viewMode, onViewModeChange }) {
     const [showFormatMenu, setShowFormatMenu] = useState(false);
     const [showStyleMenu, setShowStyleMenu] = useState(false);
+    const [showViewMenu, setShowViewMenu] = useState(false);
 
     const formats = [
         { name: 'Currency', value: '$#,##0.00' },
@@ -342,8 +343,42 @@ function FormattingToolbar({ selectedCell, model, onApplyFormat, onApplyStyle })
         { name: 'Clear Style', style: null }
     ];
 
+    const viewModes = [
+        { name: 'Normal', value: 'normal' },
+        { name: 'Values Only', value: 'values' },
+        { name: 'Formulas Only', value: 'formulas' },
+        { name: 'Formats Only', value: 'formats' }
+    ];
+
+    const viewModeLabel = viewModes.find(v => v.value === viewMode)?.name || 'Normal';
+
     return (
         <div className="formatting-toolbar">
+            <div className="toolbar-group">
+                <button
+                    className="toolbar-button"
+                    onClick={() => setShowViewMenu(!showViewMenu)}
+                    title="View Mode"
+                >
+                    👁️ {viewModeLabel}
+                </button>
+                {showViewMenu && (
+                    <div className="dropdown-menu">
+                        {viewModes.map(mode => (
+                            <div
+                                key={mode.value}
+                                className={`dropdown-item ${viewMode === mode.value ? 'active' : ''}`}
+                                onClick={() => {
+                                    onViewModeChange(mode.value);
+                                    setShowViewMenu(false);
+                                }}
+                            >
+                                {mode.name}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
             <div className="toolbar-group">
                 <button
                     className="toolbar-button"
@@ -457,8 +492,54 @@ function FormulaBar({ selectedCell, model, onEdit }) {
 /**
  * Info Panel Component - Shows selected cell details
  */
-function InfoPanel({ selectedCell, model, viewMode }) {
+function InfoPanel({ selectedCell, model, viewMode, onUpdateMetadata }) {
     const cell = selectedCell && model ? model.getCell(selectedCell) : null;
+    const [editingField, setEditingField] = useState(null);
+    const [editValue, setEditValue] = useState('');
+
+    const startEdit = (field, value) => {
+        setEditingField(field);
+        setEditValue(value || '');
+    };
+
+    const saveEdit = () => {
+        if (!editingField || !selectedCell) return;
+
+        const metadata = {};
+        if (editingField === 'format') {
+            metadata.format = editValue;
+        } else if (editingField === 'styleExpression') {
+            metadata.styleExpression = editValue;
+        } else if (editingField === 'comment') {
+            metadata.comment = editValue;
+        } else if (editingField === 'style') {
+            try {
+                // Parse JSON for style
+                metadata.style = editValue ? JSON.parse(editValue) : null;
+            } catch (e) {
+                alert('Invalid JSON for style: ' + e.message);
+                return;
+            }
+        }
+
+        onUpdateMetadata(metadata);
+        setEditingField(null);
+        setEditValue('');
+    };
+
+    const cancelEdit = () => {
+        setEditingField(null);
+        setEditValue('');
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            saveEdit();
+        } else if (e.key === 'Escape') {
+            cancelEdit();
+        }
+    };
 
     if (!selectedCell || !cell) {
         return (
@@ -466,15 +547,19 @@ function InfoPanel({ selectedCell, model, viewMode }) {
                 <h3>Cell Details</h3>
                 <p className="no-selection">No cell selected</p>
                 <div className="help-section">
-                    <p><strong>Hotkeys:</strong></p>
+                    <p><strong>Keyboard Shortcuts:</strong></p>
                     <ul>
                         <li><kbd>Ctrl+C</kbd> - Copy cell</li>
                         <li><kbd>Ctrl+X</kbd> - Cut cell</li>
                         <li><kbd>Ctrl+V</kbd> - Paste cell</li>
-                        <li><kbd>V</kbd> - View values only</li>
-                        <li><kbd>E</kbd> - View expressions only</li>
-                        <li><kbd>F</kbd> - View formats only</li>
-                        <li><kbd>N</kbd> - Normal view (default)</li>
+                    </ul>
+                    <p><strong>View Modes:</strong></p>
+                    <p>Use the <strong>👁️ View Mode</strong> dropdown to switch between:</p>
+                    <ul>
+                        <li>Normal - Show cell values</li>
+                        <li>Values Only - Show only literal values</li>
+                        <li>Formulas Only - Show only formulas</li>
+                        <li>Formats Only - Show format strings</li>
                     </ul>
                     <p><strong>Named Variables:</strong></p>
                     <p>Use <strong>⚙️ Setup</strong> to define:</p>
@@ -531,23 +616,73 @@ function InfoPanel({ selectedCell, model, viewMode }) {
                 </div>
             )}
 
-            {cell.comment && (
-                <div className="cell-detail-section">
-                    <p><strong>Comment:</strong></p>
-                    <p className="comment-display">{cell.comment}</p>
-                </div>
-            )}
+            <div className="cell-detail-section">
+                <p><strong>Comment:</strong> {editingField !== 'comment' && <button className="edit-btn" onClick={() => startEdit('comment', cell.comment)}>✏️</button>}</p>
+                {editingField === 'comment' ? (
+                    <>
+                        <textarea
+                            className="metadata-input"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onBlur={saveEdit}
+                            autoFocus
+                            rows={3}
+                        />
+                        <div className="edit-actions">
+                            <button onClick={saveEdit}>Save</button>
+                            <button onClick={cancelEdit}>Cancel</button>
+                        </div>
+                    </>
+                ) : (
+                    <p className="comment-display">{cell.comment || <em>(none)</em>}</p>
+                )}
+            </div>
 
-            {cell.format && (
-                <div className="cell-detail-section">
-                    <p><strong>Format:</strong></p>
-                    <p className="format-display">{cell.format}</p>
-                </div>
-            )}
+            <div className="cell-detail-section">
+                <p><strong>Format:</strong> {editingField !== 'format' && <button className="edit-btn" onClick={() => startEdit('format', cell.format)}>✏️</button>}</p>
+                {editingField === 'format' ? (
+                    <>
+                        <input
+                            type="text"
+                            className="metadata-input"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onBlur={saveEdit}
+                            autoFocus
+                            placeholder="e.g., $#,##0.00"
+                        />
+                        <div className="edit-actions">
+                            <button onClick={saveEdit}>Save</button>
+                            <button onClick={cancelEdit}>Cancel</button>
+                        </div>
+                    </>
+                ) : (
+                    <p className="format-display">{cell.format || <em>(none)</em>}</p>
+                )}
+            </div>
 
-            {cell.style && (
-                <div className="cell-detail-section">
-                    <p><strong>Style:</strong></p>
+            <div className="cell-detail-section">
+                <p><strong>Style (JSON):</strong> {editingField !== 'style' && <button className="edit-btn" onClick={() => startEdit('style', cell.style ? JSON.stringify(cell.style, null, 2) : '')}>✏️</button>}</p>
+                {editingField === 'style' ? (
+                    <>
+                        <textarea
+                            className="metadata-input"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onBlur={saveEdit}
+                            autoFocus
+                            rows={5}
+                            placeholder='{"color": "#d32f2f", "fontWeight": "bold"}'
+                        />
+                        <div className="edit-actions">
+                            <button onClick={saveEdit}>Save</button>
+                            <button onClick={cancelEdit}>Cancel</button>
+                        </div>
+                    </>
+                ) : cell.style ? (
                     <div className="style-preview" style={cell.style}>
                         {Object.entries(cell.style).map(([key, value]) => (
                             <div key={key} className="style-property">
@@ -555,19 +690,37 @@ function InfoPanel({ selectedCell, model, viewMode }) {
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
+                ) : (
+                    <p><em>(none)</em></p>
+                )}
+            </div>
 
-            {cell.styleExpression && (
-                <div className="cell-detail-section">
-                    <p><strong>Style Expression:</strong></p>
-                    <code className="format-display">{cell.styleExpression}</code>
-                </div>
-            )}
+            <div className="cell-detail-section">
+                <p><strong>Style Expression:</strong> {editingField !== 'styleExpression' && <button className="edit-btn" onClick={() => startEdit('styleExpression', cell.styleExpression)}>✏️</button>}</p>
+                {editingField === 'styleExpression' ? (
+                    <>
+                        <textarea
+                            className="metadata-input"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onBlur={saveEdit}
+                            autoFocus
+                            rows={3}
+                            placeholder="e.g., STYLE_IF(A1 < 0, RED_TEXT(), GREEN_TEXT())"
+                        />
+                        <div className="edit-actions">
+                            <button onClick={saveEdit}>Save</button>
+                            <button onClick={cancelEdit}>Cancel</button>
+                        </div>
+                    </>
+                ) : (
+                    <code className="format-display">{cell.styleExpression || <em>(none)</em>}</code>
+                )}
+            </div>
 
             <div className="cell-detail-section view-mode-indicator">
                 <p><strong>View Mode:</strong> {viewMode.toUpperCase()}</p>
-                <p className="help-text">Press V/E/F/N to change view</p>
             </div>
         </div>
     );
@@ -652,7 +805,10 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [viewMode, setViewMode] = useState('normal'); // 'normal', 'values', 'expressions', 'formats'
+    const [viewMode, setViewMode] = useState(() => {
+        // Load view mode from localStorage, default to 'normal'
+        return localStorage.getItem('spreadsheet-view-mode') || 'normal';
+    });
     const [clipboard, setClipboard] = useState(null); // { content, sourceCol, sourceRow, isCut }
 
     const visibleRows = 20;
@@ -663,7 +819,7 @@ function App() {
         initializeSpreadsheet();
     }, []);
 
-    // Keyboard handler for view mode switching and clipboard operations
+    // Keyboard handler for clipboard operations
     useEffect(() => {
         const handleKeyDown = (e) => {
             // Only handle if not in an input/textarea
@@ -684,18 +840,6 @@ function App() {
                     handlePaste();
                 }
                 return;
-            }
-
-            // View mode switching (plain keys without modifiers)
-            const key = e.key.toLowerCase();
-            if (key === 'v') {
-                setViewMode('values');
-            } else if (key === 'e') {
-                setViewMode('expressions');
-            } else if (key === 'f') {
-                setViewMode('formats');
-            } else if (key === 'n') {
-                setViewMode('normal');
             }
         };
 
@@ -924,6 +1068,20 @@ function App() {
         setUpdateCounter(c => c + 1);
     }, [selectedCell, model]);
 
+    // Handle view mode change with localStorage persistence
+    const handleViewModeChange = useCallback((mode) => {
+        setViewMode(mode);
+        localStorage.setItem('spreadsheet-view-mode', mode);
+    }, []);
+
+    // Handle metadata updates from InfoPanel
+    const handleUpdateMetadata = useCallback((metadata) => {
+        if (!selectedCell || !model) return;
+
+        model.setCellMetadata(selectedCell, metadata);
+        setUpdateCounter(c => c + 1);
+    }, [selectedCell, model]);
+
     if (isLoading) {
         return (
             <div className="app loading">
@@ -951,9 +1109,6 @@ function App() {
             <div className="header">
                 <h1>RexxJS Spreadsheet POC</h1>
                 <div className="header-controls">
-                    <div className="view-mode-badge" title="Press V/E/F/N to change view">
-                        View: {viewMode.toUpperCase()}
-                    </div>
                     <button className="settings-button" onClick={() => setSettingsOpen(true)}>
                         ⚙️ Setup
                     </button>
@@ -966,6 +1121,8 @@ function App() {
                 model={model}
                 onApplyFormat={handleApplyFormat}
                 onApplyStyle={handleApplyStyle}
+                viewMode={viewMode}
+                onViewModeChange={handleViewModeChange}
             />
 
             <FormulaBar
@@ -991,6 +1148,7 @@ function App() {
                     selectedCell={selectedCell}
                     model={model}
                     viewMode={viewMode}
+                    onUpdateMetadata={handleUpdateMetadata}
                 />
             </div>
 
