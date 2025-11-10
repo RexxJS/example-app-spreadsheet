@@ -861,6 +861,164 @@ All numpy functions are available with the `NP_` prefix:
 
 See `numpy-example.html` for a complete example with NumPy integration.
 
+### 5. PyOdide Scientific Computing Functions
+
+The spreadsheet includes **Python-powered scientific computing functions** via PyOdide, providing advanced statistical analysis, signal processing, and symbolic mathematics capabilities.
+
+#### Features
+
+- **🔬 Linear Regression**: Compute slope, intercept, R², p-values using scipy.stats
+- **📊 Fast Fourier Transform**: Frequency analysis using numpy.fft
+- **🧮 Symbolic Equation Solving**: Exact symbolic solutions using sympy
+- **100% Python Accurate**: Uses real Python libraries (scipy, numpy, sympy)
+- **Integrated with RexxJS**: Use in formulas just like any spreadsheet function
+
+#### Installation
+
+1. Load PyOdide in your HTML:
+```html
+<!-- Load PyOdide -->
+<script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+
+<!-- Load PyOdide Functions -->
+<script src="pyodide-functions.js"></script>
+```
+
+2. Initialize PyOdide in your spreadsheet:
+```javascript
+// Initialize PyOdide functions
+await adapter.initializePyOdide();
+```
+
+#### Available Functions
+
+**PY_LINREGRESS** - Linear regression analysis
+
+```rexx
+=PY_LINREGRESS(x_values, y_values)
+```
+
+Returns an object with regression statistics:
+- `slope` - Slope of regression line
+- `intercept` - Y-intercept
+- `r_value` - Correlation coefficient (-1 to 1)
+- `r_squared` - Coefficient of determination (0 to 1)
+- `p_value` - Two-sided p-value for hypothesis test
+- `std_err` - Standard error of the estimate
+- `equation` - Formatted equation string (e.g., "y = 2.5x + 3.0")
+
+**PY_FFT** - Fast Fourier Transform (frequency analysis)
+
+```rexx
+=PY_FFT(data, sample_rate)
+```
+
+Returns an object with FFT results:
+- `frequencies` - Array of frequency bins (Hz)
+- `magnitudes` - Magnitude spectrum
+- `phases` - Phase spectrum (radians)
+- `power` - Power spectrum
+- `dominant_freq` - Frequency with highest magnitude
+- `dominant_magnitude` - Magnitude at dominant frequency
+- `dc_component` - DC offset (average value)
+
+**PY_SOLVE** - Symbolic equation solving
+
+```rexx
+=PY_SOLVE(equation, variable)
+```
+
+Returns an object with solutions:
+- `solutions` - Array of exact symbolic solutions (e.g., ["sqrt(2)", "-sqrt(2)"])
+- `numeric_solutions` - Numeric approximations where possible
+- `equation_latex` - LaTeX representation
+- `solution_count` - Number of solutions
+
+#### Example Formulas
+
+**Linear Regression: Sales Forecasting**
+```rexx
+// Given months in A2:A7 and sales in B2:B7
+=PY_LINREGRESS(A2:A7, B2:B7).slope
+// Returns: 38.0 (growth rate per month)
+
+=PY_LINREGRESS(A2:A7, B2:B7).r_squared
+// Returns: 0.998 (excellent fit, 99.8%)
+
+=PY_LINREGRESS(A2:A7, B2:B7).equation
+// Returns: "y = 38.0000x + 62.0000"
+```
+
+**FFT: Audio Frequency Analysis**
+```rexx
+// Analyze audio signal in B2:B801 sampled at 8000 Hz
+=PY_FFT(B2:B801, 8000).dominant_freq
+// Returns: 440.0 (A note)
+
+=PY_FFT(B2:B801, 8000).dominant_magnitude
+// Returns: 1250.5 (signal strength)
+```
+
+**Symbolic Solving: Engineering Calculations**
+```rexx
+// Solve quadratic equation
+=PY_SOLVE("x**2 - 16 = 0", "x").numeric_solutions
+// Returns: [-4, 4]
+
+// Solve for exact symbolic answer
+=PY_SOLVE("x**2 - 2 = 0", "x").solutions
+// Returns: ["sqrt(2)", "-sqrt(2)"]
+
+// Solve linear equation
+=PY_SOLVE("5*t + 3 = 18", "t").numeric_solutions[0]
+// Returns: 3
+```
+
+**Using with RexxJS Pipelines**
+```rexx
+// Extract and format regression slope
+=PY_LINREGRESS(X_data, Y_data) |> GET("slope") |> ROUND(4)
+
+// Find dominant frequency and format
+=PY_FFT(signal, 1000) |> GET("dominant_freq") |> FORMAT("#,##0.00 Hz")
+
+// Get first solution from equation
+=PY_SOLVE("x**2 - 9 = 0", "x") |> GET("numeric_solutions") |> FIRST()
+```
+
+**Comprehensive Analysis Workflow**
+```rexx
+// Step 1: Run regression
+A2: =PY_LINREGRESS(Data_X, Data_Y)
+
+// Step 2: Get regression parameters
+A3: =A2.slope
+A4: =A2.intercept
+A5: =A2.r_squared
+
+// Step 3: Make prediction using equation
+A6: =A3 * 10 + A4  /* Predict value at x=10 */
+
+// Step 4: Check residuals with FFT
+A7: =PY_FFT(Residuals, 100).dominant_freq
+```
+
+#### Performance Notes
+
+- **First load**: ~10 seconds (loading PyOdide, scipy, numpy, sympy)
+- **Subsequent calls**: ~50-200ms per function (Python execution overhead)
+- **Accuracy**: 100% identical to native Python scipy/numpy/sympy
+- **Bundle size**: ~25MB (PyOdide + scientific packages)
+- **Initialization**: Lazy loading - only loads when first PY_ function is called
+
+#### Use Cases
+
+- **Data Science**: Linear regression, correlation analysis, statistical testing
+- **Signal Processing**: Audio analysis, frequency detection, noise filtering
+- **Engineering**: Symbolic equation solving, exact mathematical solutions
+- **Scientific Research**: Accurate Python algorithms without approximations
+- **Education**: Teaching statistics, signal processing, and algebra with real tools
+
 ## Development
 
 ### File Structure

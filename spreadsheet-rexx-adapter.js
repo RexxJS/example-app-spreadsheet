@@ -12,6 +12,7 @@ class SpreadsheetRexxAdapter {
     constructor(spreadsheetModel) {
         this.model = spreadsheetModel;
         this.interpreter = null;
+        this.pyodideFunctions = null;
     }
 
     /**
@@ -33,6 +34,37 @@ class SpreadsheetRexxAdapter {
         this.injectCellReferenceFunctions();
 
         return this.interpreter;
+    }
+
+    /**
+     * Initialize PyOdide functions (optional)
+     * Call this to enable Python-powered scientific computing functions
+     */
+    async initializePyOdide() {
+        if (typeof PyOdideFunctions === 'undefined') {
+            console.warn('PyOdideFunctions not loaded. PyOdide functions will not be available.');
+            return false;
+        }
+
+        if (!this.pyodideFunctions) {
+            this.pyodideFunctions = new PyOdideFunctions();
+        }
+
+        try {
+            await this.pyodideFunctions.initialize();
+            // Install PyOdide functions into the interpreter
+            const pyFunctions = this.pyodideFunctions.getFunctions();
+            Object.entries(pyFunctions).forEach(([name, func]) => {
+                if (!this.interpreter.customFunctions) {
+                    this.interpreter.customFunctions = {};
+                }
+                this.interpreter.customFunctions[name] = func;
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize PyOdide:', error);
+            return false;
+        }
     }
 
     /**
