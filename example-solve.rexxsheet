@@ -1,0 +1,338 @@
+{
+  "name": "Symbolic Solver Demo - Engineering Equations",
+  "setupScript": "/* PyOdide Symbolic Solver Demo */\nSAY 'Symbolic equation solving using sympy'",
+  "cells": {
+    "A1": {
+      "content": "🧮 Symbolic Equation Solver: Engineering & Math",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "18px",
+        "backgroundColor": "#d32f2f",
+        "color": "white",
+        "textAlign": "center"
+      }
+    },
+    "A2": {
+      "content": "Uses PY_SOLVE() from sympy for exact symbolic solutions",
+      "style": {
+        "fontStyle": "italic",
+        "color": "#666",
+        "fontSize": "12px"
+      }
+    },
+    "A4": {
+      "content": "📐 Linear Equations",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#ffebee"
+      }
+    },
+    "A5": {
+      "content": "Equation",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B5": {
+      "content": "Variable",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "C5": {
+      "content": "Solution",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A6": "2*x + 5 = 11",
+    "B6": "x",
+    "C6": {
+      "content": "=PY_SOLVE(A6, B6).numeric_solutions[0]",
+      "comment": "Solve for x",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A7": "3*y - 7 = 14",
+    "B7": "y",
+    "C7": {
+      "content": "=PY_SOLVE(A7, B7).numeric_solutions[0]",
+      "comment": "Solve for y",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A8": "5*t + 3 = 18",
+    "B8": "t",
+    "C8": {
+      "content": "=PY_SOLVE(A8, B8).numeric_solutions[0]",
+      "comment": "Solve for t",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A10": {
+      "content": "📊 Quadratic Equations",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#e3f2fd"
+      }
+    },
+    "A11": {
+      "content": "Equation",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B11": {
+      "content": "Variable",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "C11": {
+      "content": "Solutions",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A12": "x**2 - 16 = 0",
+    "B12": "x",
+    "C12": {
+      "content": "=PY_SOLVE(A12, B12).numeric_solutions",
+      "comment": "Two solutions: -4 and 4",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A13": "x**2 - 5*x + 6 = 0",
+    "B13": "x",
+    "C13": {
+      "content": "=PY_SOLVE(A13, B13).numeric_solutions",
+      "comment": "Solutions: 2 and 3",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A14": "x**2 + x - 12 = 0",
+    "B14": "x",
+    "C14": {
+      "content": "=PY_SOLVE(A14, B14).numeric_solutions",
+      "comment": "Solutions: -4 and 3",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#1976d2"
+      }
+    },
+    "A16": {
+      "content": "🔬 Exact Symbolic Solutions",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#e8f5e9"
+      }
+    },
+    "A17": {
+      "content": "Equation",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "B17": {
+      "content": "Symbolic",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "C17": {
+      "content": "Numeric",
+      "style": {
+        "fontWeight": "bold",
+        "backgroundColor": "#f5f5f5"
+      }
+    },
+    "A18": "x**2 - 2 = 0",
+    "B18": {
+      "content": "=PY_SOLVE(A18, 'x').solutions",
+      "comment": "Exact: sqrt(2), -sqrt(2)",
+      "style": {
+        "fontFamily": "monospace",
+        "backgroundColor": "#f0f0f0"
+      }
+    },
+    "C18": {
+      "content": "=PY_SOLVE(A18, 'x').numeric_solutions",
+      "comment": "Approximate: ±1.414...",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "A19": "x**2 - 3 = 0",
+    "B19": {
+      "content": "=PY_SOLVE(A19, 'x').solutions",
+      "comment": "Exact: sqrt(3), -sqrt(3)",
+      "style": {
+        "fontFamily": "monospace",
+        "backgroundColor": "#f0f0f0"
+      }
+    },
+    "C19": {
+      "content": "=PY_SOLVE(A19, 'x').numeric_solutions",
+      "comment": "Approximate: ±1.732...",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "A20": "x**2 + 1 = 0",
+    "B20": {
+      "content": "=PY_SOLVE(A20, 'x').solutions",
+      "comment": "Exact: -I, I (imaginary)",
+      "style": {
+        "fontFamily": "monospace",
+        "backgroundColor": "#f0f0f0"
+      }
+    },
+    "C20": {
+      "content": "=PY_SOLVE(A20, 'x').numeric_solutions",
+      "comment": "Complex: ±i",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E4": {
+      "content": "⚙️ Engineering Applications",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "14px",
+        "backgroundColor": "#fff3e0"
+      }
+    },
+    "E5": {
+      "content": "Projectile Motion",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E6": "When does h = 0?",
+    "E7": "h = -4.9*t**2 + 20*t + 2",
+    "F7": {
+      "content": "=PY_SOLVE('0 = -4.9*t**2 + 20*t + 2', 't').numeric_solutions",
+      "comment": "Time when object hits ground"
+    },
+    "E9": {
+      "content": "Circuit Analysis",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E10": "Ohm's Law: V = I*R",
+    "E11": "Find I when V=12, R=4:",
+    "F11": {
+      "content": "=PY_SOLVE('12 = I*4', 'I').numeric_solutions[0]",
+      "comment": "Current in amperes",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#388e3c"
+      }
+    },
+    "G11": "A",
+    "E13": {
+      "content": "Finance",
+      "style": {
+        "fontWeight": "bold"
+      }
+    },
+    "E14": "Break-even point:",
+    "E15": "Revenue = Cost",
+    "E16": "50*x = 1000 + 30*x",
+    "F16": {
+      "content": "=PY_SOLVE('50*x = 1000 + 30*x', 'x').numeric_solutions[0]",
+      "comment": "Units to break even",
+      "style": {
+        "fontWeight": "bold",
+        "color": "#f57c00"
+      }
+    },
+    "G16": "units",
+    "A22": {
+      "content": "💡 Features",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "12px",
+        "backgroundColor": "#f3e5f5"
+      }
+    },
+    "A23": {
+      "content": "✓ Exact symbolic solutions (sqrt, fractions, etc.)",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A24": {
+      "content": "✓ Numeric approximations for real-world use",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A25": {
+      "content": "✓ Complex number support",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "A26": {
+      "content": "✓ Multiple solutions for polynomials",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "E18": {
+      "content": "Try This:",
+      "style": {
+        "fontWeight": "bold",
+        "fontSize": "12px",
+        "backgroundColor": "#fce4ec"
+      }
+    },
+    "E19": {
+      "content": "• Edit equations in column A",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "E20": {
+      "content": "• Solutions update automatically",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "E21": {
+      "content": "• Use ** for exponents (x**2)",
+      "style": {
+        "fontSize": "11px"
+      }
+    },
+    "E22": {
+      "content": "• Use * for multiplication (2*x)",
+      "style": {
+        "fontSize": "11px"
+      }
+    }
+  }
+}

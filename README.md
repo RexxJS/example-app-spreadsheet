@@ -42,6 +42,9 @@ See **[BUILDING-BINARY.md](BUILDING-BINARY.md)** for instructions on building an
 
 ### Sample Files
 
+RexxSheet supports both `.json` and `.rexxsheet` file extensions. The `.rexxsheet` extension is recommended for filesystem use to enable file associations.
+
+**Basic Examples:**
 - **`test-sheet.json`** - Simple test spreadsheet with basic formulas
   - Numbers, text, SUM_RANGE, UPPER functions
   - Good for quick testing and learning
@@ -51,6 +54,31 @@ See **[BUILDING-BINARY.md](BUILDING-BINARY.md)** for instructions on building an
   - Demonstrates setupScript with global variables
   - Cell dependencies and complex formulas
   - Uses SUM_RANGE for totals
+
+- **`example-formatted.json`** - Formatting and styling demonstration
+  - Conditional formatting with RexxJS expressions
+  - Number formats (currency, percentage, dates)
+  - Cell styling (colors, fonts, alignment)
+  - Account ledger and sales performance examples
+
+**PyOdide Scientific Computing Examples:**
+- **`example-regression.rexxsheet`** - Linear regression and sales forecasting
+  - PY_LINREGRESS() for regression analysis
+  - Statistical metrics (R², p-value, slope, intercept)
+  - Forecasting future values using regression equation
+  - Real scipy.stats algorithms
+
+- **`example-fft.rexxsheet`** - Fast Fourier Transform for signal analysis
+  - PY_FFT() for frequency domain analysis
+  - Audio frequency detection (musical notes)
+  - Dominant frequency and magnitude detection
+  - Real numpy.fft algorithms
+
+- **`example-solve.rexxsheet`** - Symbolic equation solving
+  - PY_SOLVE() for exact symbolic solutions
+  - Linear, quadratic, and complex equations
+  - Engineering applications (projectile motion, circuit analysis, finance)
+  - Real sympy symbolic mathematics
 
 ### File Format
 
