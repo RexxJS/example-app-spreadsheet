@@ -65,6 +65,8 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 - **Range Functions**: Built-in functions for working with cell ranges
 - **Dependency Tracking**: Automatic recalculation when referenced cells change
 - **Cell Comments & Formats**: Attach metadata to cells for documentation
+- **🎨 Cell Formatting & Styling**: Number formats (currency, percentage, dates), custom styles (colors, fonts, alignment)
+- **✨ Conditional Formatting**: RexxJS expressions for dynamic cell styling based on values
 - **Named Variables**: Define constants in Setup Script (e.g., `LET TAX_RATE = 0.07`)
 - **Enhanced Info Panel**: Shows cell details, dependencies, type, comments
 - **View Mode Hotkeys**: Press V/E/F/N to toggle between different views
@@ -388,6 +390,109 @@ Cells can have metadata attached:
 
 Access these via the Info Panel when a cell is selected, or hover over cells to see tooltips.
 
+### Cell Formatting & Styling
+
+#### Number Formatting
+
+Format cell values using format strings. Use the **🔢 Format** toolbar button or set the `format` property in JSON.
+
+**Available Formats:**
+- **Currency**: `$#,##0.00` - Displays numbers as currency with thousand separators
+- **Percentage**: `0.00%` - Displays decimals as percentages (e.g., 0.85 → 85.00%)
+- **Number**: `#,##0.00` - Displays numbers with thousand separators and 2 decimals
+- **Integer**: `#,##0` - Displays whole numbers with thousand separators
+- **Date (ISO)**: `yyyy-mm-dd` - Displays dates in ISO format
+- **Date (US)**: `mm/dd/yyyy` - Displays dates in US format
+
+**Example:**
+```json
+{
+  "A1": {
+    "content": "1234.56",
+    "format": "$#,##0.00"
+  }
+}
+```
+Displays as: **$1,234.56**
+
+#### Cell Styling
+
+Apply visual styles to cells using the **🎨 Style** toolbar button or set the `style` property in JSON.
+
+**Supported Style Properties:**
+- `backgroundColor` - Cell background color (e.g., `"#ffebee"`)
+- `color` - Text color (e.g., `"#d32f2f"`)
+- `fontWeight` - Font weight (`"bold"` or `"normal"`)
+- `fontStyle` - Font style (`"italic"` or `"normal"`)
+- `textAlign` - Text alignment (`"left"`, `"center"`, or `"right"`)
+- `border` - Cell border (e.g., `"1px solid #000"`)
+
+**Example:**
+```json
+{
+  "A1": {
+    "content": "Important",
+    "style": {
+      "backgroundColor": "#ffebee",
+      "color": "#d32f2f",
+      "fontWeight": "bold"
+    }
+  }
+}
+```
+
+#### Conditional Formatting with RexxJS
+
+Use RexxJS expressions to dynamically style cells based on their values. Set the `styleExpression` property to a RexxJS expression that returns a style object.
+
+**Example: Color negative numbers red, positive green**
+```json
+{
+  "A1": {
+    "content": "-150",
+    "format": "$#,##0.00",
+    "styleExpression": "STYLE_IF(A1 < 0, RED_TEXT(), GREEN_TEXT())"
+  }
+}
+```
+
+**Available Style Functions:**
+- `STYLE("property", "value", ...)` - Create style object
+- `STYLE_IF(condition, trueStyle, falseStyle)` - Conditional styling
+- `RED_TEXT()`, `GREEN_TEXT()`, `BLUE_TEXT()`, `ORANGE_TEXT()` - Color presets
+- `RED_BG()`, `GREEN_BG()`, `BLUE_BG()`, `YELLOW_BG()`, `ORANGE_BG()` - Background presets
+- `BOLD()`, `ITALIC()` - Font styling
+- `ALIGN_LEFT()`, `ALIGN_CENTER()`, `ALIGN_RIGHT()` - Alignment
+- `BG_COLOR(color)`, `TEXT_COLOR(color)` - Custom colors
+- `MERGE_STYLES(style1, style2, ...)` - Combine multiple styles
+
+**Examples:**
+
+```rexx
+// Traffic light style based on percentage
+STYLE_IF(A1 >= 0.8, GREEN_BG(), STYLE_IF(A1 >= 0.5, YELLOW_BG(), RED_BG()))
+
+// Custom style for temperature
+STYLE("backgroundColor", "#ffccbc", "color", "#bf360c")
+
+// Merge multiple styles
+MERGE_STYLES(BOLD(), RED_TEXT(), ALIGN_CENTER())
+
+// Credits/Debits example
+STYLE_IF(Amount < 0,
+  MERGE_STYLES(RED_TEXT(), BOLD()),
+  GREEN_TEXT()
+)
+```
+
+**Complete Example Spreadsheet:**
+
+See `example-formatted.json` for a complete demonstration including:
+- Account ledger with conditional coloring for debits/credits
+- Sales performance with traffic light styling
+- Custom temperature status indicators
+- Number formatting (currency, percentages)
+
 ### Sheet Name via Hash Parameter
 
 The sheet name is specified via the URL hash:
@@ -521,13 +626,15 @@ PLAYWRIGHT_HTML_OPEN=never npx playwright test examples/spreadsheet-poc/tests/
 - ✅ Named variables via Setup Script
 - ✅ Control Bus for remote scripting (web mode: iframe postMessage, Tauri mode: HTTP API on port 2410)
 - ✅ Static binary build for production deployment (`./rexxsheet-static`)
+- ✅ Number formatting (currency, percentage, dates)
+- ✅ Visual cell styling (colors, fonts, alignment, borders)
+- ✅ Conditional formatting with RexxJS expressions
 
 ### Potential Enhancements
 - Save/export to JSON file (complement the load feature)
 - Undo/redo functionality
 - Paste from clipboard
 - Add more Excel-like functions (IF, VLOOKUP via extras/functions/excel)
-- Visual cell formatting (colors, fonts, borders)
 - Multi-sheet support (tabs)
 - Import/export CSV format
 - Collaborative editing
@@ -569,6 +676,7 @@ Always available without any setup:
 
 Spreadsheet-specific functions for working with cell ranges:
 
+**Range Functions:**
 - `SUM_RANGE(rangeRef)` - Sum cells in range (e.g., `SUM_RANGE("A1:A5")`)
 - `AVERAGE_RANGE(rangeRef)` - Average of cells in range
 - `COUNT_RANGE(rangeRef)` - Count non-empty cells
@@ -577,6 +685,24 @@ Spreadsheet-specific functions for working with cell ranges:
 - `CELL(ref)` - Get cell value by reference
 - `ROW(ref)` - Get row number of cell
 - `COLUMN(ref)` - Get column number of cell
+
+**Style Functions (for conditional formatting):**
+- `STYLE(prop1, val1, prop2, val2, ...)` - Create style object
+- `STYLE_IF(condition, trueStyle, falseStyle)` - Conditional styling
+- `BG_COLOR(color)` - Set background color
+- `TEXT_COLOR(color)` - Set text color
+- `BOLD()` - Bold font style
+- `ITALIC()` - Italic font style
+- `ALIGN_LEFT()`, `ALIGN_CENTER()`, `ALIGN_RIGHT()` - Text alignment
+- `MERGE_STYLES(...styles)` - Combine multiple style objects
+- `RED_TEXT()`, `GREEN_TEXT()`, `BLUE_TEXT()`, `ORANGE_TEXT()` - Color presets
+- `RED_BG()`, `GREEN_BG()`, `BLUE_BG()`, `YELLOW_BG()`, `ORANGE_BG()` - Background presets
+
+**Layout Functions:**
+- `SETCOLWIDTH(col, width)` - Set column width in pixels
+- `GETCOLWIDTH(col)` - Get column width in pixels
+- `SETROWHEIGHT(row, height)` - Set row height in pixels
+- `GETROWHEIGHT(row)` - Get row height in pixels
 
 ### 3. Extra Function Libraries (from `extras/functions/*`)
 

@@ -97,6 +97,74 @@ body {
     border-radius: 4px;
 }
 
+/* Formatting Toolbar */
+.formatting-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: #fafafa;
+    border-bottom: 1px solid #ddd;
+    gap: 10px;
+}
+
+.toolbar-group {
+    position: relative;
+}
+
+.toolbar-button {
+    padding: 6px 12px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.toolbar-button:hover:not(:disabled) {
+    background: #e8f4fd;
+    border-color: #2196F3;
+}
+
+.toolbar-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    min-width: 160px;
+    z-index: 100;
+}
+
+.dropdown-item {
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+    background: #f0f0f0;
+}
+
+.dropdown-item:first-child {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+.dropdown-item:last-child {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
 .formula-bar {
     display: flex;
     align-items: center;
@@ -253,6 +321,10 @@ body {
     border-left: 3px solid #4CAF50;
 }
 
+.cell.has-custom-style {
+    /* Cells with custom styles - no special border needed, inline styles will show */
+}
+
 .cell.commented::after {
     content: '💬';
     position: absolute;
@@ -395,6 +467,24 @@ body {
     padding: 8px;
     background: #f1f8f4;
     border-radius: 3px;
+}
+
+.style-preview {
+    padding: 8px;
+    background: #f9f9f9;
+    border-radius: 3px;
+    border: 1px solid #e0e0e0;
+    margin-top: 5px;
+}
+
+.style-property {
+    font-size: 12px;
+    margin-bottom: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.style-property strong {
+    color: #666;
 }
 
 .error-display {

@@ -135,7 +135,9 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
-                format: metadata.format || oldCell?.format || ''
+                format: metadata.format || oldCell?.format || '',
+                style: metadata.style || oldCell?.style || null,
+                styleExpression: metadata.styleExpression || oldCell?.styleExpression || null
             });
 
             // Evaluate the expression
@@ -150,7 +152,9 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
-                format: metadata.format || oldCell?.format || ''
+                format: metadata.format || oldCell?.format || '',
+                style: metadata.style || oldCell?.style || null,
+                styleExpression: metadata.styleExpression || oldCell?.styleExpression || null
             });
         }
 
@@ -238,7 +242,7 @@ class SpreadsheetModel {
     }
 
     /**
-     * Set cell metadata (comment, format)
+     * Set cell metadata (comment, format, style, styleExpression)
      */
     setCellMetadata(ref, metadata) {
         if (typeof ref === 'object') {
@@ -254,7 +258,9 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || '',
-                format: metadata.format || ''
+                format: metadata.format || '',
+                style: metadata.style || null,
+                styleExpression: metadata.styleExpression || null
             });
         } else {
             // Update existing cell
@@ -263,6 +269,12 @@ class SpreadsheetModel {
             }
             if (metadata.format !== undefined) {
                 cell.format = metadata.format;
+            }
+            if (metadata.style !== undefined) {
+                cell.style = metadata.style;
+            }
+            if (metadata.styleExpression !== undefined) {
+                cell.styleExpression = metadata.styleExpression;
             }
         }
     }
@@ -342,9 +354,15 @@ class SpreadsheetModel {
             if (cell.format) {
                 cellData.format = cell.format;
             }
+            if (cell.style) {
+                cellData.style = cell.style;
+            }
+            if (cell.styleExpression) {
+                cellData.styleExpression = cell.styleExpression;
+            }
 
             // Only store if there's content or metadata
-            if (cellData.content || cellData.comment || cellData.format) {
+            if (cellData.content || cellData.comment || cellData.format || cellData.style || cellData.styleExpression) {
                 // If only content, store as string for backward compatibility
                 if (Object.keys(cellData).length === 1 && cellData.content) {
                     data.cells[ref] = cellData.content;
@@ -386,7 +404,9 @@ class SpreadsheetModel {
                     // New format: object with content and metadata
                     const metadata = {
                         comment: cellData.comment || '',
-                        format: cellData.format || ''
+                        format: cellData.format || '',
+                        style: cellData.style || null,
+                        styleExpression: cellData.styleExpression || null
                     };
                     this.setCell(ref, cellData.content || '', rexxInterpreter, metadata);
                 }
@@ -657,6 +677,97 @@ class SpreadsheetModel {
             if (cell.expression) {
                 await this.evaluateCell(ref, rexxInterpreter);
             }
+        }
+    }
+
+    /**
+     * Format a cell value based on its format string
+     */
+    formatCellValue(ref) {
+        const cell = this.getCell(ref);
+        if (!cell.format || cell.value === '' || cell.error) {
+            return cell.value;
+        }
+
+        const value = cell.value;
+        const format = cell.format;
+
+        try {
+            // Currency format: $#,##0.00 or similar
+            if (format.includes('$') || format.toLowerCase().includes('currency')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+            }
+
+            // Percentage format: 0.00% or similar
+            if (format.includes('%')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    const decimals = (format.match(/\.0+/) || ['.00'])[0].length - 1;
+                    return (num * 100).toFixed(decimals) + '%';
+                }
+            }
+
+            // Number format with thousands separator: #,##0 or #,##0.00
+            if (format.includes('#,##0')) {
+                const num = parseFloat(value);
+                if (!isNaN(num)) {
+                    const decimals = (format.match(/\.0+/) || [''])[0].length - 1;
+                    if (decimals >= 0) {
+                        return num.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+                    } else {
+                        return num.toLocaleString('en-US');
+                    }
+                }
+            }
+
+            // Date formats
+            if (format.toLowerCase().includes('date') || format.includes('yyyy') || format.includes('mm/dd')) {
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                    if (format === 'yyyy-mm-dd' || format.toLowerCase() === 'date') {
+                        return date.toISOString().split('T')[0];
+                    } else if (format === 'mm/dd/yyyy') {
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${month}/${day}/${date.getFullYear()}`;
+                    } else {
+                        return date.toLocaleDateString();
+                    }
+                }
+            }
+
+            // If no format matched, return value as-is
+            return value;
+        } catch (e) {
+            return value;
+        }
+    }
+
+    /**
+     * Evaluate style expression for a cell
+     */
+    async evaluateStyleExpression(ref, rexxInterpreter) {
+        const cell = this.cells.get(ref);
+        if (!cell || !cell.styleExpression || !rexxInterpreter) {
+            return cell?.style || null;
+        }
+
+        try {
+            // Evaluate the style expression
+            const result = await rexxInterpreter.evaluate(cell.styleExpression, this);
+
+            // Result should be an object with style properties
+            if (typeof result === 'object' && result !== null) {
+                return result;
+            }
+
+            return cell.style || null;
+        } catch (error) {
+            console.warn(`Style expression error for ${ref}:`, error);
+            return cell.style || null;
         }
     }
 }

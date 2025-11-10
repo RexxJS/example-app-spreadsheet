@@ -13,7 +13,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 /**
  * Cell Component
  */
-function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, height }) {
+function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, height, model, formattedValue }) {
     const inputRef = useRef(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
@@ -52,7 +52,7 @@ function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, he
 
     if (viewMode === 'values') {
         // Show only literal values, blank if formula
-        displayValue = cell.expression ? '' : (cell.value || '');
+        displayValue = cell.expression ? '' : (formattedValue || cell.value || '');
         showCell = !cell.expression || cell.value === '';
     } else if (viewMode === 'expressions') {
         // Show only formulas, hide value cells
@@ -63,14 +63,15 @@ function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, he
         displayValue = cell.format || '';
         showCell = !!cell.format;
     } else {
-        // Normal mode - show evaluated values
-        displayValue = cell.error ? cell.value : (cell.value || '');
+        // Normal mode - show evaluated values (formatted if format is present)
+        displayValue = cell.error ? cell.value : (formattedValue || cell.value || '');
     }
 
     const hasError = !!cell.error;
     const hasFormula = !!cell.expression;
     const hasFormat = !!cell.format;
     const hasComment = !!cell.comment;
+    const hasStyle = !!cell.style || !!cell.styleExpression;
 
     // Build title attribute
     let title = '';
@@ -85,14 +86,45 @@ function Cell({ cellRef, cell, isSelected, onSelect, onEdit, viewMode, width, he
     if (cell.format) {
         title += (title ? '\n' : '') + '📊 ' + cell.format;
     }
+    if (cell.styleExpression) {
+        title += (title ? '\n' : '') + '🎨 Style: ' + cell.styleExpression;
+    }
+
+    // Build inline styles from cell.style
+    const inlineStyle = {
+        width: `${width}px`,
+        minWidth: `${width}px`,
+        height: `${height}px`
+    };
+
+    if (cell.style && viewMode === 'normal') {
+        if (cell.style.backgroundColor) {
+            inlineStyle.backgroundColor = cell.style.backgroundColor;
+        }
+        if (cell.style.color) {
+            inlineStyle.color = cell.style.color;
+        }
+        if (cell.style.fontWeight) {
+            inlineStyle.fontWeight = cell.style.fontWeight;
+        }
+        if (cell.style.fontStyle) {
+            inlineStyle.fontStyle = cell.style.fontStyle;
+        }
+        if (cell.style.textAlign) {
+            inlineStyle.textAlign = cell.style.textAlign;
+        }
+        if (cell.style.border) {
+            inlineStyle.border = cell.style.border;
+        }
+    }
 
     return (
         <div
-            className={`cell ${isSelected ? 'selected' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
+            className={`cell ${isSelected ? 'selected' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasStyle ? 'has-custom-style' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
             onClick={() => onSelect(cellRef)}
             onDoubleClick={handleDoubleClick}
             title={title}
-            style={{ width: `${width}px`, minWidth: `${width}px`, height: `${height}px` }}
+            style={inlineStyle}
         >
             {isEditing ? (
                 <input
@@ -253,6 +285,7 @@ function Grid({ model, selectedCell, onSelectCell, onEditCell, visibleRows, visi
             const cell = model.getCell(cellRef);
             const isSelected = selectedCell === cellRef;
             const colWidth = model.getColumnWidth(col);
+            const formattedValue = model.formatCellValue(cellRef);
 
             cells.push(
                 <Cell
@@ -265,6 +298,8 @@ function Grid({ model, selectedCell, onSelectCell, onEditCell, visibleRows, visi
                     viewMode={viewMode}
                     width={colWidth}
                     height={rowHeight}
+                    model={model}
+                    formattedValue={formattedValue}
                 />
             );
         }
@@ -277,6 +312,101 @@ function Grid({ model, selectedCell, onSelectCell, onEditCell, visibleRows, visi
     }
 
     return <div className="grid">{rows}</div>;
+}
+
+/**
+ * Formatting Toolbar Component
+ */
+function FormattingToolbar({ selectedCell, model, onApplyFormat, onApplyStyle }) {
+    const [showFormatMenu, setShowFormatMenu] = useState(false);
+    const [showStyleMenu, setShowStyleMenu] = useState(false);
+
+    const formats = [
+        { name: 'Currency', value: '$#,##0.00' },
+        { name: 'Percentage', value: '0.00%' },
+        { name: 'Number', value: '#,##0.00' },
+        { name: 'Integer', value: '#,##0' },
+        { name: 'Date (ISO)', value: 'yyyy-mm-dd' },
+        { name: 'Date (US)', value: 'mm/dd/yyyy' }
+    ];
+
+    const stylePresets = [
+        { name: 'Bold', style: { fontWeight: 'bold' } },
+        { name: 'Italic', style: { fontStyle: 'italic' } },
+        { name: 'Red Text', style: { color: '#d32f2f' } },
+        { name: 'Green Text', style: { color: '#388e3c' } },
+        { name: 'Blue Text', style: { color: '#1976d2' } },
+        { name: 'Yellow BG', style: { backgroundColor: '#fff9c4' } },
+        { name: 'Red BG', style: { backgroundColor: '#ffebee' } },
+        { name: 'Green BG', style: { backgroundColor: '#e8f5e9' } },
+        { name: 'Clear Style', style: null }
+    ];
+
+    return (
+        <div className="formatting-toolbar">
+            <div className="toolbar-group">
+                <button
+                    className="toolbar-button"
+                    onClick={() => setShowFormatMenu(!showFormatMenu)}
+                    disabled={!selectedCell}
+                    title="Number Format"
+                >
+                    🔢 Format
+                </button>
+                {showFormatMenu && (
+                    <div className="dropdown-menu">
+                        {formats.map(fmt => (
+                            <div
+                                key={fmt.value}
+                                className="dropdown-item"
+                                onClick={() => {
+                                    onApplyFormat(fmt.value);
+                                    setShowFormatMenu(false);
+                                }}
+                            >
+                                {fmt.name}
+                            </div>
+                        ))}
+                        <div
+                            className="dropdown-item"
+                            onClick={() => {
+                                onApplyFormat('');
+                                setShowFormatMenu(false);
+                            }}
+                        >
+                            Clear Format
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div className="toolbar-group">
+                <button
+                    className="toolbar-button"
+                    onClick={() => setShowStyleMenu(!showStyleMenu)}
+                    disabled={!selectedCell}
+                    title="Cell Style"
+                >
+                    🎨 Style
+                </button>
+                {showStyleMenu && (
+                    <div className="dropdown-menu">
+                        {stylePresets.map(preset => (
+                            <div
+                                key={preset.name}
+                                className="dropdown-item"
+                                onClick={() => {
+                                    onApplyStyle(preset.style);
+                                    setShowStyleMenu(false);
+                                }}
+                            >
+                                {preset.name}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }
 
 /**
@@ -412,6 +542,26 @@ function InfoPanel({ selectedCell, model, viewMode }) {
                 <div className="cell-detail-section">
                     <p><strong>Format:</strong></p>
                     <p className="format-display">{cell.format}</p>
+                </div>
+            )}
+
+            {cell.style && (
+                <div className="cell-detail-section">
+                    <p><strong>Style:</strong></p>
+                    <div className="style-preview" style={cell.style}>
+                        {Object.entries(cell.style).map(([key, value]) => (
+                            <div key={key} className="style-property">
+                                <strong>{key}:</strong> {value}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {cell.styleExpression && (
+                <div className="cell-detail-section">
+                    <p><strong>Style Expression:</strong></p>
+                    <code className="format-display">{cell.styleExpression}</code>
                 </div>
             )}
 
@@ -758,6 +908,22 @@ function App() {
         setUpdateCounter(c => c + 1);
     }, [model]);
 
+    // Apply number format to selected cell
+    const handleApplyFormat = useCallback((format) => {
+        if (!selectedCell || !model) return;
+
+        model.setCellMetadata(selectedCell, { format });
+        setUpdateCounter(c => c + 1);
+    }, [selectedCell, model]);
+
+    // Apply style to selected cell
+    const handleApplyStyle = useCallback((style) => {
+        if (!selectedCell || !model) return;
+
+        model.setCellMetadata(selectedCell, { style });
+        setUpdateCounter(c => c + 1);
+    }, [selectedCell, model]);
+
     if (isLoading) {
         return (
             <div className="app loading">
@@ -794,6 +960,13 @@ function App() {
                     <div className="sheet-name">Sheet: {sheetName}</div>
                 </div>
             </div>
+
+            <FormattingToolbar
+                selectedCell={selectedCell}
+                model={model}
+                onApplyFormat={handleApplyFormat}
+                onApplyStyle={handleApplyStyle}
+            />
 
             <FormulaBar
                 selectedCell={selectedCell}
