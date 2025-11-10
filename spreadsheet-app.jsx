@@ -805,10 +805,7 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
-    const [viewMode, setViewMode] = useState(() => {
-        // Load view mode from localStorage, default to 'normal'
-        return localStorage.getItem('spreadsheet-view-mode') || 'normal';
-    });
+    const [viewMode, setViewMode] = useState('normal'); // Always start in normal mode
     const [clipboard, setClipboard] = useState(null); // { content, sourceCol, sourceRow, isCut }
 
     const visibleRows = 20;
@@ -1068,10 +1065,9 @@ function App() {
         setUpdateCounter(c => c + 1);
     }, [selectedCell, model]);
 
-    // Handle view mode change with localStorage persistence
+    // Handle view mode change
     const handleViewModeChange = useCallback((mode) => {
         setViewMode(mode);
-        localStorage.setItem('spreadsheet-view-mode', mode);
     }, []);
 
     // Handle metadata updates from InfoPanel
