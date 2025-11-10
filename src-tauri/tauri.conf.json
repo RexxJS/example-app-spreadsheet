@@ -40,13 +40,6 @@
         "description": "RexxSheet spreadsheet file with RexxJS formulas",
         "role": "Editor",
         "mimeType": "application/x-rexxsheet"
-      },
-      {
-        "ext": ["json"],
-        "name": "RexxSheet JSON",
-        "description": "RexxSheet spreadsheet in JSON format",
-        "role": "Editor",
-        "mimeType": "application/json"
       }
     ]
   }
