@@ -366,13 +366,24 @@ class SpreadsheetModel {
         // Move cells down, starting from the bottom to avoid overwrites
         for (const [ref, cell] of this.cells.entries()) {
             const { col, row } = SpreadsheetModel.parseCellRef(ref);
+            const cellCopy = { ...cell };
+
+            // Adjust formula references if this cell has an expression
+            if (cellCopy.expression) {
+                cellCopy.expression = this._adjustCellReferencesInExpression(
+                    cellCopy.expression,
+                    'insertRow',
+                    rowNum
+                );
+            }
+
             if (row >= rowNum) {
                 // Shift this cell down
                 const newRef = SpreadsheetModel.formatCellRef(col, row + 1);
-                newCells.set(newRef, { ...cell });
+                newCells.set(newRef, cellCopy);
             } else {
                 // Keep this cell where it is
-                newCells.set(ref, cell);
+                newCells.set(ref, cellCopy);
             }
         }
 
@@ -406,13 +417,26 @@ class SpreadsheetModel {
             if (row === rowNum) {
                 // Skip this cell (delete it)
                 continue;
-            } else if (row > rowNum) {
+            }
+
+            const cellCopy = { ...cell };
+
+            // Adjust formula references if this cell has an expression
+            if (cellCopy.expression) {
+                cellCopy.expression = this._adjustCellReferencesInExpression(
+                    cellCopy.expression,
+                    'deleteRow',
+                    rowNum
+                );
+            }
+
+            if (row > rowNum) {
                 // Shift this cell up
                 const newRef = SpreadsheetModel.formatCellRef(col, row - 1);
-                newCells.set(newRef, { ...cell });
+                newCells.set(newRef, cellCopy);
             } else {
                 // Keep this cell where it is
-                newCells.set(ref, cell);
+                newCells.set(ref, cellCopy);
             }
         }
 
@@ -449,14 +473,24 @@ class SpreadsheetModel {
         for (const [ref, cell] of this.cells.entries()) {
             const { col, row } = SpreadsheetModel.parseCellRef(ref);
             const currentColNum = SpreadsheetModel.colLetterToNumber(col);
+            const cellCopy = { ...cell };
+
+            // Adjust formula references if this cell has an expression
+            if (cellCopy.expression) {
+                cellCopy.expression = this._adjustCellReferencesInExpression(
+                    cellCopy.expression,
+                    'insertColumn',
+                    colNum
+                );
+            }
 
             if (currentColNum >= colNum) {
                 // Shift this cell right
                 const newRef = SpreadsheetModel.formatCellRef(currentColNum + 1, row);
-                newCells.set(newRef, { ...cell });
+                newCells.set(newRef, cellCopy);
             } else {
                 // Keep this cell where it is
-                newCells.set(ref, cell);
+                newCells.set(ref, cellCopy);
             }
         }
 
@@ -497,13 +531,26 @@ class SpreadsheetModel {
             if (currentColNum === colNum) {
                 // Skip this cell (delete it)
                 continue;
-            } else if (currentColNum > colNum) {
+            }
+
+            const cellCopy = { ...cell };
+
+            // Adjust formula references if this cell has an expression
+            if (cellCopy.expression) {
+                cellCopy.expression = this._adjustCellReferencesInExpression(
+                    cellCopy.expression,
+                    'deleteColumn',
+                    colNum
+                );
+            }
+
+            if (currentColNum > colNum) {
                 // Shift this cell left
                 const newRef = SpreadsheetModel.formatCellRef(currentColNum - 1, row);
-                newCells.set(newRef, { ...cell });
+                newCells.set(newRef, cellCopy);
             } else {
                 // Keep this cell where it is
-                newCells.set(ref, cell);
+                newCells.set(ref, cellCopy);
             }
         }
 
@@ -549,6 +596,70 @@ class SpreadsheetModel {
                 await this.evaluateCell(ref, rexxInterpreter);
             }
         }
+    }
+
+    /**
+     * Adjust cell references in an expression based on row/column operations
+     * @param {string} expression - The formula expression
+     * @param {string} operation - 'insertRow', 'deleteRow', 'insertColumn', 'deleteColumn'
+     * @param {number} position - The row/column number where the operation occurs
+     * @returns {string} - The adjusted expression
+     */
+    _adjustCellReferencesInExpression(expression, operation, position) {
+        if (!expression) return expression;
+
+        // Match both single cell references (A1) and range references (A1:B5)
+        // This regex captures cell references with optional $ for absolute references
+        const cellRefPattern = /(\$?)([A-Z]+)(\$?)(\d+)/g;
+
+        return expression.replace(cellRefPattern, (match, colAbs, col, rowAbs, row) => {
+            const rowNum = parseInt(row, 10);
+            const colNum = SpreadsheetModel.colLetterToNumber(col);
+
+            let newRow = rowNum;
+            let newCol = col;
+
+            switch (operation) {
+                case 'insertRow':
+                    // If the reference is at or below the insertion point, shift down
+                    if (!rowAbs && rowNum >= position) {
+                        newRow = rowNum + 1;
+                    }
+                    break;
+
+                case 'deleteRow':
+                    // If the reference is the deleted row, mark as invalid
+                    if (rowNum === position) {
+                        return '#REF!';
+                    }
+                    // If the reference is below the deleted row, shift up
+                    if (!rowAbs && rowNum > position) {
+                        newRow = rowNum - 1;
+                    }
+                    break;
+
+                case 'insertColumn':
+                    // If the reference is at or right of the insertion point, shift right
+                    if (!colAbs && colNum >= position) {
+                        newCol = SpreadsheetModel.colNumberToLetter(colNum + 1);
+                    }
+                    break;
+
+                case 'deleteColumn':
+                    // If the reference is the deleted column, mark as invalid
+                    if (colNum === position) {
+                        return '#REF!';
+                    }
+                    // If the reference is right of the deleted column, shift left
+                    if (!colAbs && colNum > position) {
+                        newCol = SpreadsheetModel.colNumberToLetter(colNum - 1);
+                    }
+                    break;
+            }
+
+            // Reconstruct the cell reference with absolute markers if present
+            return `${colAbs}${newCol}${rowAbs}${newRow}`;
+        });
     }
 
     /**

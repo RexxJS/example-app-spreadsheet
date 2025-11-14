@@ -538,7 +538,7 @@ function InfoPanel({ selectedCell, selectionRange, model, viewMode }) {
 /**
  * Context Menu Component
  */
-function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues }) {
+function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn }) {
     const menuRef = useRef(null);
 
     useEffect(() => {
@@ -555,6 +555,8 @@ function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste,
     const [formatMenuOpen, setFormatMenuOpen] = useState(false);
     const [alignMenuOpen, setAlignMenuOpen] = useState(false);
     const [numberFormatMenuOpen, setNumberFormatMenuOpen] = useState(false);
+    const [rowMenuOpen, setRowMenuOpen] = useState(false);
+    const [columnMenuOpen, setColumnMenuOpen] = useState(false);
 
     const handleFormatClick = (format) => {
         onFormat(format);
@@ -578,6 +580,51 @@ function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste,
             </div>
             <div className="context-menu-item" onClick={() => onPasteValues()}>
                 <span>📝 Paste Values Only</span>
+            </div>
+            <div className="context-menu-separator"></div>
+            <div
+                className="context-menu-item context-menu-submenu"
+                onMouseEnter={() => setRowMenuOpen(true)}
+                onMouseLeave={() => setRowMenuOpen(false)}
+            >
+                <span>➕ Row</span>
+                <span className="submenu-arrow">▶</span>
+                {rowMenuOpen && (
+                    <div className="context-submenu">
+                        <div className="context-menu-item" onClick={() => { onInsertRow('above'); onClose(); }}>
+                            <span>Insert Row Above</span>
+                        </div>
+                        <div className="context-menu-item" onClick={() => { onInsertRow('below'); onClose(); }}>
+                            <span>Insert Row Below</span>
+                        </div>
+                        <div className="context-menu-separator"></div>
+                        <div className="context-menu-item" onClick={() => { onDeleteRow(); onClose(); }}>
+                            <span>Delete This Row</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div
+                className="context-menu-item context-menu-submenu"
+                onMouseEnter={() => setColumnMenuOpen(true)}
+                onMouseLeave={() => setColumnMenuOpen(false)}
+            >
+                <span>➕ Column</span>
+                <span className="submenu-arrow">▶</span>
+                {columnMenuOpen && (
+                    <div className="context-submenu">
+                        <div className="context-menu-item" onClick={() => { onInsertColumn('left'); onClose(); }}>
+                            <span>Insert Column Left</span>
+                        </div>
+                        <div className="context-menu-item" onClick={() => { onInsertColumn('right'); onClose(); }}>
+                            <span>Insert Column Right</span>
+                        </div>
+                        <div className="context-menu-separator"></div>
+                        <div className="context-menu-item" onClick={() => { onDeleteColumn(); onClose(); }}>
+                            <span>Delete This Column</span>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="context-menu-separator"></div>
             <div
@@ -984,6 +1031,50 @@ function App() {
 
         setUpdateCounter(c => c + 1);
     }, [model, selectedCell]);
+
+    const handleInsertRow = useCallback((position) => {
+        if (!model || !adapter || !contextMenu) return;
+
+        const { row } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+        const insertAt = position === 'above' ? row : row + 1;
+
+        model.insertRow(insertAt, adapter);
+        setUpdateCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+    }, [model, adapter, contextMenu]);
+
+    const handleDeleteRow = useCallback(() => {
+        if (!model || !adapter || !contextMenu) return;
+
+        const { row } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+
+        model.deleteRow(row, adapter);
+        setUpdateCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+    }, [model, adapter, contextMenu]);
+
+    const handleInsertColumn = useCallback((position) => {
+        if (!model || !adapter || !contextMenu) return;
+
+        const { col } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+        const colNum = SpreadsheetModel.colLetterToNumber(col);
+        const insertAt = position === 'left' ? colNum : colNum + 1;
+
+        model.insertColumn(insertAt, adapter);
+        setUpdateCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+    }, [model, adapter, contextMenu]);
+
+    const handleDeleteColumn = useCallback(() => {
+        if (!model || !adapter || !contextMenu) return;
+
+        const { col } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+        const colNum = SpreadsheetModel.colLetterToNumber(col);
+
+        model.deleteColumn(colNum, adapter);
+        setUpdateCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+    }, [model, adapter, contextMenu]);
 
     const handleContextMenu = useCallback((e, cellRef) => {
         e.preventDefault();
@@ -1615,6 +1706,10 @@ function App() {
                     onCopy={() => { handleCopy(); setContextMenu(null); }}
                     onPaste={() => { handlePaste(false); setContextMenu(null); }}
                     onPasteValues={() => { handlePaste(true); setContextMenu(null); }}
+                    onInsertRow={handleInsertRow}
+                    onDeleteRow={handleDeleteRow}
+                    onInsertColumn={handleInsertColumn}
+                    onDeleteColumn={handleDeleteColumn}
                 />
             )}
 
