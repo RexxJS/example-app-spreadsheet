@@ -377,6 +377,155 @@ class SpreadsheetRexxAdapter {
 
                     return matches ? count + 1 : count;
                 }, 0);
+            },
+
+            // Text Functions
+            CONCAT: function(...args) {
+                return args.join('');
+            },
+
+            LEFT: function(text, numChars) {
+                return String(text).substring(0, numChars || 1);
+            },
+
+            RIGHT: function(text, numChars) {
+                const str = String(text);
+                return str.substring(str.length - (numChars || 1));
+            },
+
+            MID: function(text, start, numChars) {
+                return String(text).substring(start - 1, start - 1 + numChars);
+            },
+
+            TRIM: function(text) {
+                return String(text).trim();
+            },
+
+            UPPER: function(text) {
+                return String(text).toUpperCase();
+            },
+
+            LOWER: function(text) {
+                return String(text).toLowerCase();
+            },
+
+            LEN: function(text) {
+                return String(text).length;
+            },
+
+            REPLACE_TEXT: function(text, oldText, newText) {
+                return String(text).split(oldText).join(newText);
+            },
+
+            FIND_TEXT: function(findText, withinText, startPos = 1) {
+                const index = String(withinText).indexOf(findText, startPos - 1);
+                return index === -1 ? 0 : index + 1; // 1-based index
+            },
+
+            SUBSTITUTE: function(text, oldText, newText, instanceNum) {
+                const str = String(text);
+                if (instanceNum === undefined) {
+                    return str.split(oldText).join(newText);
+                }
+                const parts = str.split(oldText);
+                if (instanceNum > 0 && instanceNum <= parts.length - 1) {
+                    parts[instanceNum - 1] = parts[instanceNum - 1] + newText + parts[instanceNum].substring(oldText.length);
+                    parts.splice(instanceNum, 1);
+                }
+                return parts.join(oldText);
+            },
+
+            REPEAT_TEXT: function(text, numTimes) {
+                return String(text).repeat(numTimes || 0);
+            },
+
+            TEXT_REVERSE: function(text) {
+                return String(text).split('').reverse().join('');
+            },
+
+            // Date/Time Functions
+            NOW: function() {
+                return new Date().toISOString();
+            },
+
+            TODAY: function() {
+                return new Date().toISOString().split('T')[0];
+            },
+
+            DATE: function(year, month, day) {
+                return new Date(year, month - 1, day).toISOString().split('T')[0];
+            },
+
+            TIME: function(hour, minute, second) {
+                const date = new Date();
+                date.setHours(hour, minute, second || 0);
+                return date.toTimeString().split(' ')[0];
+            },
+
+            YEAR: function(dateStr) {
+                return new Date(dateStr).getFullYear();
+            },
+
+            MONTH: function(dateStr) {
+                return new Date(dateStr).getMonth() + 1; // 1-based
+            },
+
+            DAY: function(dateStr) {
+                return new Date(dateStr).getDate();
+            },
+
+            HOUR: function(dateStr) {
+                return new Date(dateStr).getHours();
+            },
+
+            MINUTE: function(dateStr) {
+                return new Date(dateStr).getMinutes();
+            },
+
+            SECOND: function(dateStr) {
+                return new Date(dateStr).getSeconds();
+            },
+
+            WEEKDAY: function(dateStr) {
+                return new Date(dateStr).getDay() + 1; // 1=Sunday, 7=Saturday
+            },
+
+            DAYS_BETWEEN: function(date1, date2) {
+                const d1 = new Date(date1);
+                const d2 = new Date(date2);
+                const diffTime = Math.abs(d2 - d1);
+                return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            },
+
+            ADD_DAYS: function(dateStr, days) {
+                const date = new Date(dateStr);
+                date.setDate(date.getDate() + days);
+                return date.toISOString().split('T')[0];
+            },
+
+            ADD_MONTHS: function(dateStr, months) {
+                const date = new Date(dateStr);
+                date.setMonth(date.getMonth() + months);
+                return date.toISOString().split('T')[0];
+            },
+
+            ADD_YEARS: function(dateStr, years) {
+                const date = new Date(dateStr);
+                date.setFullYear(date.getFullYear() + years);
+                return date.toISOString().split('T')[0];
+            },
+
+            FORMAT_DATE: function(dateStr, format) {
+                const date = new Date(dateStr);
+                // Simple format replacements
+                let result = format || 'YYYY-MM-DD';
+                result = result.replace('YYYY', date.getFullYear());
+                result = result.replace('MM', String(date.getMonth() + 1).padStart(2, '0'));
+                result = result.replace('DD', String(date.getDate()).padStart(2, '0'));
+                result = result.replace('HH', String(date.getHours()).padStart(2, '0'));
+                result = result.replace('mm', String(date.getMinutes()).padStart(2, '0'));
+                result = result.replace('ss', String(date.getSeconds()).padStart(2, '0'));
+                return result;
             }
         };
     }

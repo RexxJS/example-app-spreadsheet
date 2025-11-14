@@ -496,4 +496,256 @@ describe('SpreadsheetModel', () => {
             expect(model.getCellValue('C2')).toBe('B2-val');
         });
     });
+
+    describe('Formula adjustment during row/column operations', () => {
+        describe('Insert row - formula adjustment', () => {
+            it('should adjust cell references in formulas when inserting a row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '=A1 + A2');
+
+                model.insertRow(2);
+
+                // A1 stays the same (10)
+                expect(model.getCellValue('A1')).toBe('10');
+                // A2 is now empty (new row)
+                expect(model.getCellValue('A2')).toBe('');
+                // A3 now has the value that was in A2 (20)
+                expect(model.getCellValue('A3')).toBe('20');
+                // A4 has the formula, and it should be adjusted to =A1 + A3
+                const cell = model.getCell('A4');
+                expect(cell.expression).toBe('A1 + A3');
+            });
+
+            it('should adjust range references when inserting a row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('B1', '=SUM_RANGE("A1:A3")');
+
+                model.insertRow(2);
+
+                // Formula should adjust range to A1:A4
+                const cell = model.getCell('B1');
+                expect(cell.expression).toBe('SUM_RANGE("A1:A4")');
+            });
+
+            it('should handle multiple cell references in formula when inserting row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('A4', '=A1 + A2 + A3');
+
+                model.insertRow(2);
+
+                const cell = model.getCell('A5');
+                expect(cell.expression).toBe('A1 + A3 + A4');
+            });
+
+            it('should not adjust absolute row references when inserting row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '=A1 + A$2');
+
+                model.insertRow(2);
+
+                const cell = model.getCell('A4');
+                // A$2 should stay as A$2 because it's absolute
+                expect(cell.expression).toBe('A1 + A$2');
+            });
+        });
+
+        describe('Delete row - formula adjustment', () => {
+            it('should adjust cell references in formulas when deleting a row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('A4', '=A1 + A2 + A3');
+
+                model.deleteRow(2);
+
+                // A2 now has what was in A3 (30)
+                expect(model.getCellValue('A2')).toBe('30');
+                // A3 has the formula, adjusted to =A1 + #REF! + A2
+                const cell = model.getCell('A3');
+                expect(cell.expression).toBe('A1 + #REF! + A2');
+            });
+
+            it('should mark deleted cell references as #REF! when deleting row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '=A2');
+
+                model.deleteRow(2);
+
+                const cell = model.getCell('A2');
+                expect(cell.expression).toBe('#REF!');
+            });
+
+            it('should adjust range references when deleting a row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('A4', '40');
+                model.setCell('B1', '=SUM_RANGE("A1:A4")');
+
+                model.deleteRow(2);
+
+                // Formula should adjust range to A1:A3
+                const cell = model.getCell('B1');
+                expect(cell.expression).toBe('SUM_RANGE("A1:A3")');
+            });
+
+            it('should not adjust absolute row references when deleting row', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('A4', '=A1 + A$3');
+
+                model.deleteRow(2);
+
+                const cell = model.getCell('A3');
+                // A$3 should stay as A$3 because it's absolute
+                expect(cell.expression).toBe('A1 + A$3');
+            });
+        });
+
+        describe('Insert column - formula adjustment', () => {
+            it('should adjust cell references in formulas when inserting a column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '=A1 + B1');
+
+                model.insertColumn(2); // Insert before column B
+
+                // A1 stays the same (10)
+                expect(model.getCellValue('A1')).toBe('10');
+                // B1 is now empty (new column)
+                expect(model.getCellValue('B1')).toBe('');
+                // C1 now has the value that was in B1 (20)
+                expect(model.getCellValue('C1')).toBe('20');
+                // D1 has the formula, and it should be adjusted to =A1 + C1
+                const cell = model.getCell('D1');
+                expect(cell.expression).toBe('A1 + C1');
+            });
+
+            it('should adjust range references when inserting a column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '30');
+                model.setCell('A2', '=SUM_RANGE("A1:C1")');
+
+                model.insertColumn(2);
+
+                // Formula should adjust range to A1:D1
+                const cell = model.getCell('A2');
+                expect(cell.expression).toBe('SUM_RANGE("A1:D1")');
+            });
+
+            it('should not adjust absolute column references when inserting column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '=$A1 + B1');
+
+                model.insertColumn(2);
+
+                const cell = model.getCell('D1');
+                // $A1 should stay as $A1 because it's absolute
+                expect(cell.expression).toBe('$A1 + C1');
+            });
+        });
+
+        describe('Delete column - formula adjustment', () => {
+            it('should adjust cell references in formulas when deleting a column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '30');
+                model.setCell('D1', '=A1 + B1 + C1');
+
+                model.deleteColumn(2); // Delete column B
+
+                // B1 now has what was in C1 (30)
+                expect(model.getCellValue('B1')).toBe('30');
+                // C1 has the formula, adjusted to =A1 + #REF! + B1
+                const cell = model.getCell('C1');
+                expect(cell.expression).toBe('A1 + #REF! + B1');
+            });
+
+            it('should mark deleted cell references as #REF! when deleting column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '=B1');
+
+                model.deleteColumn('B');
+
+                const cell = model.getCell('B1');
+                expect(cell.expression).toBe('#REF!');
+            });
+
+            it('should adjust range references when deleting a column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '30');
+                model.setCell('D1', '40');
+                model.setCell('A2', '=SUM_RANGE("A1:D1")');
+
+                model.deleteColumn('B');
+
+                // Formula should adjust range to A1:C1
+                const cell = model.getCell('A2');
+                expect(cell.expression).toBe('SUM_RANGE("A1:C1")');
+            });
+
+            it('should not adjust absolute column references when deleting column', () => {
+                model.setCell('A1', '10');
+                model.setCell('B1', '20');
+                model.setCell('C1', '30');
+                model.setCell('D1', '=$A1 + C1');
+
+                model.deleteColumn('B');
+
+                const cell = model.getCell('C1');
+                // $A1 should stay as $A1 because it's absolute
+                expect(cell.expression).toBe('$A1 + B1');
+            });
+        });
+
+        describe('Complex formula adjustment scenarios', () => {
+            it('should handle mixed absolute and relative references', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '30');
+                model.setCell('A4', '=A1 + $A$2 + A3');
+
+                model.insertRow(2);
+
+                const cell = model.getCell('A5');
+                // A1 becomes A1, $A$2 stays $A$2, A3 becomes A4
+                expect(cell.expression).toBe('A1 + $A$2 + A4');
+            });
+
+            it('should handle formulas with functions and complex expressions', () => {
+                model.setCell('A1', '10');
+                model.setCell('A2', '20');
+                model.setCell('A3', '=SUM_RANGE("A1:A2") * 2 + A1');
+
+                model.insertRow(2);
+
+                const cell = model.getCell('A4');
+                expect(cell.expression).toBe('SUM_RANGE("A1:A3") * 2 + A1');
+            });
+
+            it('should preserve formulas that do not reference affected cells', () => {
+                model.setCell('A1', '10');
+                model.setCell('A5', '50');
+                model.setCell('A6', '=A5 * 2');
+
+                model.insertRow(2);
+
+                const cell = model.getCell('A7');
+                // A5 becomes A6 because it's shifted down
+                expect(cell.expression).toBe('A6 * 2');
+            });
+        });
+    });
 });
