@@ -600,6 +600,283 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * FILLDOWN - Fill down from source to target range
+     * Usage: CALL FILLDOWN("A1", "A2:A10")
+     *        CALL FILLDOWN("A1:B1", "A2:B10")
+     */
+    FILLDOWN: async function(sourceRef, targetRangeRef) {
+      if (!sourceRef || !targetRangeRef) {
+        throw new Error('FILLDOWN requires source reference and target range (e.g., "A1", "A2:A10")');
+      }
+
+      model.fillDown(sourceRef, targetRangeRef, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * FILLRIGHT - Fill right from source to target range
+     * Usage: CALL FILLRIGHT("A1", "B1:E1")
+     *        CALL FILLRIGHT("A1:A2", "B1:E2")
+     */
+    FILLRIGHT: async function(sourceRef, targetRangeRef) {
+      if (!sourceRef || !targetRangeRef) {
+        throw new Error('FILLRIGHT requires source reference and target range (e.g., "A1", "B1:E1")');
+      }
+
+      model.fillRight(sourceRef, targetRangeRef, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * FIND - Find cells matching criteria
+     * Usage: results = FIND("searchValue")
+     *        results = FIND("searchValue", matchCase, matchEntireCell, searchFormulas)
+     * Returns: REXX stem array with matching cell references
+     */
+    FIND: function(searchValue, matchCase, matchEntireCell, searchFormulas) {
+      if (!searchValue) {
+        throw new Error('FIND requires search value as first argument');
+      }
+
+      const options = {
+        matchCase: matchCase === 1 || matchCase === '1' || matchCase === true,
+        matchEntireCell: matchEntireCell === 1 || matchEntireCell === '1' || matchEntireCell === true,
+        searchFormulas: searchFormulas === 1 || searchFormulas === '1' || searchFormulas === true
+      };
+
+      const results = model.find(searchValue, options);
+
+      // Return as REXX stem array
+      const stemArray = { 0: results.length };
+      results.forEach((ref, index) => {
+        stemArray[index + 1] = ref;
+      });
+
+      return stemArray;
+    },
+
+    /**
+     * REPLACE - Replace all occurrences of a value
+     * Usage: count = REPLACE("oldValue", "newValue")
+     *        count = REPLACE("oldValue", "newValue", matchCase, matchEntireCell, searchFormulas)
+     * Returns: Number of replacements made
+     */
+    REPLACE: async function(searchValue, replaceValue, matchCase, matchEntireCell, searchFormulas) {
+      if (!searchValue || replaceValue === undefined) {
+        throw new Error('REPLACE requires search value and replace value');
+      }
+
+      const options = {
+        matchCase: matchCase === 1 || matchCase === '1' || matchCase === true,
+        matchEntireCell: matchEntireCell === 1 || matchEntireCell === '1' || matchEntireCell === true,
+        searchFormulas: searchFormulas === 1 || searchFormulas === '1' || searchFormulas === true
+      };
+
+      const count = model.replace(searchValue, replaceValue, options, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return count;
+    },
+
+    /**
+     * HIDEROW - Hide a row
+     * Usage: CALL HIDEROW(5)
+     */
+    HIDEROW: function(rowNum) {
+      if (!rowNum) {
+        throw new Error('HIDEROW requires row number as argument');
+      }
+
+      const rowNumber = parseInt(rowNum, 10);
+      if (isNaN(rowNumber)) {
+        throw new Error('HIDEROW requires a valid row number');
+      }
+
+      model.hideRow(rowNumber);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * UNHIDEROW - Unhide a row
+     * Usage: CALL UNHIDEROW(5)
+     */
+    UNHIDEROW: function(rowNum) {
+      if (!rowNum) {
+        throw new Error('UNHIDEROW requires row number as argument');
+      }
+
+      const rowNumber = parseInt(rowNum, 10);
+      if (isNaN(rowNumber)) {
+        throw new Error('UNHIDEROW requires a valid row number');
+      }
+
+      model.unhideRow(rowNumber);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * HIDECOLUMN - Hide a column
+     * Usage: CALL HIDECOLUMN(5)
+     *        CALL HIDECOLUMN("E")
+     */
+    HIDECOLUMN: function(colNum) {
+      if (!colNum) {
+        throw new Error('HIDECOLUMN requires column number or letter as argument');
+      }
+
+      model.hideColumn(colNum);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * UNHIDECOLUMN - Unhide a column
+     * Usage: CALL UNHIDECOLUMN(5)
+     *        CALL UNHIDECOLUMN("E")
+     */
+    UNHIDECOLUMN: function(colNum) {
+      if (!colNum) {
+        throw new Error('UNHIDECOLUMN requires column number or letter as argument');
+      }
+
+      model.unhideColumn(colNum);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * ISROWHIDDEN - Check if a row is hidden
+     * Usage: hidden = ISROWHIDDEN(5)
+     * Returns: 1 if hidden, 0 if not
+     */
+    ISROWHIDDEN: function(rowNum) {
+      if (!rowNum) {
+        throw new Error('ISROWHIDDEN requires row number as argument');
+      }
+
+      const rowNumber = parseInt(rowNum, 10);
+      if (isNaN(rowNumber)) {
+        throw new Error('ISROWHIDDEN requires a valid row number');
+      }
+
+      return model.isRowHidden(rowNumber) ? 1 : 0;
+    },
+
+    /**
+     * ISCOLUMNHIDDEN - Check if a column is hidden
+     * Usage: hidden = ISCOLUMNHIDDEN(5)
+     *        hidden = ISCOLUMNHIDDEN("E")
+     * Returns: 1 if hidden, 0 if not
+     */
+    ISCOLUMNHIDDEN: function(colNum) {
+      if (!colNum) {
+        throw new Error('ISCOLUMNHIDDEN requires column number or letter as argument');
+      }
+
+      return model.isColumnHidden(colNum) ? 1 : 0;
+    },
+
+    /**
+     * DEFINENAMEDRANGE - Define a named range
+     * Usage: CALL DEFINENAMEDRANGE("SalesData", "A1:B10")
+     *        CALL DEFINENAMEDRANGE("TaxRate", "A1")
+     */
+    DEFINENAMEDRANGE: function(name, rangeRef) {
+      if (!name || !rangeRef) {
+        throw new Error('DEFINENAMEDRANGE requires name and range reference');
+      }
+
+      model.defineNamedRange(name, rangeRef);
+
+      return 'OK';
+    },
+
+    /**
+     * DELETENAMEDRANGE - Delete a named range
+     * Usage: CALL DELETENAMEDRANGE("SalesData")
+     */
+    DELETENAMEDRANGE: function(name) {
+      if (!name) {
+        throw new Error('DELETENAMEDRANGE requires name as argument');
+      }
+
+      model.deleteNamedRange(name);
+
+      return 'OK';
+    },
+
+    /**
+     * GETNAMEDRANGE - Get a named range reference
+     * Usage: rangeRef = GETNAMEDRANGE("SalesData")
+     * Returns: Range reference or empty string if not found
+     */
+    GETNAMEDRANGE: function(name) {
+      if (!name) {
+        throw new Error('GETNAMEDRANGE requires name as argument');
+      }
+
+      return model.getNamedRange(name) || '';
+    },
+
+    /**
+     * GETALLNAMEDRANGES - Get all named ranges
+     * Usage: ranges = GETALLNAMEDRANGES()
+     * Returns: REXX stem array with name.value pairs
+     */
+    GETALLNAMEDRANGES: function() {
+      const ranges = model.getAllNamedRanges();
+      const names = Object.keys(ranges);
+
+      // Return as REXX stem array with compound variables
+      const result = { 0: names.length };
+      names.forEach((name, index) => {
+        const idx = index + 1;
+        result[`${idx}.NAME`] = name;
+        result[`${idx}.RANGE`] = ranges[name];
+      });
+
+      return result;
+    },
+
+    /**
      * LISTCOMMANDS - Get list of available commands
      * Usage: commands = LISTCOMMANDS()
      * Returns: REXX stem array with command names
@@ -613,6 +890,10 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'CLEAR', 'EXPORT', 'IMPORT', 'GETSHEETNAME', 'SETSHEETNAME',
         'EVALUATE', 'RECALCULATE', 'GETSETUPSCRIPT', 'SETSETUPSCRIPT',
         'EXECUTESETUPSCRIPT', 'INSERTROW', 'DELETEROW', 'INSERTCOLUMN', 'DELETECOLUMN',
+        'FILLDOWN', 'FILLRIGHT', 'FIND', 'REPLACE',
+        'HIDEROW', 'UNHIDEROW', 'HIDECOLUMN', 'UNHIDECOLUMN',
+        'ISROWHIDDEN', 'ISCOLUMNHIDDEN',
+        'DEFINENAMEDRANGE', 'DELETENAMEDRANGE', 'GETNAMEDRANGE', 'GETALLNAMEDRANGES',
         'LISTCOMMANDS'
       ];
 

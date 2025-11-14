@@ -17,6 +17,9 @@ class SpreadsheetModel {
         this.dependents = new Map(); // key: "A1", value: Set of cells that depend on A1
         this.evaluationInProgress = new Set(); // For circular reference detection
         this.setupScript = ''; // Page-level RexxJS code (REQUIRE statements, etc.)
+        this.hiddenRows = new Set(); // Set of hidden row numbers
+        this.hiddenColumns = new Set(); // Set of hidden column numbers
+        this.namedRanges = new Map(); // key: "MyRange", value: "A1:B5"
     }
 
     /**
@@ -124,7 +127,11 @@ class SpreadsheetModel {
 
         if (isExpression) {
             // Store expression, evaluate later
-            const expression = content.trim().substring(1).trim();
+            let expression = content.trim().substring(1).trim();
+
+            // Resolve named ranges in the expression
+            expression = this.resolveNamedRanges(expression);
+
             this.cells.set(ref, {
                 value: '',
                 expression: expression,
@@ -283,7 +290,10 @@ class SpreadsheetModel {
     toJSON() {
         const data = {
             setupScript: this.setupScript,
-            cells: {}
+            cells: {},
+            hiddenRows: Array.from(this.hiddenRows),
+            hiddenColumns: Array.from(this.hiddenColumns),
+            namedRanges: Object.fromEntries(this.namedRanges)
         };
 
         for (const [ref, cell] of this.cells.entries()) {
@@ -323,10 +333,29 @@ class SpreadsheetModel {
         this.cells.clear();
         this.dependents.clear();
         this.evaluationInProgress.clear();
+        this.hiddenRows.clear();
+        this.hiddenColumns.clear();
+        this.namedRanges.clear();
 
         // Handle both old format (flat) and new format (with setupScript)
         if (data.setupScript !== undefined) {
             this.setupScript = data.setupScript || '';
+
+            // Restore hidden rows/columns
+            if (data.hiddenRows) {
+                data.hiddenRows.forEach(row => this.hiddenRows.add(row));
+            }
+            if (data.hiddenColumns) {
+                data.hiddenColumns.forEach(col => this.hiddenColumns.add(col));
+            }
+
+            // Restore named ranges
+            if (data.namedRanges) {
+                Object.entries(data.namedRanges).forEach(([name, range]) => {
+                    this.namedRanges.set(name, range);
+                });
+            }
+
             const cells = data.cells || {};
             for (const [ref, cellData] of Object.entries(cells)) {
                 // Handle both string format and object format
@@ -765,6 +794,387 @@ class SpreadsheetModel {
         if (rexxInterpreter) {
             this._recalculateAll(rexxInterpreter);
         }
+    }
+
+    /**
+     * Fill down - Copy cell(s) down to a range
+     * @param {string} sourceRef - Source cell or range (e.g., "A1" or "A1:B1")
+     * @param {string} targetRangeRef - Target range (e.g., "A2:A10")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    fillDown(sourceRef, targetRangeRef, rexxInterpreter = null) {
+        // Parse source range
+        const sourceMatch = sourceRef.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!sourceMatch) {
+            throw new Error(`Invalid source reference: ${sourceRef}`);
+        }
+
+        const sourceStartCol = sourceMatch[1].toUpperCase();
+        const sourceStartRow = parseInt(sourceMatch[2], 10);
+        const sourceEndCol = sourceMatch[3] ? sourceMatch[3].toUpperCase() : sourceStartCol;
+        const sourceEndRow = sourceMatch[4] ? parseInt(sourceMatch[4], 10) : sourceStartRow;
+
+        // Parse target range
+        const targetMatch = targetRangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!targetMatch) {
+            throw new Error(`Invalid target range: ${targetRangeRef}`);
+        }
+
+        const targetStartCol = targetMatch[1].toUpperCase();
+        const targetStartRow = parseInt(targetMatch[2], 10);
+        const targetEndCol = targetMatch[3].toUpperCase();
+        const targetEndRow = parseInt(targetMatch[4], 10);
+
+        const sourceColStart = SpreadsheetModel.colLetterToNumber(sourceStartCol);
+        const sourceColEnd = SpreadsheetModel.colLetterToNumber(sourceEndCol);
+        const targetColStart = SpreadsheetModel.colLetterToNumber(targetStartCol);
+        const targetColEnd = SpreadsheetModel.colLetterToNumber(targetEndCol);
+
+        const sourceWidth = sourceColEnd - sourceColStart + 1;
+        const targetWidth = targetColEnd - targetColStart + 1;
+
+        if (sourceWidth !== targetWidth) {
+            throw new Error('Source and target must have the same number of columns');
+        }
+
+        // Fill down
+        for (let row = targetStartRow; row <= targetEndRow; row++) {
+            for (let colOffset = 0; colOffset < sourceWidth; colOffset++) {
+                const sourceCol = sourceColStart + colOffset;
+                const targetCol = targetColStart + colOffset;
+                const sourceRowToUse = sourceStartRow + ((row - targetStartRow) % (sourceEndRow - sourceStartRow + 1));
+
+                const sourceCellRef = SpreadsheetModel.formatCellRef(sourceCol, sourceRowToUse);
+                const targetCellRef = SpreadsheetModel.formatCellRef(targetCol, row);
+
+                const sourceCell = this.getCell(sourceCellRef);
+                if (sourceCell.expression) {
+                    // Adjust formula for new position
+                    const rowOffset = row - sourceRowToUse;
+                    const colOffset = targetCol - sourceCol;
+                    const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowOffset, colOffset);
+                    this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment
+                    });
+                } else {
+                    this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * Fill right - Copy cell(s) right to a range
+     * @param {string} sourceRef - Source cell or range (e.g., "A1" or "A1:A2")
+     * @param {string} targetRangeRef - Target range (e.g., "B1:E1")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    fillRight(sourceRef, targetRangeRef, rexxInterpreter = null) {
+        // Parse source range
+        const sourceMatch = sourceRef.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!sourceMatch) {
+            throw new Error(`Invalid source reference: ${sourceRef}`);
+        }
+
+        const sourceStartCol = sourceMatch[1].toUpperCase();
+        const sourceStartRow = parseInt(sourceMatch[2], 10);
+        const sourceEndCol = sourceMatch[3] ? sourceMatch[3].toUpperCase() : sourceStartCol;
+        const sourceEndRow = sourceMatch[4] ? parseInt(sourceMatch[4], 10) : sourceStartRow;
+
+        // Parse target range
+        const targetMatch = targetRangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!targetMatch) {
+            throw new Error(`Invalid target range: ${targetRangeRef}`);
+        }
+
+        const targetStartCol = targetMatch[1].toUpperCase();
+        const targetStartRow = parseInt(targetMatch[2], 10);
+        const targetEndCol = targetMatch[3].toUpperCase();
+        const targetEndRow = parseInt(targetMatch[4], 10);
+
+        const sourceColStart = SpreadsheetModel.colLetterToNumber(sourceStartCol);
+        const sourceColEnd = SpreadsheetModel.colLetterToNumber(sourceEndCol);
+        const targetColStart = SpreadsheetModel.colLetterToNumber(targetStartCol);
+        const targetColEnd = SpreadsheetModel.colLetterToNumber(targetEndCol);
+
+        const sourceHeight = sourceEndRow - sourceStartRow + 1;
+        const targetHeight = targetEndRow - targetStartRow + 1;
+
+        if (sourceHeight !== targetHeight) {
+            throw new Error('Source and target must have the same number of rows');
+        }
+
+        // Fill right
+        for (let col = targetColStart; col <= targetColEnd; col++) {
+            for (let rowOffset = 0; rowOffset < sourceHeight; rowOffset++) {
+                const sourceRow = sourceStartRow + rowOffset;
+                const targetRow = targetStartRow + rowOffset;
+                const sourceColToUse = sourceColStart + ((col - targetColStart) % (sourceColEnd - sourceColStart + 1));
+
+                const sourceCellRef = SpreadsheetModel.formatCellRef(sourceColToUse, sourceRow);
+                const targetCellRef = SpreadsheetModel.formatCellRef(col, targetRow);
+
+                const sourceCell = this.getCell(sourceCellRef);
+                if (sourceCell.expression) {
+                    // Adjust formula for new position
+                    const rowDiff = targetRow - sourceRow;
+                    const colDiff = col - sourceColToUse;
+                    const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowDiff, colDiff);
+                    this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment
+                    });
+                } else {
+                    this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * Adjust formula when copying (not inserting/deleting)
+     * Only adjusts relative references
+     */
+    _adjustFormulaForCopy(expression, rowOffset, colOffset) {
+        if (!expression) return expression;
+
+        const cellRefPattern = /(\$?)([A-Z]+)(\$?)(\d+)/g;
+
+        return expression.replace(cellRefPattern, (match, colAbs, col, rowAbs, row) => {
+            const rowNum = parseInt(row, 10);
+            const colNum = SpreadsheetModel.colLetterToNumber(col);
+
+            const newRow = rowAbs ? rowNum : rowNum + rowOffset;
+            const newCol = colAbs ? col : SpreadsheetModel.colNumberToLetter(colNum + colOffset);
+
+            return `${colAbs}${newCol}${rowAbs}${newRow}`;
+        });
+    }
+
+    /**
+     * Find all cells matching criteria
+     * @param {string} searchValue - Value to search for
+     * @param {Object} options - { matchCase: boolean, matchEntireCell: boolean, searchFormulas: boolean }
+     * @returns {Array} Array of cell references that match
+     */
+    find(searchValue, options = {}) {
+        const {
+            matchCase = false,
+            matchEntireCell = false,
+            searchFormulas = false
+        } = options;
+
+        const results = [];
+        const searchStr = matchCase ? searchValue : searchValue.toLowerCase();
+
+        for (const [ref, cell] of this.cells.entries()) {
+            let textToSearch = searchFormulas && cell.expression ? cell.expression : cell.value;
+            if (!matchCase) {
+                textToSearch = String(textToSearch).toLowerCase();
+            } else {
+                textToSearch = String(textToSearch);
+            }
+
+            const matches = matchEntireCell
+                ? textToSearch === searchStr
+                : textToSearch.includes(searchStr);
+
+            if (matches) {
+                results.push(ref);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Replace all occurrences of a value
+     * @param {string} searchValue - Value to search for
+     * @param {string} replaceValue - Value to replace with
+     * @param {Object} options - { matchCase, matchEntireCell, searchFormulas }
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     * @returns {number} Number of replacements made
+     */
+    replace(searchValue, replaceValue, options = {}, rexxInterpreter = null) {
+        const {
+            matchCase = false,
+            matchEntireCell = false,
+            searchFormulas = false
+        } = options;
+
+        let count = 0;
+
+        for (const [ref, cell] of this.cells.entries()) {
+            let textToReplace = searchFormulas && cell.expression ? cell.expression : cell.value;
+            let originalText = textToReplace;
+
+            if (matchEntireCell) {
+                if (matchCase) {
+                    if (textToReplace === searchValue) {
+                        textToReplace = replaceValue;
+                    }
+                } else {
+                    if (String(textToReplace).toLowerCase() === searchValue.toLowerCase()) {
+                        textToReplace = replaceValue;
+                    }
+                }
+            } else {
+                if (matchCase) {
+                    textToReplace = String(textToReplace).split(searchValue).join(replaceValue);
+                } else {
+                    const regex = new RegExp(searchValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                    textToReplace = String(textToReplace).replace(regex, replaceValue);
+                }
+            }
+
+            if (textToReplace !== originalText) {
+                if (searchFormulas && cell.expression) {
+                    this.setCell(ref, '=' + textToReplace, rexxInterpreter, {
+                        format: cell.format,
+                        comment: cell.comment
+                    });
+                } else {
+                    this.setCell(ref, textToReplace, rexxInterpreter, {
+                        format: cell.format,
+                        comment: cell.comment
+                    });
+                }
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Hide a row
+     * @param {number} rowNum - Row number to hide
+     */
+    hideRow(rowNum) {
+        if (rowNum < 1 || rowNum > this.rows) {
+            throw new Error(`Invalid row number: ${rowNum}`);
+        }
+        this.hiddenRows.add(rowNum);
+    }
+
+    /**
+     * Unhide a row
+     * @param {number} rowNum - Row number to unhide
+     */
+    unhideRow(rowNum) {
+        this.hiddenRows.delete(rowNum);
+    }
+
+    /**
+     * Hide a column
+     * @param {number|string} colNum - Column number or letter to hide
+     */
+    hideColumn(colNum) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+        if (colNum < 1 || colNum > this.cols) {
+            throw new Error(`Invalid column number: ${colNum}`);
+        }
+        this.hiddenColumns.add(colNum);
+    }
+
+    /**
+     * Unhide a column
+     * @param {number|string} colNum - Column number or letter to unhide
+     */
+    unhideColumn(colNum) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+        this.hiddenColumns.delete(colNum);
+    }
+
+    /**
+     * Check if a row is hidden
+     */
+    isRowHidden(rowNum) {
+        return this.hiddenRows.has(rowNum);
+    }
+
+    /**
+     * Check if a column is hidden
+     */
+    isColumnHidden(colNum) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+        return this.hiddenColumns.has(colNum);
+    }
+
+    /**
+     * Define a named range
+     * @param {string} name - Name for the range (e.g., "SalesData")
+     * @param {string} rangeRef - Range reference (e.g., "A1:B10")
+     */
+    defineNamedRange(name, rangeRef) {
+        // Validate name (alphanumeric, underscore, must start with letter)
+        if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(name)) {
+            throw new Error('Named range must start with a letter and contain only letters, numbers, and underscores');
+        }
+
+        // Validate range reference
+        const match = rangeRef.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!match) {
+            throw new Error(`Invalid range reference: ${rangeRef}`);
+        }
+
+        this.namedRanges.set(name, rangeRef.toUpperCase());
+    }
+
+    /**
+     * Delete a named range
+     * @param {string} name - Name of the range to delete
+     */
+    deleteNamedRange(name) {
+        this.namedRanges.delete(name);
+    }
+
+    /**
+     * Get a named range reference
+     * @param {string} name - Name of the range
+     * @returns {string|null} Range reference or null if not found
+     */
+    getNamedRange(name) {
+        return this.namedRanges.get(name) || null;
+    }
+
+    /**
+     * Get all named ranges
+     * @returns {Object} Object with name -> range mappings
+     */
+    getAllNamedRanges() {
+        return Object.fromEntries(this.namedRanges);
+    }
+
+    /**
+     * Resolve named ranges in an expression
+     * @param {string} expression - Expression that may contain named ranges
+     * @returns {string} Expression with named ranges replaced by cell references
+     */
+    resolveNamedRanges(expression) {
+        if (!expression) return expression;
+
+        // Replace named ranges with their cell references
+        // Named ranges should match pattern: word boundary + name + word boundary
+        for (const [name, rangeRef] of this.namedRanges.entries()) {
+            const regex = new RegExp(`\\b${name}\\b`, 'g');
+            expression = expression.replace(regex, rangeRef);
+        }
+
+        return expression;
     }
 }
 
