@@ -1,0 +1,92 @@
+{
+  "setupScript": "",
+  "cells": {
+    "A1": {
+      "content": "Month"
+    },
+    "B1": {
+      "content": "Sales"
+    },
+    "C1": {
+      "content": "Expenses"
+    },
+    "A2": {
+      "content": "January"
+    },
+    "B2": {
+      "content": "25000"
+    },
+    "C2": {
+      "content": "18000"
+    },
+    "A3": {
+      "content": "February"
+    },
+    "B3": {
+      "content": "28000"
+    },
+    "C3": {
+      "content": "19500"
+    },
+    "A4": {
+      "content": "March"
+    },
+    "B4": {
+      "content": "32000"
+    },
+    "C4": {
+      "content": "21000"
+    },
+    "A5": {
+      "content": "April"
+    },
+    "B5": {
+      "content": "29000"
+    },
+    "C5": {
+      "content": "20000"
+    },
+    "A6": {
+      "content": "May"
+    },
+    "B6": {
+      "content": "35000"
+    },
+    "C6": {
+      "content": "22500"
+    },
+    "E1": {
+      "content": "Sales Chart",
+      "comment": "Click this cell to view the chart!",
+      "chartScript": "/* Sales Chart\n * This chart visualizes monthly sales data\n */\n\n/* Get data from spreadsheet cells */\nmonths = [A2, A3, A4, A5, A6]\nsalesData = [B2, B3, B4, B5, B6]\nexpenseData = [C2, C3, C4, C5, C6]\n\n/* Create Chart.js configuration */\nchartConfig = {\n  \"type\": \"bar\",\n  \"data\": {\n    \"labels\": months,\n    \"datasets\": [\n      {\n        \"label\": \"Sales\",\n        \"data\": salesData,\n        \"backgroundColor\": \"rgba(33, 150, 243, 0.6)\",\n        \"borderColor\": \"rgba(33, 150, 243, 1)\",\n        \"borderWidth\": 2\n      },\n      {\n        \"label\": \"Expenses\",\n        \"data\": expenseData,\n        \"backgroundColor\": \"rgba(255, 99, 132, 0.6)\",\n        \"borderColor\": \"rgba(255, 99, 132, 1)\",\n        \"borderWidth\": 2\n      }\n    ]\n  },\n  \"options\": {\n    \"responsive\": true,\n    \"plugins\": {\n      \"title\": {\n        \"display\": true,\n        \"text\": \"Monthly Sales vs Expenses\",\n        \"font\": {\n          \"size\": 18\n        }\n      },\n      \"legend\": {\n        \"display\": true,\n        \"position\": \"top\"\n      }\n    },\n    \"scales\": {\n      \"y\": {\n        \"beginAtZero\": true,\n        \"ticks\": {\n          \"callback\": \"function(value) { return '$' + value.toLocaleString(); }\"\n        }\n      }\n    }\n  }\n}"
+    },
+    "E3": {
+      "content": "Pie Chart",
+      "comment": "Total sales distribution by month",
+      "chartScript": "/* Sales Distribution Pie Chart\n * Shows percentage of total sales per month\n */\n\n/* Get data from cells */\nmonths = [A2, A3, A4, A5, A6]\nsalesData = [B2, B3, B4, B5, B6]\n\n/* Create pie chart configuration */\nchartConfig = {\n  \"type\": \"pie\",\n  \"data\": {\n    \"labels\": months,\n    \"datasets\": [{\n      \"label\": \"Sales Distribution\",\n      \"data\": salesData,\n      \"backgroundColor\": [\n        \"rgba(255, 99, 132, 0.8)\",\n        \"rgba(54, 162, 235, 0.8)\",\n        \"rgba(255, 206, 86, 0.8)\",\n        \"rgba(75, 192, 192, 0.8)\",\n        \"rgba(153, 102, 255, 0.8)\"\n      ],\n      \"borderColor\": [\n        \"rgba(255, 99, 132, 1)\",\n        \"rgba(54, 162, 235, 1)\",\n        \"rgba(255, 206, 86, 1)\",\n        \"rgba(75, 192, 192, 1)\",\n        \"rgba(153, 102, 255, 1)\"\n      ],\n      \"borderWidth\": 2\n    }]\n  },\n  \"options\": {\n    \"responsive\": true,\n    \"plugins\": {\n      \"title\": {\n        \"display\": true,\n        \"text\": \"Sales Distribution by Month\",\n        \"font\": {\n          \"size\": 18\n        }\n      },\n      \"legend\": {\n        \"position\": \"right\"\n      }\n    }\n  }\n}"
+    },
+    "E5": {
+      "content": "Line Chart",
+      "comment": "Trend analysis",
+      "chartScript": "/* Sales and Expenses Trend\n * Line chart showing trends over time\n */\n\nmonths = [A2, A3, A4, A5, A6]\nsalesData = [B2, B3, B4, B5, B6]\nexpenseData = [C2, C3, C4, C5, C6]\n\n/* Calculate profit */\nprofitData = []\nDO i = 1 TO 5\n  profit = salesData[i] - expenseData[i]\n  profitData = profitData || [profit]\nEND\n\nchartConfig = {\n  \"type\": \"line\",\n  \"data\": {\n    \"labels\": months,\n    \"datasets\": [\n      {\n        \"label\": \"Sales\",\n        \"data\": salesData,\n        \"borderColor\": \"rgba(33, 150, 243, 1)\",\n        \"backgroundColor\": \"rgba(33, 150, 243, 0.1)\",\n        \"borderWidth\": 3,\n        \"fill\": true,\n        \"tension\": 0.4\n      },\n      {\n        \"label\": \"Expenses\",\n        \"data\": expenseData,\n        \"borderColor\": \"rgba(255, 99, 132, 1)\",\n        \"backgroundColor\": \"rgba(255, 99, 132, 0.1)\",\n        \"borderWidth\": 3,\n        \"fill\": true,\n        \"tension\": 0.4\n      },\n      {\n        \"label\": \"Profit\",\n        \"data\": profitData,\n        \"borderColor\": \"rgba(76, 175, 80, 1)\",\n        \"backgroundColor\": \"rgba(76, 175, 80, 0.1)\",\n        \"borderWidth\": 3,\n        \"fill\": true,\n        \"tension\": 0.4\n      }\n    ]\n  },\n  \"options\": {\n    \"responsive\": true,\n    \"plugins\": {\n      \"title\": {\n        \"display\": true,\n        \"text\": \"Financial Trends\",\n        \"font\": {\n          \"size\": 18\n        }\n      },\n      \"legend\": {\n        \"position\": \"top\"\n      }\n    },\n    \"scales\": {\n      \"y\": {\n        \"beginAtZero\": true\n      }\n    },\n    \"interaction\": {\n      \"mode\": \"index\",\n      \"intersect\": false\n    }\n  }\n}"
+    },
+    "A8": {
+      "content": "Instructions:"
+    },
+    "A9": {
+      "content": "1. Click cells E1, E3, or E5 to view charts"
+    },
+    "A10": {
+      "content": "2. Right-click any cell to create a new chart"
+    },
+    "A11": {
+      "content": "3. Right-click a chart cell to edit the chart script"
+    },
+    "A12": {
+      "content": "4. Charts use RexxJS to process data from cells"
+    },
+    "A13": {
+      "content": "5. Full access to all spreadsheet functions and Chart.js options"
+    }
+  }
+}
