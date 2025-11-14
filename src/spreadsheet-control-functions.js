@@ -877,6 +877,157 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * FREEZEPANES - Freeze rows and columns
+     * Usage: CALL FREEZEPANES(2, 3)  -- Freeze 2 rows, 3 columns
+     */
+    FREEZEPANES: function(rows, cols) {
+      const rowNum = parseInt(rows, 10) || 0;
+      const colNum = parseInt(cols, 10) || 0;
+
+      model.freezePanes(rowNum, colNum);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * UNFREEZEPANES - Unfreeze all panes
+     * Usage: CALL UNFREEZEPANES()
+     */
+    UNFREEZEPANES: function() {
+      model.unfreezePanes();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * GETFROZENPANES - Get frozen pane settings
+     * Usage: frozen = GETFROZENPANES()
+     * Returns: REXX stem array with frozen.ROWS and frozen.COLUMNS
+     */
+    GETFROZENPANES: function() {
+      const frozen = model.getFrozenPanes();
+      return {
+        ROWS: frozen.rows,
+        COLUMNS: frozen.columns
+      };
+    },
+
+    /**
+     * SETCELLVALIDATION - Set validation rules for a cell
+     * Usage: CALL SETCELLVALIDATION("A1", "list", "Red,Green,Blue")
+     *        CALL SETCELLVALIDATION("B1", "number", 0, 100)
+     */
+    SETCELLVALIDATION: function(cellRef, type, ...args) {
+      if (!cellRef || !type) {
+        throw new Error('SETCELLVALIDATION requires cell reference and validation type');
+      }
+
+      let validation = { type };
+
+      switch (type) {
+        case 'list':
+          // args[0] is comma-separated list
+          validation.values = String(args[0] || '').split(',');
+          break;
+        case 'number':
+          validation.min = args[0] !== undefined ? parseFloat(args[0]) : undefined;
+          validation.max = args[1] !== undefined ? parseFloat(args[1]) : undefined;
+          break;
+        case 'text':
+          validation.minLength = args[0] !== undefined ? parseInt(args[0], 10) : undefined;
+          validation.maxLength = args[1] !== undefined ? parseInt(args[1], 10) : undefined;
+          validation.pattern = args[2];
+          break;
+      }
+
+      model.setCellValidation(cellRef, validation);
+      return 'OK';
+    },
+
+    /**
+     * CLEARCELLVALIDATION - Clear validation rules for a cell
+     * Usage: CALL CLEARCELLVALIDATION("A1")
+     */
+    CLEARCELLVALIDATION: function(cellRef) {
+      if (!cellRef) {
+        throw new Error('CLEARCELLVALIDATION requires cell reference');
+      }
+
+      model.setCellValidation(cellRef, null);
+      return 'OK';
+    },
+
+    /**
+     * VALIDATECELL - Validate a cell value
+     * Usage: result = VALIDATECELL("A1", "Red")
+     * Returns: 1 if valid, 0 if invalid
+     */
+    VALIDATECELL: function(cellRef, value) {
+      if (!cellRef) {
+        throw new Error('VALIDATECELL requires cell reference');
+      }
+
+      const result = model.validateCellValue(cellRef, value);
+      return result.valid ? 1 : 0;
+    },
+
+    /**
+     * UNDO - Undo the last action
+     * Usage: success = UNDO()
+     * Returns: 1 if undo performed, 0 if nothing to undo
+     */
+    UNDO: async function() {
+      const success = model.undo(adapter);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return success ? 1 : 0;
+    },
+
+    /**
+     * REDO - Redo the last undone action
+     * Usage: success = REDO()
+     * Returns: 1 if redo performed, 0 if nothing to redo
+     */
+    REDO: async function() {
+      const success = model.redo(adapter);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return success ? 1 : 0;
+    },
+
+    /**
+     * CANUNDO - Check if undo is available
+     * Usage: can = CANUNDO()
+     * Returns: 1 if undo available, 0 if not
+     */
+    CANUNDO: function() {
+      return model.canUndo() ? 1 : 0;
+    },
+
+    /**
+     * CANREDO - Check if redo is available
+     * Usage: can = CANREDO()
+     * Returns: 1 if redo available, 0 if not
+     */
+    CANREDO: function() {
+      return model.canRedo() ? 1 : 0;
+    },
+
+    /**
      * LISTCOMMANDS - Get list of available commands
      * Usage: commands = LISTCOMMANDS()
      * Returns: REXX stem array with command names
@@ -894,6 +1045,9 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'HIDEROW', 'UNHIDEROW', 'HIDECOLUMN', 'UNHIDECOLUMN',
         'ISROWHIDDEN', 'ISCOLUMNHIDDEN',
         'DEFINENAMEDRANGE', 'DELETENAMEDRANGE', 'GETNAMEDRANGE', 'GETALLNAMEDRANGES',
+        'FREEZEPANES', 'UNFREEZEPANES', 'GETFROZENPANES',
+        'SETCELLVALIDATION', 'CLEARCELLVALIDATION', 'VALIDATECELL',
+        'UNDO', 'REDO', 'CANUNDO', 'CANREDO',
         'LISTCOMMANDS'
       ];
 

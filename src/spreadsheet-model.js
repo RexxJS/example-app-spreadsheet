@@ -20,6 +20,13 @@ class SpreadsheetModel {
         this.hiddenRows = new Set(); // Set of hidden row numbers
         this.hiddenColumns = new Set(); // Set of hidden column numbers
         this.namedRanges = new Map(); // key: "MyRange", value: "A1:B5"
+        this.frozenRows = 0; // Number of rows frozen at top
+        this.frozenColumns = 0; // Number of columns frozen at left
+        this.validations = new Map(); // key: "A1", value: validation rules
+        this.undoStack = []; // History for undo
+        this.redoStack = []; // History for redo
+        this.maxHistorySize = 100; // Limit undo/redo stack size
+        this.recordingHistory = true; // Flag to enable/disable history recording
     }
 
     /**
@@ -293,7 +300,10 @@ class SpreadsheetModel {
             cells: {},
             hiddenRows: Array.from(this.hiddenRows),
             hiddenColumns: Array.from(this.hiddenColumns),
-            namedRanges: Object.fromEntries(this.namedRanges)
+            namedRanges: Object.fromEntries(this.namedRanges),
+            frozenRows: this.frozenRows,
+            frozenColumns: this.frozenColumns,
+            validations: Object.fromEntries(this.validations)
         };
 
         for (const [ref, cell] of this.cells.entries()) {
@@ -336,6 +346,9 @@ class SpreadsheetModel {
         this.hiddenRows.clear();
         this.hiddenColumns.clear();
         this.namedRanges.clear();
+        this.validations.clear();
+        this.undoStack = [];
+        this.redoStack = [];
 
         // Handle both old format (flat) and new format (with setupScript)
         if (data.setupScript !== undefined) {
@@ -353,6 +366,17 @@ class SpreadsheetModel {
             if (data.namedRanges) {
                 Object.entries(data.namedRanges).forEach(([name, range]) => {
                     this.namedRanges.set(name, range);
+                });
+            }
+
+            // Restore frozen panes
+            this.frozenRows = data.frozenRows || 0;
+            this.frozenColumns = data.frozenColumns || 0;
+
+            // Restore validations
+            if (data.validations) {
+                Object.entries(data.validations).forEach(([ref, validation]) => {
+                    this.validations.set(ref, validation);
                 });
             }
 
@@ -1175,6 +1199,280 @@ class SpreadsheetModel {
         }
 
         return expression;
+    }
+
+    /**
+     * Freeze panes - lock rows and columns in place
+     * @param {number} rows - Number of rows to freeze from top
+     * @param {number} cols - Number of columns to freeze from left
+     */
+    freezePanes(rows, cols) {
+        if (rows < 0 || rows > this.rows) {
+            throw new Error(`Invalid rows to freeze: ${rows}`);
+        }
+        if (cols < 0 || cols > this.cols) {
+            throw new Error(`Invalid columns to freeze: ${cols}`);
+        }
+        this.frozenRows = rows;
+        this.frozenColumns = cols;
+    }
+
+    /**
+     * Unfreeze all panes
+     */
+    unfreezePanes() {
+        this.frozenRows = 0;
+        this.frozenColumns = 0;
+    }
+
+    /**
+     * Get frozen pane settings
+     * @returns {Object} {rows, columns}
+     */
+    getFrozenPanes() {
+        return {
+            rows: this.frozenRows,
+            columns: this.frozenColumns
+        };
+    }
+
+    /**
+     * Set cell validation rules
+     * @param {string} cellRef - Cell reference
+     * @param {Object} validation - Validation rules
+     */
+    setCellValidation(cellRef, validation) {
+        if (!validation) {
+            this.validations.delete(cellRef);
+            return;
+        }
+
+        // Validate the validation object
+        if (!validation.type) {
+            throw new Error('Validation must have a type');
+        }
+
+        const validTypes = ['list', 'number', 'date', 'text', 'custom'];
+        if (!validTypes.includes(validation.type)) {
+            throw new Error(`Invalid validation type: ${validation.type}`);
+        }
+
+        this.validations.set(cellRef, validation);
+    }
+
+    /**
+     * Get cell validation rules
+     * @param {string} cellRef - Cell reference
+     * @returns {Object|null} Validation rules or null
+     */
+    getCellValidation(cellRef) {
+        return this.validations.get(cellRef) || null;
+    }
+
+    /**
+     * Validate a cell value against its validation rules
+     * @param {string} cellRef - Cell reference
+     * @param {string} value - Value to validate
+     * @returns {Object} {valid: boolean, message: string}
+     */
+    validateCellValue(cellRef, value) {
+        const validation = this.validations.get(cellRef);
+        if (!validation) {
+            return { valid: true, message: '' };
+        }
+
+        switch (validation.type) {
+            case 'list':
+                if (!validation.values || !Array.isArray(validation.values)) {
+                    return { valid: false, message: 'Invalid list validation configuration' };
+                }
+                const valid = validation.values.includes(value);
+                return {
+                    valid,
+                    message: valid ? '' : `Value must be one of: ${validation.values.join(', ')}`
+                };
+
+            case 'number':
+                const num = parseFloat(value);
+                if (isNaN(num)) {
+                    return { valid: false, message: 'Value must be a number' };
+                }
+                if (validation.min !== undefined && num < validation.min) {
+                    return { valid: false, message: `Value must be >= ${validation.min}` };
+                }
+                if (validation.max !== undefined && num > validation.max) {
+                    return { valid: false, message: `Value must be <= ${validation.max}` };
+                }
+                return { valid: true, message: '' };
+
+            case 'text':
+                const text = String(value);
+                if (validation.minLength !== undefined && text.length < validation.minLength) {
+                    return { valid: false, message: `Text must be at least ${validation.minLength} characters` };
+                }
+                if (validation.maxLength !== undefined && text.length > validation.maxLength) {
+                    return { valid: false, message: `Text must be at most ${validation.maxLength} characters` };
+                }
+                if (validation.pattern) {
+                    const regex = new RegExp(validation.pattern);
+                    if (!regex.test(text)) {
+                        return { valid: false, message: `Text must match pattern: ${validation.pattern}` };
+                    }
+                }
+                return { valid: true, message: '' };
+
+            case 'custom':
+                // Custom validation with a function (stored as string)
+                if (!validation.formula) {
+                    return { valid: false, message: 'Custom validation requires a formula' };
+                }
+                // For now, return valid - would need interpreter to evaluate
+                return { valid: true, message: '' };
+
+            default:
+                return { valid: true, message: '' };
+        }
+    }
+
+    /**
+     * Record a snapshot for undo
+     */
+    _recordSnapshot(action) {
+        if (!this.recordingHistory) return;
+
+        const snapshot = {
+            action,
+            cells: new Map(this.cells),
+            hiddenRows: new Set(this.hiddenRows),
+            hiddenColumns: new Set(this.hiddenColumns),
+            namedRanges: new Map(this.namedRanges),
+            frozenRows: this.frozenRows,
+            frozenColumns: this.frozenColumns,
+            validations: new Map(this.validations),
+            timestamp: Date.now()
+        };
+
+        this.undoStack.push(snapshot);
+
+        // Limit stack size
+        if (this.undoStack.length > this.maxHistorySize) {
+            this.undoStack.shift();
+        }
+
+        // Clear redo stack when new action is recorded
+        this.redoStack = [];
+    }
+
+    /**
+     * Undo the last action
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     * @returns {boolean} True if undo was performed
+     */
+    undo(rexxInterpreter = null) {
+        if (this.undoStack.length === 0) {
+            return false;
+        }
+
+        // Save current state to redo stack
+        const currentSnapshot = {
+            action: 'redo',
+            cells: new Map(this.cells),
+            hiddenRows: new Set(this.hiddenRows),
+            hiddenColumns: new Set(this.hiddenColumns),
+            namedRanges: new Map(this.namedRanges),
+            frozenRows: this.frozenRows,
+            frozenColumns: this.frozenColumns,
+            validations: new Map(this.validations),
+            timestamp: Date.now()
+        };
+        this.redoStack.push(currentSnapshot);
+
+        // Restore previous state
+        const snapshot = this.undoStack.pop();
+        this.recordingHistory = false;
+
+        this.cells = new Map(snapshot.cells);
+        this.hiddenRows = new Set(snapshot.hiddenRows);
+        this.hiddenColumns = new Set(snapshot.hiddenColumns);
+        this.namedRanges = new Map(snapshot.namedRanges);
+        this.frozenRows = snapshot.frozenRows;
+        this.frozenColumns = snapshot.frozenColumns;
+        this.validations = new Map(snapshot.validations);
+
+        this._rebuildDependents();
+        if (rexxInterpreter) {
+            this._recalculateAll(rexxInterpreter);
+        }
+
+        this.recordingHistory = true;
+        return true;
+    }
+
+    /**
+     * Redo the last undone action
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     * @returns {boolean} True if redo was performed
+     */
+    redo(rexxInterpreter = null) {
+        if (this.redoStack.length === 0) {
+            return false;
+        }
+
+        // Save current state to undo stack
+        const currentSnapshot = {
+            action: 'undo',
+            cells: new Map(this.cells),
+            hiddenRows: new Set(this.hiddenRows),
+            hiddenColumns: new Set(this.hiddenColumns),
+            namedRanges: new Map(this.namedRanges),
+            frozenRows: this.frozenRows,
+            frozenColumns: this.frozenColumns,
+            validations: new Map(this.validations),
+            timestamp: Date.now()
+        };
+        this.undoStack.push(currentSnapshot);
+
+        // Restore redo state
+        const snapshot = this.redoStack.pop();
+        this.recordingHistory = false;
+
+        this.cells = new Map(snapshot.cells);
+        this.hiddenRows = new Set(snapshot.hiddenRows);
+        this.hiddenColumns = new Set(snapshot.hiddenColumns);
+        this.namedRanges = new Map(snapshot.namedRanges);
+        this.frozenRows = snapshot.frozenRows;
+        this.frozenColumns = snapshot.frozenColumns;
+        this.validations = new Map(snapshot.validations);
+
+        this._rebuildDependents();
+        if (rexxInterpreter) {
+            this._recalculateAll(rexxInterpreter);
+        }
+
+        this.recordingHistory = true;
+        return true;
+    }
+
+    /**
+     * Clear undo/redo history
+     */
+    clearHistory() {
+        this.undoStack = [];
+        this.redoStack = [];
+    }
+
+    /**
+     * Check if undo is available
+     */
+    canUndo() {
+        return this.undoStack.length > 0;
+    }
+
+    /**
+     * Check if redo is available
+     */
+    canRedo() {
+        return this.redoStack.length > 0;
     }
 }
 
