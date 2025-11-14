@@ -85,7 +85,7 @@ class SpreadsheetModel {
         if (typeof ref === 'object') {
             ref = SpreadsheetModel.formatCellRef(ref.col, ref.row);
         }
-        return this.cells.get(ref) || { value: '', expression: null, dependencies: [] };
+        return this.cells.get(ref) || { value: '', expression: null, dependencies: [], chartScript: null };
     }
 
     /**
@@ -145,7 +145,8 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
-                format: metadata.format || oldCell?.format || ''
+                format: metadata.format || oldCell?.format || '',
+                chartScript: metadata.chartScript || oldCell?.chartScript || null
             });
 
             // Evaluate the expression
@@ -160,7 +161,8 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
-                format: metadata.format || oldCell?.format || ''
+                format: metadata.format || oldCell?.format || '',
+                chartScript: metadata.chartScript || oldCell?.chartScript || null
             });
         }
 
@@ -248,7 +250,7 @@ class SpreadsheetModel {
     }
 
     /**
-     * Set cell metadata (comment, format)
+     * Set cell metadata (comment, format, chartScript)
      */
     setCellMetadata(ref, metadata) {
         if (typeof ref === 'object') {
@@ -264,7 +266,8 @@ class SpreadsheetModel {
                 dependencies: [],
                 error: null,
                 comment: metadata.comment || '',
-                format: metadata.format || ''
+                format: metadata.format || '',
+                chartScript: metadata.chartScript || null
             });
         } else {
             // Update existing cell
@@ -273,6 +276,9 @@ class SpreadsheetModel {
             }
             if (metadata.format !== undefined) {
                 cell.format = metadata.format;
+            }
+            if (metadata.chartScript !== undefined) {
+                cell.chartScript = metadata.chartScript;
             }
         }
     }
@@ -322,9 +328,12 @@ class SpreadsheetModel {
             if (cell.format) {
                 cellData.format = cell.format;
             }
+            if (cell.chartScript) {
+                cellData.chartScript = cell.chartScript;
+            }
 
             // Only store if there's content or metadata
-            if (cellData.content || cellData.comment || cellData.format) {
+            if (cellData.content || cellData.comment || cellData.format || cellData.chartScript) {
                 // If only content, store as string for backward compatibility
                 if (Object.keys(cellData).length === 1 && cellData.content) {
                     data.cells[ref] = cellData.content;
@@ -390,7 +399,8 @@ class SpreadsheetModel {
                     // New format: object with content and metadata
                     const metadata = {
                         comment: cellData.comment || '',
-                        format: cellData.format || ''
+                        format: cellData.format || '',
+                        chartScript: cellData.chartScript || null
                     };
                     this.setCell(ref, cellData.content || '', rexxInterpreter, metadata);
                 }

@@ -15,7 +15,7 @@ import { createSpreadsheetControlFunctions } from './spreadsheet-control-functio
 /**
  * Cell Component
  */
-function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onStartEdit, viewMode, onMouseDown, onMouseEnter, onContextMenu, bufferedKeysRef, isTransitioningRef }) {
+function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onStartEdit, viewMode, onMouseDown, onMouseEnter, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef }) {
     const inputRef = useRef(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
@@ -58,6 +58,15 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
             return unsubscribe;
         }
     }, [isSelected, cell, onStartEdit]);
+
+    const handleCellClick = (e) => {
+        // If cell has chart and not editing, show chart on click
+        if (cell.chartScript && !isEditing && onChartClick) {
+            onChartClick(cellRef, cell.chartScript);
+        } else {
+            onSelect(cellRef, e.shiftKey);
+        }
+    };
 
     const handleDoubleClick = () => {
         setIsEditing(true);
@@ -107,6 +116,7 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
     const hasFormula = !!cell.expression;
     const hasFormat = !!cell.format;
     const hasComment = !!cell.comment;
+    const hasChart = !!cell.chartScript;
 
     // Build title attribute
     let title = '';
@@ -121,14 +131,17 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
     if (cell.format) {
         title += (title ? '\n' : '') + '📊 ' + cell.format;
     }
+    if (cell.chartScript) {
+        title += (title ? '\n' : '') + '📊 Chart (Click to view)';
+    }
 
     // Apply formatting styles
     const formatStyles = cell.format ? parseFormatToCSS(cell.format) : {};
 
     return (
         <div
-            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
-            onClick={(e) => onSelect(cellRef, e.shiftKey)}
+            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasChart ? 'has-chart' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
+            onClick={handleCellClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={onMouseDown}
             onMouseEnter={onMouseEnter}
@@ -178,7 +191,7 @@ function RowHeader({ row }) {
 /**
  * Grid Component
  */
-function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, onStartCellEdit, visibleRows, visibleCols, viewMode, onSelectionStart, onSelectionMove, onSelectionEnd, onContextMenu, bufferedKeysRef, isTransitioningRef }) {
+function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, onStartCellEdit, visibleRows, visibleCols, viewMode, onSelectionStart, onSelectionMove, onSelectionEnd, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef }) {
     const rows = [];
 
     // Header row with column letters
@@ -222,6 +235,7 @@ function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, o
                     onMouseDown={() => onSelectionStart(cellRef)}
                     onMouseEnter={() => onSelectionMove(cellRef)}
                     onContextMenu={onContextMenu}
+                    onChartClick={onChartClick}
                     bufferedKeysRef={bufferedKeysRef}
                     isTransitioningRef={isTransitioningRef}
                 />
@@ -538,7 +552,7 @@ function InfoPanel({ selectedCell, selectionRange, model, viewMode }) {
 /**
  * Context Menu Component
  */
-function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn }) {
+function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onEditChart, onCreateChart }) {
     const menuRef = useRef(null);
 
     useEffect(() => {
@@ -581,6 +595,15 @@ function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste,
             <div className="context-menu-item" onClick={() => onPasteValues()}>
                 <span>📝 Paste Values Only</span>
             </div>
+            <div className="context-menu-separator"></div>
+            <div className="context-menu-item" onClick={() => { onCreateChart(); onClose(); }}>
+                <span>📊 Create Chart...</span>
+            </div>
+            {onEditChart && (
+                <div className="context-menu-item" onClick={() => { onEditChart(); onClose(); }}>
+                    <span>✏️ Edit Chart...</span>
+                </div>
+            )}
             <div className="context-menu-separator"></div>
             <div
                 className="context-menu-item context-menu-submenu"
@@ -758,6 +781,271 @@ function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste,
 }
 
 /**
+ * Chart Evaluation and Rendering Functions
+ */
+
+/**
+ * Evaluate a chart script using RexxJS
+ * The script should return a Chart.js configuration object
+ */
+async function evaluateChartScript(chartScript, adapter, model, cellRef) {
+    try {
+        // Create isolated interpreter for chart script
+        const chartInterpreter = RexxInterpreter.builder().build();
+
+        // Copy external functions from main adapter
+        for (const [name, func] of Object.entries(adapter.interpreter.externalFunctions)) {
+            chartInterpreter.externalFunctions[name] = func;
+        }
+
+        // Add Chart.js helper to make it available in scripts
+        chartInterpreter.externalFunctions['CHART'] = function(...args) {
+            // Helper function to build Chart.js config
+            return {
+                type: args[0] || 'bar',
+                data: args[1] || {},
+                options: args[2] || {}
+            };
+        };
+
+        // Parse and execute the chart script
+        const commands = parse(chartScript);
+        await chartInterpreter.run(commands);
+
+        // Get the result - should be a Chart.js config object
+        const result = chartInterpreter.getVariable('chartConfig');
+
+        if (!result) {
+            throw new Error('Chart script must set chartConfig variable with Chart.js configuration');
+        }
+
+        return { success: true, config: result };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Render chart using Chart.js
+ */
+function renderChart(canvasElement, chartConfig) {
+    // Destroy existing chart if any
+    const existingChart = Chart.getChart(canvasElement);
+    if (existingChart) {
+        existingChart.destroy();
+    }
+
+    // Create new chart
+    return new Chart(canvasElement, chartConfig);
+}
+
+/**
+ * Chart Overlay Component - Displays chart in full-screen overlay
+ */
+function ChartOverlay({ cellRef, chartScript, model, adapter, onClose }) {
+    const canvasRef = useRef(null);
+    const chartInstanceRef = useRef(null);
+    const [chartError, setChartError] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadChart() {
+            if (!canvasRef.current || !chartScript) return;
+
+            setIsLoading(true);
+            setChartError(null);
+
+            const result = await evaluateChartScript(chartScript, adapter, model, cellRef);
+
+            if (result.success) {
+                try {
+                    chartInstanceRef.current = renderChart(canvasRef.current, result.config);
+                    setIsLoading(false);
+                } catch (error) {
+                    setChartError('Failed to render chart: ' + error.message);
+                    setIsLoading(false);
+                }
+            } else {
+                setChartError(result.error);
+                setIsLoading(false);
+            }
+        }
+
+        loadChart();
+
+        return () => {
+            if (chartInstanceRef.current) {
+                chartInstanceRef.current.destroy();
+                chartInstanceRef.current = null;
+            }
+        };
+    }, [chartScript, model, adapter, cellRef]);
+
+    const handleBackdropClick = (e) => {
+        if (e.target === e.currentTarget) {
+            onClose();
+        }
+    };
+
+    return (
+        <div className="chart-overlay" onClick={handleBackdropClick}>
+            <div className="chart-overlay-content" onClick={(e) => e.stopPropagation()}>
+                <div className="chart-overlay-header">
+                    <h2>Chart: {cellRef}</h2>
+                    <button className="chart-overlay-close" onClick={onClose}>×</button>
+                </div>
+
+                {isLoading && <div>Loading chart...</div>}
+
+                {chartError && (
+                    <div className="chart-error">
+                        <strong>Chart Error:</strong> {chartError}
+                    </div>
+                )}
+
+                {!isLoading && !chartError && (
+                    <div className="chart-container">
+                        <canvas ref={canvasRef}></canvas>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * Chart Editor Modal Component
+ */
+function ChartEditorModal({ isOpen, cellRef, initialScript, onClose, onSave, model, adapter }) {
+    const [chartScript, setChartScript] = useState(initialScript || '');
+    const [saveMessage, setSaveMessage] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setChartScript(initialScript || '');
+            setSaveMessage('');
+        }
+    }, [isOpen, initialScript]);
+
+    const handleSave = async () => {
+        if (model && cellRef) {
+            // Save chart script to cell metadata
+            model.setCellMetadata(cellRef, { chartScript: chartScript });
+            setSaveMessage('✅ Chart saved successfully!');
+
+            setTimeout(() => {
+                onSave();
+                onClose();
+            }, 1000);
+        }
+    };
+
+    const handleRemove = () => {
+        if (model && cellRef) {
+            model.setCellMetadata(cellRef, { chartScript: null });
+            setSaveMessage('✅ Chart removed!');
+
+            setTimeout(() => {
+                onSave();
+                onClose();
+            }, 1000);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    const exampleScript = `/* Chart Script Example
+ *
+ * This RexxJS script creates a Chart.js configuration.
+ * You have access to all spreadsheet functions and data.
+ */
+
+/* Get data from spreadsheet */
+labels = ["Jan", "Feb", "Mar", "Apr", "May"]
+salesData = [12, 19, 3, 5, 2]
+
+/* Or get data from cells:
+ * salesData = [A2, A3, A4, A5, A6]
+ * labels = [B2, B3, B4, B5, B6]
+ */
+
+/* Create Chart.js configuration */
+chartConfig = {
+  "type": "bar",
+  "data": {
+    "labels": labels,
+    "datasets": [{
+      "label": "Monthly Sales",
+      "data": salesData,
+      "backgroundColor": "rgba(33, 150, 243, 0.5)",
+      "borderColor": "rgba(33, 150, 243, 1)",
+      "borderWidth": 1
+    }]
+  },
+  "options": {
+    "responsive": true,
+    "plugins": {
+      "title": {
+        "display": true,
+        "text": "Sales Chart"
+      }
+    },
+    "scales": {
+      "y": {
+        "beginAtZero": true
+      }
+    }
+  }
+}`;
+
+    return (
+        <div className="chart-editor-modal" onClick={(e) => e.target === e.currentTarget && onClose()}>
+            <div className="chart-editor-content" onClick={(e) => e.stopPropagation()}>
+                <div className="chart-editor-header">
+                    <h2>Chart Script Editor: {cellRef}</h2>
+                    <button className="close-button" onClick={onClose}>×</button>
+                </div>
+
+                <div className="chart-editor-body">
+                    <div className="chart-example-hint">
+                        <p><strong>How it works:</strong></p>
+                        <ul>
+                            <li>Write a RexxJS script that sets <code>chartConfig</code> variable</li>
+                            <li>Use spreadsheet data via cell references (e.g., <code>A1</code>, <code>B2:B10</code>)</li>
+                            <li>Use all RexxJS functions like <code>SUM_RANGE</code>, <code>MAP</code>, etc.</li>
+                            <li>Chart types: <code>"bar"</code>, <code>"line"</code>, <code>"pie"</code>, <code>"doughnut"</code>, <code>"radar"</code>, etc.</li>
+                            <li>See <a href="https://www.chartjs.org/docs/latest/" target="_blank" className="chart-example-link">Chart.js docs</a> for full configuration options</li>
+                        </ul>
+                    </div>
+
+                    <textarea
+                        className="chart-script-editor"
+                        value={chartScript}
+                        onChange={(e) => setChartScript(e.target.value)}
+                        placeholder={exampleScript}
+                        rows={20}
+                    />
+
+                    {saveMessage && (
+                        <div className={`execute-message ${saveMessage.startsWith('✅') ? 'success' : 'error'}`}>
+                            {saveMessage}
+                        </div>
+                    )}
+                </div>
+
+                <div className="chart-editor-footer">
+                    <button className="button-secondary" onClick={handleRemove} style={{marginRight: 'auto'}}>
+                        🗑️ Remove Chart
+                    </button>
+                    <button className="button-secondary" onClick={onClose}>Cancel</button>
+                    <button className="button-primary" onClick={handleSave}>Save Chart</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
  * Settings Modal Component
  */
 function SettingsModal({ isOpen, onClose, model, adapter, onScriptExecuted }) {
@@ -843,6 +1131,8 @@ function App() {
     const [contextMenu, setContextMenu] = useState(null);
     const [clipboard, setClipboard] = useState(null);
     const [currentFilePath, setCurrentFilePath] = useState(null);
+    const [chartOverlay, setChartOverlay] = useState(null);
+    const [chartEditor, setChartEditor] = useState(null);
     const isTransitioningToEdit = useRef(false);
     const bufferedKeys = useRef([]);
     const initializationInProgress = useRef(false);
@@ -1084,6 +1374,31 @@ function App() {
             cellRef: cellRef
         });
     }, []);
+
+    const handleChartClick = useCallback((cellRef, chartScript) => {
+        setChartOverlay({
+            cellRef,
+            chartScript
+        });
+    }, []);
+
+    const handleCreateChart = useCallback(() => {
+        if (!contextMenu) return;
+        const cell = model?.getCell(contextMenu.cellRef);
+        setChartEditor({
+            cellRef: contextMenu.cellRef,
+            chartScript: cell?.chartScript || ''
+        });
+    }, [contextMenu, model]);
+
+    const handleEditChart = useCallback(() => {
+        if (!contextMenu) return;
+        const cell = model?.getCell(contextMenu.cellRef);
+        setChartEditor({
+            cellRef: contextMenu.cellRef,
+            chartScript: cell?.chartScript || ''
+        });
+    }, [contextMenu, model]);
 
     const handleSave = useCallback(async () => {
         if (!model) return;
@@ -1683,6 +1998,7 @@ function App() {
                     onSelectionMove={handleSelectionMove}
                     onSelectionEnd={handleSelectionEnd}
                     onContextMenu={handleContextMenu}
+                    onChartClick={handleChartClick}
                     bufferedKeysRef={bufferedKeys}
                     isTransitioningRef={isTransitioningToEdit}
                 />
@@ -1710,6 +2026,30 @@ function App() {
                     onDeleteRow={handleDeleteRow}
                     onInsertColumn={handleInsertColumn}
                     onDeleteColumn={handleDeleteColumn}
+                    onCreateChart={handleCreateChart}
+                    onEditChart={contextMenu && model?.getCell(contextMenu.cellRef)?.chartScript ? handleEditChart : null}
+                />
+            )}
+
+            {chartOverlay && (
+                <ChartOverlay
+                    cellRef={chartOverlay.cellRef}
+                    chartScript={chartOverlay.chartScript}
+                    model={model}
+                    adapter={adapter}
+                    onClose={() => setChartOverlay(null)}
+                />
+            )}
+
+            {chartEditor && (
+                <ChartEditorModal
+                    isOpen={true}
+                    cellRef={chartEditor.cellRef}
+                    initialScript={chartEditor.chartScript}
+                    model={model}
+                    adapter={adapter}
+                    onClose={() => setChartEditor(null)}
+                    onSave={() => setUpdateCounter(c => c + 1)}
                 />
             )}
 
