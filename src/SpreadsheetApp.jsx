@@ -138,9 +138,18 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
     // Apply formatting styles
     const formatStyles = cell.format ? parseFormatToCSS(cell.format) : {};
 
+    // Add text wrapping styles if enabled
+    if (cell.wrapText) {
+        formatStyles.whiteSpace = 'pre-wrap';
+        formatStyles.wordWrap = 'break-word';
+        formatStyles.overflowWrap = 'break-word';
+    }
+
+    const hasWrap = !!cell.wrapText;
+
     return (
         <div
-            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasChart ? 'has-chart' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
+            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasChart ? 'has-chart' : ''} ${hasWrap ? 'wrapped' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
             onClick={handleCellClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={onMouseDown}
@@ -552,7 +561,7 @@ function InfoPanel({ selectedCell, selectionRange, model, viewMode }) {
 /**
  * Context Menu Component
  */
-function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onEditChart, onCreateChart }) {
+function ContextMenu({ x, y, cellRef, cell, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onEditChart, onCreateChart, onToggleWrap }) {
     const menuRef = useRef(null);
 
     useEffect(() => {
@@ -728,6 +737,9 @@ function ContextMenu({ x, y, cellRef, onClose, onFormat, onCut, onCopy, onPaste,
                         </div>
                     </div>
                 )}
+            </div>
+            <div className="context-menu-item" onClick={() => { onToggleWrap(); onClose(); }}>
+                <span>{cell?.wrapText ? '⬜ Unwrap Text' : '↩️ Wrap Text'}</span>
             </div>
             <div
                 className="context-menu-item context-menu-submenu"
@@ -1365,6 +1377,17 @@ function App() {
         setUpdateCounter(c => c + 1);
         window.dispatchEvent(new CustomEvent('spreadsheet-update'));
     }, [model, adapter, contextMenu]);
+
+    const handleToggleWrap = useCallback(() => {
+        if (!model || !selectedCell) return;
+
+        const cell = model.getCell(selectedCell);
+        const currentWrap = cell.wrapText || false;
+
+        model.setCellMetadata(selectedCell, { wrapText: !currentWrap });
+        setUpdateCounter(c => c + 1);
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+    }, [model, selectedCell]);
 
     const handleContextMenu = useCallback((e, cellRef) => {
         e.preventDefault();
@@ -2016,6 +2039,7 @@ function App() {
                     x={contextMenu.x}
                     y={contextMenu.y}
                     cellRef={contextMenu.cellRef}
+                    cell={model?.getCell(contextMenu.cellRef)}
                     onClose={() => setContextMenu(null)}
                     onFormat={handleFormat}
                     onCut={() => { handleCut(); setContextMenu(null); }}
@@ -2028,6 +2052,7 @@ function App() {
                     onDeleteColumn={handleDeleteColumn}
                     onCreateChart={handleCreateChart}
                     onEditChart={contextMenu && model?.getCell(contextMenu.cellRef)?.chartScript ? handleEditChart : null}
+                    onToggleWrap={handleToggleWrap}
                 />
             )}
 

@@ -640,6 +640,63 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * SORTRANGE - Sort a range of cells by a column
+     * Usage: CALL SORTRANGE("A1:C10", "A", 1)  -- Sort by column A ascending
+     *        CALL SORTRANGE("A1:C10", 1, 1)    -- Sort by column 1 ascending
+     *        CALL SORTRANGE("A1:C10", "B", 0)  -- Sort by column B descending
+     */
+    SORTRANGE: async function(rangeRef, sortCol, ascending) {
+      if (!rangeRef || !sortCol) {
+        throw new Error('SORTRANGE requires range reference and sort column (e.g., "A1:C10", "A", 1)');
+      }
+
+      const isAscending = ascending === undefined || ascending === 1 || ascending === '1' || ascending === true;
+      model.sortRange(rangeRef, sortCol, isAscending, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * SETWRAPTEXT - Set text wrapping for a cell
+     * Usage: CALL SETWRAPTEXT("A1", 1)  -- Enable wrapping
+     *        CALL SETWRAPTEXT("A1", 0)  -- Disable wrapping
+     */
+    SETWRAPTEXT: function(cellRef, wrap) {
+      if (!cellRef) {
+        throw new Error('SETWRAPTEXT requires cell reference');
+      }
+
+      const wrapValue = wrap === 1 || wrap === '1' || wrap === true;
+      model.setCellMetadata(cellRef, { wrapText: wrapValue });
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * GETWRAPTEXT - Get text wrapping setting for a cell
+     * Usage: wrapped = GETWRAPTEXT("A1")
+     * Returns: 1 if wrapping enabled, 0 if disabled
+     */
+    GETWRAPTEXT: function(cellRef) {
+      if (!cellRef) {
+        throw new Error('GETWRAPTEXT requires cell reference');
+      }
+
+      const cell = model.getCell(cellRef);
+      return cell.wrapText ? 1 : 0;
+    },
+
+    /**
      * FIND - Find cells matching criteria
      * Usage: results = FIND("searchValue")
      *        results = FIND("searchValue", matchCase, matchEntireCell, searchFormulas)
@@ -1041,7 +1098,8 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'CLEAR', 'EXPORT', 'IMPORT', 'GETSHEETNAME', 'SETSHEETNAME',
         'EVALUATE', 'RECALCULATE', 'GETSETUPSCRIPT', 'SETSETUPSCRIPT',
         'EXECUTESETUPSCRIPT', 'INSERTROW', 'DELETEROW', 'INSERTCOLUMN', 'DELETECOLUMN',
-        'FILLDOWN', 'FILLRIGHT', 'FIND', 'REPLACE',
+        'FILLDOWN', 'FILLRIGHT', 'SORTRANGE', 'FIND', 'REPLACE',
+        'SETWRAPTEXT', 'GETWRAPTEXT',
         'HIDEROW', 'UNHIDEROW', 'HIDECOLUMN', 'UNHIDECOLUMN',
         'ISROWHIDDEN', 'ISCOLUMNHIDDEN',
         'DEFINENAMEDRANGE', 'DELETENAMEDRANGE', 'GETNAMEDRANGE', 'GETALLNAMEDRANGES',

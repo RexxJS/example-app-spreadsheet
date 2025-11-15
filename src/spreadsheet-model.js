@@ -85,7 +85,7 @@ class SpreadsheetModel {
         if (typeof ref === 'object') {
             ref = SpreadsheetModel.formatCellRef(ref.col, ref.row);
         }
-        return this.cells.get(ref) || { value: '', expression: null, dependencies: [], chartScript: null };
+        return this.cells.get(ref) || { value: '', expression: null, dependencies: [], chartScript: null, wrapText: false };
     }
 
     /**
@@ -146,7 +146,8 @@ class SpreadsheetModel {
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
                 format: metadata.format || oldCell?.format || '',
-                chartScript: metadata.chartScript || oldCell?.chartScript || null
+                chartScript: metadata.chartScript || oldCell?.chartScript || null,
+                wrapText: metadata.wrapText !== undefined ? metadata.wrapText : (oldCell?.wrapText || false)
             });
 
             // Evaluate the expression
@@ -162,7 +163,8 @@ class SpreadsheetModel {
                 error: null,
                 comment: metadata.comment || oldCell?.comment || '',
                 format: metadata.format || oldCell?.format || '',
-                chartScript: metadata.chartScript || oldCell?.chartScript || null
+                chartScript: metadata.chartScript || oldCell?.chartScript || null,
+                wrapText: metadata.wrapText !== undefined ? metadata.wrapText : (oldCell?.wrapText || false)
             });
         }
 
@@ -267,7 +269,8 @@ class SpreadsheetModel {
                 error: null,
                 comment: metadata.comment || '',
                 format: metadata.format || '',
-                chartScript: metadata.chartScript || null
+                chartScript: metadata.chartScript || null,
+                wrapText: metadata.wrapText || false
             });
         } else {
             // Update existing cell
@@ -279,6 +282,9 @@ class SpreadsheetModel {
             }
             if (metadata.chartScript !== undefined) {
                 cell.chartScript = metadata.chartScript;
+            }
+            if (metadata.wrapText !== undefined) {
+                cell.wrapText = metadata.wrapText;
             }
         }
     }
@@ -331,9 +337,12 @@ class SpreadsheetModel {
             if (cell.chartScript) {
                 cellData.chartScript = cell.chartScript;
             }
+            if (cell.wrapText) {
+                cellData.wrapText = cell.wrapText;
+            }
 
             // Only store if there's content or metadata
-            if (cellData.content || cellData.comment || cellData.format || cellData.chartScript) {
+            if (cellData.content || cellData.comment || cellData.format || cellData.chartScript || cellData.wrapText) {
                 // If only content, store as string for backward compatibility
                 if (Object.keys(cellData).length === 1 && cellData.content) {
                     data.cells[ref] = cellData.content;
@@ -400,7 +409,8 @@ class SpreadsheetModel {
                     const metadata = {
                         comment: cellData.comment || '',
                         format: cellData.format || '',
-                        chartScript: cellData.chartScript || null
+                        chartScript: cellData.chartScript || null,
+                        wrapText: cellData.wrapText || false
                     };
                     this.setCell(ref, cellData.content || '', rexxInterpreter, metadata);
                 }
@@ -807,14 +817,16 @@ class SpreadsheetModel {
                     // Preserve expression
                     const metadata = {
                         comment: sourceCell.comment || '',
-                        format: sourceCell.format || ''
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
                     };
                     this.setCell(targetRef, '=' + sourceCell.expression, rexxInterpreter, metadata);
                 } else if (sourceCell.value !== '') {
                     // Preserve value
                     const metadata = {
                         comment: sourceCell.comment || '',
-                        format: sourceCell.format || ''
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
                     };
                     this.setCell(targetRef, sourceCell.value, rexxInterpreter, metadata);
                 } else {
@@ -889,12 +901,14 @@ class SpreadsheetModel {
                     const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowOffset, colOffset);
                     this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
                         format: sourceCell.format,
-                        comment: sourceCell.comment
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
                     });
                 } else {
                     this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
                         format: sourceCell.format,
-                        comment: sourceCell.comment
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
                     });
                 }
             }
@@ -960,12 +974,14 @@ class SpreadsheetModel {
                     const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowDiff, colDiff);
                     this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
                         format: sourceCell.format,
-                        comment: sourceCell.comment
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
                     });
                 } else {
                     this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
                         format: sourceCell.format,
-                        comment: sourceCell.comment
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
                     });
                 }
             }
@@ -1072,12 +1088,14 @@ class SpreadsheetModel {
                 if (searchFormulas && cell.expression) {
                     this.setCell(ref, '=' + textToReplace, rexxInterpreter, {
                         format: cell.format,
-                        comment: cell.comment
+                        comment: cell.comment,
+                        wrapText: cell.wrapText
                     });
                 } else {
                     this.setCell(ref, textToReplace, rexxInterpreter, {
                         format: cell.format,
-                        comment: cell.comment
+                        comment: cell.comment,
+                        wrapText: cell.wrapText
                     });
                 }
                 count++;
