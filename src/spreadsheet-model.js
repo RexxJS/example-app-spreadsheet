@@ -678,17 +678,7 @@ class SpreadsheetModel {
                     });
                 }
 
-                // Restore filter criteria
-                if (sheetData.filterCriteria) {
-                    sheet.filterCriteria = sheetData.filterCriteria;
-                    // Re-apply filter
-                    const savedActive = this.activeSheetName;
-                    this.activeSheetName = sheetName;
-                    this.applyRowFilter(sheetData.filterCriteria.column, sheetData.filterCriteria.criteria);
-                    this.activeSheetName = savedActive;
-                }
-
-                // Import cells
+                // Import cells first (filter needs cells to be present)
                 const cells = sheetData.cells || {};
                 const savedActive = this.activeSheetName;
                 this.activeSheetName = sheetName;
@@ -706,6 +696,11 @@ class SpreadsheetModel {
                         };
                         this.setCell(ref, cellData.content || '', rexxInterpreter, metadata);
                     }
+                }
+
+                // Restore filter criteria after cells are imported
+                if (sheetData.filterCriteria) {
+                    this.applyRowFilter(sheetData.filterCriteria.column, sheetData.filterCriteria.criteria);
                 }
 
                 this.activeSheetName = savedActive;

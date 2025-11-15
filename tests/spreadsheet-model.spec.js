@@ -169,17 +169,28 @@ describe('SpreadsheetModel', () => {
             model.setCell('A3', '=A1 + A2');
 
             const json = model.toJSON();
-            expect(json.cells).toBeDefined();
-            expect(json.cells.A1).toBe('10');
-            expect(json.cells.A2).toBe('20');
-            expect(json.cells.A3).toBe('=A1 + A2');
+            // Version 2 format uses sheets
+            expect(json.version).toBe(2);
+            expect(json.sheets).toBeDefined();
+            expect(json.sheets.Sheet1).toBeDefined();
+            expect(json.sheets.Sheet1.cells).toBeDefined();
+            expect(json.sheets.Sheet1.cells.A1).toBe('10');
+            expect(json.sheets.Sheet1.cells.A2).toBe('20');
+            expect(json.sheets.Sheet1.cells.A3).toBe('=A1 + A2');
         });
 
         it('should import cells from JSON', () => {
             const data = {
-                'A1': '10',
-                'B1': 'Hello',
-                'C1': '=A1 + 5'
+                version: 2,
+                sheets: {
+                    Sheet1: {
+                        cells: {
+                            'A1': '10',
+                            'B1': 'Hello',
+                            'C1': '=A1 + 5'
+                        }
+                    }
+                }
             };
 
             model.fromJSON(data);
