@@ -47,7 +47,10 @@ class SpreadsheetModel {
             validations: new Map(), // key: "A1", value: validation rules
             filteredRows: null, // null = no filter, Set = visible rows
             filterCriteria: null, // Filter criteria object
-            columnOrder: null // null = default order, Array = custom column order
+            columnOrder: null, // null = default order, Array = custom column order
+            mergedCells: new Map(), // key: "A1" (top-left), value: "C3" (bottom-right)
+            cellEditors: new Map(), // key: "A1", value: {type: 'checkbox'|'dropdown'|'date', config: {}}
+            pivotTables: new Map() // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
         });
     }
 
@@ -164,6 +167,27 @@ class SpreadsheetModel {
     }
     set rowHeights(value) {
         this._getActiveSheet().rowHeights = value;
+    }
+
+    get mergedCells() {
+        return this._getActiveSheet().mergedCells;
+    }
+    set mergedCells(value) {
+        this._getActiveSheet().mergedCells = value;
+    }
+
+    get cellEditors() {
+        return this._getActiveSheet().cellEditors;
+    }
+    set cellEditors(value) {
+        this._getActiveSheet().cellEditors = value;
+    }
+
+    get pivotTables() {
+        return this._getActiveSheet().pivotTables;
+    }
+    set pivotTables(value) {
+        this._getActiveSheet().pivotTables = value;
     }
 
     /**
@@ -566,6 +590,490 @@ class SpreadsheetModel {
     }
 
     /**
+     * Parse a range reference (e.g., "A1:C3")
+     * @param {string} rangeRef - Range reference
+     * @returns {object|null} - {startCol, startRow, endCol, endRow} or null if invalid
+     */
+    parseRange(rangeRef) {
+        const match = rangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!match) {
+            return null;
+        }
+
+        const startColLetter = match[1].toUpperCase();
+        const startRow = parseInt(match[2], 10);
+        const endColLetter = match[3].toUpperCase();
+        const endRow = parseInt(match[4], 10);
+
+        return {
+            startCol: SpreadsheetModel.colLetterToNumber(startColLetter),
+            startRow,
+            endCol: SpreadsheetModel.colLetterToNumber(endColLetter),
+            endRow
+        };
+    }
+
+    /**
+     * Merge cells in a range
+     * @param {string} rangeRef - Range reference (e.g., "A1:C3")
+     * @param {object} rexxInterpreter - Optional Rexx interpreter for recalculation
+     */
+    mergeCells(rangeRef, rexxInterpreter = null) {
+        const range = this.parseRange(rangeRef);
+        if (!range) {
+            throw new Error(`Invalid range: ${rangeRef}`);
+        }
+
+        const topLeft = SpreadsheetModel.formatCellRef(range.startCol, range.startRow);
+        const bottomRight = SpreadsheetModel.formatCellRef(range.endCol, range.endRow);
+
+        // Check if any cells in this range are already part of another merge
+        for (let row = range.startRow; row <= range.endRow; row++) {
+            for (let col = range.startCol; col <= range.endCol; col++) {
+                const cellRef = SpreadsheetModel.formatCellRef(col, row);
+                if (this.isCellMerged(cellRef) && cellRef !== topLeft) {
+                    throw new Error(`Cell ${cellRef} is already part of a merged range`);
+                }
+            }
+        }
+
+        // Store the merge - top-left cell maps to bottom-right
+        this.mergedCells.set(topLeft, bottomRight);
+
+        // Save history
+        this._recordSnapshot('mergeCells');
+
+        return topLeft;
+    }
+
+    /**
+     * Unmerge cells
+     * @param {string} cellRef - Any cell reference in the merged range
+     */
+    unmergeCells(cellRef) {
+        if (typeof cellRef === 'object') {
+            cellRef = SpreadsheetModel.formatCellRef(cellRef.col, cellRef.row);
+        }
+
+        // Find the merge that contains this cell
+        const mergeInfo = this.getMergedRange(cellRef);
+        if (!mergeInfo) {
+            throw new Error(`Cell ${cellRef} is not part of a merged range`);
+        }
+
+        // Remove the merge
+        this.mergedCells.delete(mergeInfo.topLeft);
+
+        // Save history
+        this._recordSnapshot('unmergeCells');
+
+        return mergeInfo.topLeft;
+    }
+
+    /**
+     * Get merged range information for a cell
+     * @param {string} cellRef - Cell reference
+     * @returns {object|null} - {topLeft, bottomRight, range} or null if not merged
+     */
+    getMergedRange(cellRef) {
+        if (typeof cellRef === 'object') {
+            cellRef = SpreadsheetModel.formatCellRef(cellRef.col, cellRef.row);
+        }
+
+        // Check if this cell is the top-left of a merge
+        const bottomRight = this.mergedCells.get(cellRef);
+        if (bottomRight) {
+            return {
+                topLeft: cellRef,
+                bottomRight: bottomRight,
+                range: `${cellRef}:${bottomRight}`
+            };
+        }
+
+        // Check if this cell is inside any merge
+        const parsed = SpreadsheetModel.parseCellRef(cellRef);
+        for (const [topLeft, bottomRight] of this.mergedCells.entries()) {
+            const topLeftParsed = SpreadsheetModel.parseCellRef(topLeft);
+            const bottomRightParsed = SpreadsheetModel.parseCellRef(bottomRight);
+
+            if (parsed.row >= topLeftParsed.row && parsed.row <= bottomRightParsed.row &&
+                SpreadsheetModel.colLetterToNumber(parsed.col) >= SpreadsheetModel.colLetterToNumber(topLeftParsed.col) &&
+                SpreadsheetModel.colLetterToNumber(parsed.col) <= SpreadsheetModel.colLetterToNumber(bottomRightParsed.col)) {
+                return {
+                    topLeft: topLeft,
+                    bottomRight: bottomRight,
+                    range: `${topLeft}:${bottomRight}`
+                };
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a cell is part of a merged range
+     * @param {string} cellRef - Cell reference
+     * @returns {boolean}
+     */
+    isCellMerged(cellRef) {
+        return this.getMergedRange(cellRef) !== null;
+    }
+
+    /**
+     * Set custom editor for a cell
+     * @param {string} cellRef - Cell reference
+     * @param {string} type - Editor type: 'checkbox', 'dropdown', 'date'
+     * @param {object} config - Configuration object for the editor
+     */
+    setCellEditor(cellRef, type, config = {}) {
+        if (typeof cellRef === 'object') {
+            cellRef = SpreadsheetModel.formatCellRef(cellRef.col, cellRef.row);
+        }
+
+        const validTypes = ['checkbox', 'dropdown', 'date'];
+        if (!validTypes.includes(type)) {
+            throw new Error(`Invalid editor type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+        }
+
+        // Validate config based on type
+        if (type === 'dropdown' && !config.options) {
+            throw new Error('Dropdown editor requires "options" array in config');
+        }
+
+        this.cellEditors.set(cellRef, { type, config });
+
+        // Save history
+        this._recordSnapshot('setCellEditor');
+
+        return cellRef;
+    }
+
+    /**
+     * Get custom editor for a cell
+     * @param {string} cellRef - Cell reference
+     * @returns {object|null} - {type, config} or null if no custom editor
+     */
+    getCellEditor(cellRef) {
+        if (typeof cellRef === 'object') {
+            cellRef = SpreadsheetModel.formatCellRef(cellRef.col, cellRef.row);
+        }
+
+        return this.cellEditors.get(cellRef) || null;
+    }
+
+    /**
+     * Remove custom editor from a cell
+     * @param {string} cellRef - Cell reference
+     */
+    removeCellEditor(cellRef) {
+        if (typeof cellRef === 'object') {
+            cellRef = SpreadsheetModel.formatCellRef(cellRef.col, cellRef.row);
+        }
+
+        this.cellEditors.delete(cellRef);
+
+        // Save history
+        this._recordSnapshot('removeCellEditor');
+
+        return cellRef;
+    }
+
+    /**
+     * Create or update a pivot table
+     * @param {string} pivotId - Unique identifier for this pivot table
+     * @param {object} config - Pivot configuration
+     *   {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
+     * @param {object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    createPivotTable(pivotId, config, rexxInterpreter = null) {
+        // Validate configuration
+        if (!config.sourceRange || !config.outputCell) {
+            throw new Error('Pivot table requires sourceRange and outputCell');
+        }
+        if (!config.valueField || !config.aggFunction) {
+            throw new Error('Pivot table requires valueField and aggFunction (SUM, COUNT, AVERAGE, MIN, MAX)');
+        }
+
+        const validAggFunctions = ['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX'];
+        if (!validAggFunctions.includes(config.aggFunction.toUpperCase())) {
+            throw new Error(`Invalid aggregation function: ${config.aggFunction}. Must be one of: ${validAggFunctions.join(', ')}`);
+        }
+
+        // Store pivot configuration
+        this.pivotTables.set(pivotId, {
+            sourceRange: config.sourceRange,
+            rowFields: config.rowFields || [],
+            colFields: config.colFields || [],
+            valueField: config.valueField,
+            aggFunction: config.aggFunction.toUpperCase(),
+            outputCell: config.outputCell,
+            filters: config.filters || {}
+        });
+
+        // Generate and populate pivot table
+        this._generatePivotTable(pivotId, rexxInterpreter);
+
+        // Save history
+        this._recordSnapshot('createPivotTable');
+
+        return pivotId;
+    }
+
+    /**
+     * Update an existing pivot table
+     * @param {string} pivotId - Pivot table identifier
+     * @param {object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    updatePivotTable(pivotId, rexxInterpreter = null) {
+        if (!this.pivotTables.has(pivotId)) {
+            throw new Error(`Pivot table not found: ${pivotId}`);
+        }
+
+        this._generatePivotTable(pivotId, rexxInterpreter);
+
+        // Save history
+        this._recordSnapshot('updatePivotTable');
+
+        return pivotId;
+    }
+
+    /**
+     * Delete a pivot table
+     * @param {string} pivotId - Pivot table identifier
+     */
+    deletePivotTable(pivotId) {
+        if (!this.pivotTables.has(pivotId)) {
+            throw new Error(`Pivot table not found: ${pivotId}`);
+        }
+
+        this.pivotTables.delete(pivotId);
+
+        // Save history
+        this._recordSnapshot('deletePivotTable');
+
+        return pivotId;
+    }
+
+    /**
+     * Get pivot table configuration
+     * @param {string} pivotId - Pivot table identifier
+     * @returns {object|null} Pivot configuration or null
+     */
+    getPivotTable(pivotId) {
+        return this.pivotTables.get(pivotId) || null;
+    }
+
+    /**
+     * Get all pivot tables
+     * @returns {Array} Array of {id, config} objects
+     */
+    getAllPivotTables() {
+        const result = [];
+        for (const [id, config] of this.pivotTables.entries()) {
+            result.push({ id, config });
+        }
+        return result;
+    }
+
+    /**
+     * Generate pivot table data and populate cells
+     * @private
+     */
+    _generatePivotTable(pivotId, rexxInterpreter = null) {
+        const config = this.pivotTables.get(pivotId);
+        if (!config) return;
+
+        // Parse source range
+        const sourceRange = this.parseRange(config.sourceRange);
+        if (!sourceRange) {
+            throw new Error(`Invalid source range: ${config.sourceRange}`);
+        }
+
+        // Extract source data
+        const sourceData = this._extractRangeData(sourceRange);
+
+        // Build pivot table structure
+        const pivotData = this._buildPivotData(sourceData, config);
+
+        // Write pivot table to output cells
+        this._writePivotTable(pivotData, config.outputCell, rexxInterpreter);
+    }
+
+    /**
+     * Extract data from a range into array of row objects
+     * @private
+     */
+    _extractRangeData(range) {
+        const data = [];
+        const headers = [];
+
+        // Extract headers from first row
+        for (let col = range.startCol; col <= range.endCol; col++) {
+            const ref = SpreadsheetModel.formatCellRef(col, range.startRow);
+            const cell = this.getCell(ref);
+            headers.push(cell.value || `Column${col}`);
+        }
+
+        // Extract data rows
+        for (let row = range.startRow + 1; row <= range.endRow; row++) {
+            const rowData = {};
+            for (let col = range.startCol; col <= range.endCol; col++) {
+                const ref = SpreadsheetModel.formatCellRef(col, row);
+                const cell = this.getCell(ref);
+                const colIndex = col - range.startCol;
+                rowData[headers[colIndex]] = cell.value || '';
+            }
+            data.push(rowData);
+        }
+
+        return { headers, data };
+    }
+
+    /**
+     * Build pivot table from source data
+     * @private
+     */
+    _buildPivotData(sourceData, config) {
+        const { data } = sourceData;
+        const rowFields = config.rowFields || [];
+        const colFields = config.colFields || [];
+        const valueField = config.valueField;
+        const aggFunction = config.aggFunction;
+
+        // Group data
+        const groups = new Map();
+
+        for (const row of data) {
+            // Apply filters if any
+            let includeRow = true;
+            for (const [field, filterValue] of Object.entries(config.filters || {})) {
+                if (row[field] !== filterValue) {
+                    includeRow = false;
+                    break;
+                }
+            }
+            if (!includeRow) continue;
+
+            // Build group key
+            const rowKey = rowFields.map(f => row[f] || '').join('|');
+            const colKey = colFields.map(f => row[f] || '').join('|');
+            const key = `${rowKey}::${colKey}`;
+
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    rowKey,
+                    colKey,
+                    rowValues: rowFields.map(f => row[f] || ''),
+                    colValues: colFields.map(f => row[f] || ''),
+                    values: []
+                });
+            }
+
+            const value = parseFloat(row[valueField]);
+            if (!isNaN(value)) {
+                groups.get(key).values.push(value);
+            }
+        }
+
+        // Calculate aggregations
+        const result = new Map();
+        for (const [key, group] of groups.entries()) {
+            let aggregatedValue = 0;
+            if (group.values.length > 0) {
+                switch (aggFunction) {
+                    case 'SUM':
+                        aggregatedValue = group.values.reduce((a, b) => a + b, 0);
+                        break;
+                    case 'COUNT':
+                        aggregatedValue = group.values.length;
+                        break;
+                    case 'AVERAGE':
+                        aggregatedValue = group.values.reduce((a, b) => a + b, 0) / group.values.length;
+                        break;
+                    case 'MIN':
+                        aggregatedValue = Math.min(...group.values);
+                        break;
+                    case 'MAX':
+                        aggregatedValue = Math.max(...group.values);
+                        break;
+                }
+            }
+            result.set(key, {
+                rowKey: group.rowKey,
+                colKey: group.colKey,
+                rowValues: group.rowValues,
+                colValues: group.colValues,
+                value: aggregatedValue
+            });
+        }
+
+        // Get unique row and column values
+        const uniqueRows = new Set();
+        const uniqueCols = new Set();
+        for (const entry of result.values()) {
+            uniqueRows.add(entry.rowKey);
+            uniqueCols.add(entry.colKey);
+        }
+
+        return {
+            data: result,
+            rowKeys: Array.from(uniqueRows),
+            colKeys: Array.from(uniqueCols),
+            rowFields,
+            colFields
+        };
+    }
+
+    /**
+     * Write pivot table to spreadsheet cells
+     * @private
+     */
+    _writePivotTable(pivotData, outputCell, rexxInterpreter = null) {
+        const outputRef = SpreadsheetModel.parseCellRef(outputCell);
+        let currentRow = outputRef.row;
+
+        // Write column headers
+        let currentCol = SpreadsheetModel.colLetterToNumber(outputRef.col);
+        // Skip row label columns
+        for (let i = 0; i < pivotData.rowFields.length; i++) {
+            const ref = SpreadsheetModel.formatCellRef(currentCol + i, currentRow);
+            this.setCell(ref, pivotData.rowFields[i] || '', rexxInterpreter);
+        }
+        currentCol += pivotData.rowFields.length;
+
+        // Write column values as headers
+        for (const colKey of pivotData.colKeys) {
+            const ref = SpreadsheetModel.formatCellRef(currentCol, currentRow);
+            this.setCell(ref, colKey || '(blank)', rexxInterpreter);
+            currentCol++;
+        }
+        currentRow++;
+
+        // Write data rows
+        for (const rowKey of pivotData.rowKeys) {
+            currentCol = SpreadsheetModel.colLetterToNumber(outputRef.col);
+
+            // Write row labels
+            const rowValues = Array.from(pivotData.data.values()).find(e => e.rowKey === rowKey)?.rowValues || [];
+            for (let i = 0; i < pivotData.rowFields.length; i++) {
+                const ref = SpreadsheetModel.formatCellRef(currentCol + i, currentRow);
+                this.setCell(ref, rowValues[i] || '', rexxInterpreter);
+            }
+            currentCol += pivotData.rowFields.length;
+
+            // Write values
+            for (const colKey of pivotData.colKeys) {
+                const key = `${rowKey}::${colKey}`;
+                const entry = pivotData.data.get(key);
+                const ref = SpreadsheetModel.formatCellRef(currentCol, currentRow);
+                this.setCell(ref, entry ? String(entry.value) : '0', rexxInterpreter);
+                currentCol++;
+            }
+            currentRow++;
+        }
+    }
+
+    /**
      * Get setup script
      */
     getSetupScript() {
@@ -602,7 +1110,10 @@ class SpreadsheetModel {
                 namedRanges: Object.fromEntries(sheet.namedRanges),
                 frozenRows: sheet.frozenRows,
                 frozenColumns: sheet.frozenColumns,
-                validations: Object.fromEntries(sheet.validations)
+                validations: Object.fromEntries(sheet.validations),
+                mergedCells: Object.fromEntries(sheet.mergedCells),
+                cellEditors: Object.fromEntries(sheet.cellEditors),
+                pivotTables: Object.fromEntries(sheet.pivotTables)
             };
 
             // Add filter criteria if present
@@ -708,6 +1219,27 @@ class SpreadsheetModel {
                     });
                 }
 
+                // Restore merged cells
+                if (sheetData.mergedCells) {
+                    Object.entries(sheetData.mergedCells).forEach(([topLeft, bottomRight]) => {
+                        sheet.mergedCells.set(topLeft, bottomRight);
+                    });
+                }
+
+                // Restore cell editors
+                if (sheetData.cellEditors) {
+                    Object.entries(sheetData.cellEditors).forEach(([ref, editor]) => {
+                        sheet.cellEditors.set(ref, editor);
+                    });
+                }
+
+                // Restore pivot tables
+                if (sheetData.pivotTables) {
+                    Object.entries(sheetData.pivotTables).forEach(([id, config]) => {
+                        sheet.pivotTables.set(id, config);
+                    });
+                }
+
                 // Import cells first (filter needs cells to be present)
                 const cells = sheetData.cells || {};
                 const savedActive = this.activeSheetName;
@@ -779,6 +1311,27 @@ class SpreadsheetModel {
             if (data.validations) {
                 Object.entries(data.validations).forEach(([ref, validation]) => {
                     this.validations.set(ref, validation);
+                });
+            }
+
+            // Restore merged cells
+            if (data.mergedCells) {
+                Object.entries(data.mergedCells).forEach(([topLeft, bottomRight]) => {
+                    this.mergedCells.set(topLeft, bottomRight);
+                });
+            }
+
+            // Restore cell editors
+            if (data.cellEditors) {
+                Object.entries(data.cellEditors).forEach(([ref, editor]) => {
+                    this.cellEditors.set(ref, editor);
+                });
+            }
+
+            // Restore pivot tables
+            if (data.pivotTables) {
+                Object.entries(data.pivotTables).forEach(([id, config]) => {
+                    this.pivotTables.set(id, config);
                 });
             }
 
@@ -2005,6 +2558,9 @@ class SpreadsheetModel {
             frozenRows: this.frozenRows,
             frozenColumns: this.frozenColumns,
             validations: new Map(this.validations),
+            mergedCells: new Map(this.mergedCells),
+            cellEditors: new Map(this.cellEditors),
+            pivotTables: new Map(this.pivotTables),
             timestamp: Date.now()
         };
 
@@ -2039,6 +2595,9 @@ class SpreadsheetModel {
             frozenRows: this.frozenRows,
             frozenColumns: this.frozenColumns,
             validations: new Map(this.validations),
+            mergedCells: new Map(this.mergedCells),
+            cellEditors: new Map(this.cellEditors),
+            pivotTables: new Map(this.pivotTables),
             timestamp: Date.now()
         };
         this.redoStack.push(currentSnapshot);
@@ -2054,6 +2613,9 @@ class SpreadsheetModel {
         this.frozenRows = snapshot.frozenRows;
         this.frozenColumns = snapshot.frozenColumns;
         this.validations = new Map(snapshot.validations);
+        this.mergedCells = new Map(snapshot.mergedCells || new Map());
+        this.cellEditors = new Map(snapshot.cellEditors || new Map());
+        this.pivotTables = new Map(snapshot.pivotTables || new Map());
 
         this._rebuildDependents();
         if (rexxInterpreter) {
@@ -2084,6 +2646,9 @@ class SpreadsheetModel {
             frozenRows: this.frozenRows,
             frozenColumns: this.frozenColumns,
             validations: new Map(this.validations),
+            mergedCells: new Map(this.mergedCells),
+            cellEditors: new Map(this.cellEditors),
+            pivotTables: new Map(this.pivotTables),
             timestamp: Date.now()
         };
         this.undoStack.push(currentSnapshot);
@@ -2099,6 +2664,9 @@ class SpreadsheetModel {
         this.frozenRows = snapshot.frozenRows;
         this.frozenColumns = snapshot.frozenColumns;
         this.validations = new Map(snapshot.validations);
+        this.mergedCells = new Map(snapshot.mergedCells || new Map());
+        this.cellEditors = new Map(snapshot.cellEditors || new Map());
+        this.pivotTables = new Map(snapshot.pivotTables || new Map());
 
         this._rebuildDependents();
         if (rexxInterpreter) {
