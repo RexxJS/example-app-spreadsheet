@@ -1085,6 +1085,219 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * ADDSHEET - Add a new sheet to the spreadsheet
+     * Usage: CALL ADDSHEET("Sheet2")
+     *        sheetName = ADDSHEET("DataSheet")
+     * Returns: Sheet name
+     */
+    ADDSHEET: function(sheetName) {
+      if (!sheetName || typeof sheetName !== 'string') {
+        throw new Error('ADDSHEET requires sheet name as argument');
+      }
+
+      model.addSheet(sheetName);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return sheetName;
+    },
+
+    /**
+     * DELETESHEET - Delete a sheet from the spreadsheet
+     * Usage: CALL DELETESHEET("Sheet2")
+     */
+    DELETESHEET: function(sheetName) {
+      if (!sheetName || typeof sheetName !== 'string') {
+        throw new Error('DELETESHEET requires sheet name as argument');
+      }
+
+      model.deleteSheet(sheetName);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * RENAMESHEET - Rename a sheet
+     * Usage: CALL RENAMESHEET("Sheet1", "MainData")
+     */
+    RENAMESHEET: function(oldName, newName) {
+      if (!oldName || typeof oldName !== 'string') {
+        throw new Error('RENAMESHEET requires old sheet name as first argument');
+      }
+      if (!newName || typeof newName !== 'string') {
+        throw new Error('RENAMESHEET requires new sheet name as second argument');
+      }
+
+      model.renameSheet(oldName, newName);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return newName;
+    },
+
+    /**
+     * SETACTIVESHEET - Set the active sheet
+     * Usage: CALL SETACTIVESHEET("Sheet2")
+     */
+    SETACTIVESHEET: function(sheetName) {
+      if (!sheetName || typeof sheetName !== 'string') {
+        throw new Error('SETACTIVESHEET requires sheet name as argument');
+      }
+
+      model.setActiveSheet(sheetName);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return sheetName;
+    },
+
+    /**
+     * GETACTIVESHEET - Get the name of the active sheet
+     * Usage: sheetName = GETACTIVESHEET()
+     */
+    GETACTIVESHEET: function() {
+      return model.getActiveSheetName();
+    },
+
+    /**
+     * GETSHEETNAMES - Get list of all sheet names
+     * Usage: sheets = GETSHEETNAMES()
+     * Returns: REXX stem array with sheet names
+     */
+    GETSHEETNAMES: function() {
+      const sheetNames = model.getSheetNames();
+
+      // Return as REXX stem array
+      const result = { 0: sheetNames.length };
+      sheetNames.forEach((name, index) => {
+        result[index + 1] = name;
+      });
+
+      return result;
+    },
+
+    /**
+     * APPLYROWFILTER - Filter rows by column criteria
+     * Usage: CALL APPLYROWFILTER("A", "apple")
+     *        CALL APPLYROWFILTER(1, "test")
+     */
+    APPLYROWFILTER: function(columnNum, criteria) {
+      if (columnNum === undefined || columnNum === null) {
+        throw new Error('APPLYROWFILTER requires column as first argument (letter or number)');
+      }
+      if (criteria === undefined || criteria === null) {
+        throw new Error('APPLYROWFILTER requires criteria as second argument');
+      }
+
+      model.applyRowFilter(columnNum, String(criteria));
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * CLEARROWFILTER - Clear all row filters
+     * Usage: CALL CLEARROWFILTER()
+     */
+    CLEARROWFILTER: function() {
+      model.clearRowFilter();
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * GETFILTERCRITERIA - Get current filter criteria
+     * Usage: criteria = GETFILTERCRITERIA()
+     * Returns: Filter criteria object or empty string if no filter
+     */
+    GETFILTERCRITERIA: function() {
+      const criteria = model.getFilterCriteria();
+      if (!criteria) {
+        return '';
+      }
+      return JSON.stringify(criteria);
+    },
+
+    /**
+     * ISROWVISIBLE - Check if a row is visible (not filtered out)
+     * Usage: visible = ISROWVISIBLE(5)
+     * Returns: 1 if visible, 0 if hidden by filter
+     */
+    ISROWVISIBLE: function(rowNum) {
+      if (typeof rowNum !== 'number') {
+        rowNum = parseInt(rowNum, 10);
+      }
+      if (isNaN(rowNum) || rowNum < 1) {
+        throw new Error('ISROWVISIBLE requires row number as argument');
+      }
+
+      return model.isRowVisible(rowNum) ? '1' : '0';
+    },
+
+    /**
+     * MOVECOLUMNLEFT - Move a column one position to the left
+     * Usage: CALL MOVECOLUMNLEFT("B")
+     *        CALL MOVECOLUMNLEFT(2)
+     */
+    MOVECOLUMNLEFT: async function(colNum) {
+      if (colNum === undefined || colNum === null) {
+        throw new Error('MOVECOLUMNLEFT requires column as argument (letter or number)');
+      }
+
+      await model.moveColumnLeft(colNum, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * MOVECOLUMNRIGHT - Move a column one position to the right
+     * Usage: CALL MOVECOLUMNRIGHT("B")
+     *        CALL MOVECOLUMNRIGHT(2)
+     */
+    MOVECOLUMNRIGHT: async function(colNum) {
+      if (colNum === undefined || colNum === null) {
+        throw new Error('MOVECOLUMNRIGHT requires column as argument (letter or number)');
+      }
+
+      await model.moveColumnRight(colNum, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
      * LISTCOMMANDS - Get list of available commands
      * Usage: commands = LISTCOMMANDS()
      * Returns: REXX stem array with command names
@@ -1106,6 +1319,9 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'FREEZEPANES', 'UNFREEZEPANES', 'GETFROZENPANES',
         'SETCELLVALIDATION', 'CLEARCELLVALIDATION', 'VALIDATECELL',
         'UNDO', 'REDO', 'CANUNDO', 'CANREDO',
+        'ADDSHEET', 'DELETESHEET', 'RENAMESHEET', 'SETACTIVESHEET', 'GETACTIVESHEET', 'GETSHEETNAMES',
+        'APPLYROWFILTER', 'CLEARROWFILTER', 'GETFILTERCRITERIA', 'ISROWVISIBLE',
+        'MOVECOLUMNLEFT', 'MOVECOLUMNRIGHT',
         'LISTCOMMANDS'
       ];
 
@@ -1329,6 +1545,110 @@ export const functionMetadata = {
     description: 'Execute setup script',
     examples: [
       'CALL EXECUTESETUPSCRIPT()'
+    ]
+  },
+  ADDSHEET: {
+    name: 'ADDSHEET',
+    params: ['sheetName'],
+    description: 'Add a new sheet to the spreadsheet',
+    examples: [
+      'CALL ADDSHEET("Sheet2")',
+      'sheetName = ADDSHEET("DataSheet")'
+    ]
+  },
+  DELETESHEET: {
+    name: 'DELETESHEET',
+    params: ['sheetName'],
+    description: 'Delete a sheet from the spreadsheet',
+    examples: [
+      'CALL DELETESHEET("Sheet2")'
+    ]
+  },
+  RENAMESHEET: {
+    name: 'RENAMESHEET',
+    params: ['oldName', 'newName'],
+    description: 'Rename a sheet',
+    examples: [
+      'CALL RENAMESHEET("Sheet1", "MainData")'
+    ]
+  },
+  SETACTIVESHEET: {
+    name: 'SETACTIVESHEET',
+    params: ['sheetName'],
+    description: 'Set the active sheet',
+    examples: [
+      'CALL SETACTIVESHEET("Sheet2")'
+    ]
+  },
+  GETACTIVESHEET: {
+    name: 'GETACTIVESHEET',
+    params: [],
+    description: 'Get the name of the active sheet',
+    examples: [
+      'sheetName = GETACTIVESHEET()',
+      'SAY "Current sheet:" GETACTIVESHEET()'
+    ]
+  },
+  GETSHEETNAMES: {
+    name: 'GETSHEETNAMES',
+    params: [],
+    description: 'Get list of all sheet names',
+    examples: [
+      'sheets = GETSHEETNAMES()',
+      'SAY sheets.0 "sheets found"'
+    ]
+  },
+  APPLYROWFILTER: {
+    name: 'APPLYROWFILTER',
+    params: ['columnNum', 'criteria'],
+    description: 'Filter rows by column criteria (shows rows containing the text)',
+    examples: [
+      'CALL APPLYROWFILTER("A", "apple")',
+      'CALL APPLYROWFILTER(1, "test")'
+    ]
+  },
+  CLEARROWFILTER: {
+    name: 'CLEARROWFILTER',
+    params: [],
+    description: 'Clear all row filters',
+    examples: [
+      'CALL CLEARROWFILTER()'
+    ]
+  },
+  GETFILTERCRITERIA: {
+    name: 'GETFILTERCRITERIA',
+    params: [],
+    description: 'Get current filter criteria (JSON string)',
+    examples: [
+      'criteria = GETFILTERCRITERIA()',
+      'SAY "Filter:" GETFILTERCRITERIA()'
+    ]
+  },
+  ISROWVISIBLE: {
+    name: 'ISROWVISIBLE',
+    params: ['rowNum'],
+    description: 'Check if a row is visible (not filtered out)',
+    examples: [
+      'visible = ISROWVISIBLE(5)',
+      'IF ISROWVISIBLE(10) THEN SAY "Row 10 is visible"'
+    ]
+  },
+  MOVECOLUMNLEFT: {
+    name: 'MOVECOLUMNLEFT',
+    params: ['colNum'],
+    description: 'Move a column one position to the left (swaps with previous column)',
+    examples: [
+      'CALL MOVECOLUMNLEFT("B")',
+      'CALL MOVECOLUMNLEFT(2)'
+    ]
+  },
+  MOVECOLUMNRIGHT: {
+    name: 'MOVECOLUMNRIGHT',
+    params: ['colNum'],
+    description: 'Move a column one position to the right (swaps with next column)',
+    examples: [
+      'CALL MOVECOLUMNRIGHT("B")',
+      'CALL MOVECOLUMNRIGHT(2)'
     ]
   },
   LISTCOMMANDS: {
