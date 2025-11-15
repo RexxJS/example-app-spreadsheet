@@ -25,7 +25,7 @@ function isBase64Image(value) {
 /**
  * Cell Component
  */
-function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onStartEdit, viewMode, onMouseDown, onMouseEnter, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef }) {
+function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onStartEdit, viewMode, onMouseDown, onMouseEnter, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef, width, height }) {
     const inputRef = useRef(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState('');
@@ -155,6 +155,16 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
         formatStyles.overflowWrap = 'break-word';
     }
 
+    // Apply width and height if provided
+    if (width !== undefined) {
+        formatStyles.width = `${width}px`;
+        formatStyles.minWidth = `${width}px`;
+    }
+    if (height !== undefined) {
+        formatStyles.height = `${height}px`;
+        formatStyles.minHeight = `${height}px`;
+    }
+
     const hasWrap = !!cell.wrapText;
 
     // Check if the display value is a base64 image
@@ -207,10 +217,51 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
 /**
  * Column Header Component
  */
-function ColumnHeader({ col }) {
+function ColumnHeader({ col, model, onResize }) {
+    const [isResizing, setIsResizing] = useState(false);
+    const startX = useRef(0);
+    const startWidth = useRef(0);
+
+    const handleResizeStart = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+        startX.current = e.clientX;
+        startWidth.current = model.getColumnWidth(col);
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e) => {
+            const delta = e.clientX - startX.current;
+            const newWidth = Math.max(30, startWidth.current + delta);
+            model.setColumnWidth(col, newWidth);
+            if (onResize) onResize();
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing, col, model, onResize]);
+
+    const width = model.getColumnWidth(col);
+
     return (
-        <div className="column-header">
+        <div className="column-header" style={{ width: `${width}px`, minWidth: `${width}px` }}>
             {SpreadsheetModel.colNumberToLetter(col)}
+            <div
+                className="resize-handle resize-handle-col"
+                onMouseDown={handleResizeStart}
+            />
         </div>
     );
 }
@@ -218,10 +269,51 @@ function ColumnHeader({ col }) {
 /**
  * Row Header Component
  */
-function RowHeader({ row }) {
+function RowHeader({ row, model, onResize }) {
+    const [isResizing, setIsResizing] = useState(false);
+    const startY = useRef(0);
+    const startHeight = useRef(0);
+
+    const handleResizeStart = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsResizing(true);
+        startY.current = e.clientY;
+        startHeight.current = model.getRowHeight(row);
+    };
+
+    useEffect(() => {
+        if (!isResizing) return;
+
+        const handleMouseMove = (e) => {
+            const delta = e.clientY - startY.current;
+            const newHeight = Math.max(20, startHeight.current + delta);
+            model.setRowHeight(row, newHeight);
+            if (onResize) onResize();
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(false);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing, row, model, onResize]);
+
+    const height = model.getRowHeight(row);
+
     return (
-        <div className="row-header">
+        <div className="row-header" style={{ height: `${height}px`, minHeight: `${height}px` }}>
             {row}
+            <div
+                className="resize-handle resize-handle-row"
+                onMouseDown={handleResizeStart}
+            />
         </div>
     );
 }
@@ -229,7 +321,7 @@ function RowHeader({ row }) {
 /**
  * Grid Component
  */
-function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, onStartCellEdit, visibleRows, visibleCols, viewMode, onSelectionStart, onSelectionMove, onSelectionEnd, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef }) {
+function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, onStartCellEdit, visibleRows, visibleCols, viewMode, onSelectionStart, onSelectionMove, onSelectionEnd, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef, onResize }) {
     const rows = [];
 
     // Header row with column letters
@@ -237,7 +329,7 @@ function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, o
         <div key="header" className="grid-row header-row">
             <div className="corner-cell"></div>
             {Array.from({ length: visibleCols }, (_, i) => (
-                <ColumnHeader key={i} col={i + 1} />
+                <ColumnHeader key={i} col={i + 1} model={model} onResize={onResize} />
             ))}
         </div>
     );
@@ -253,7 +345,7 @@ function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, o
         const cells = [];
 
         // Row header
-        cells.push(<RowHeader key={`row-${row}`} row={row} />);
+        cells.push(<RowHeader key={`row-${row}`} row={row} model={model} onResize={onResize} />);
 
         // Data cells
         for (let col = 1; col <= visibleCols; col++) {
@@ -281,6 +373,8 @@ function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, o
                     onChartClick={onChartClick}
                     bufferedKeysRef={bufferedKeysRef}
                     isTransitioningRef={isTransitioningRef}
+                    width={model.getColumnWidth(col)}
+                    height={model.getRowHeight(row)}
                 />
             );
         }
@@ -466,6 +560,86 @@ function FormulaBar({ selectedCell, model, onEdit }) {
                 placeholder="Enter value or =formula"
                 disabled={!selectedCell}
             />
+        </div>
+    );
+}
+
+/**
+ * Ribbon Component - Toolbar with column/row operations
+ */
+function Ribbon({ model, selectedCell, onUpdate }) {
+    const [showColumnPicker, setShowColumnPicker] = useState(false);
+    const [showSortDialog, setShowSortDialog] = useState(false);
+
+    const handleHideColumn = () => {
+        if (!selectedCell) return;
+        const { col } = parseCellRef(selectedCell);
+        model.hideColumn(col);
+        if (onUpdate) onUpdate();
+    };
+
+    const handleShowAllColumns = () => {
+        model.hiddenColumns.clear();
+        if (onUpdate) onUpdate();
+    };
+
+    const handleHideRow = () => {
+        if (!selectedCell) return;
+        const { row } = parseCellRef(selectedCell);
+        model.hideRow(row);
+        if (onUpdate) onUpdate();
+    };
+
+    const handleShowAllRows = () => {
+        model.hiddenRows.clear();
+        if (onUpdate) onUpdate();
+    };
+
+    const handleSort = (ascending) => {
+        if (!selectedCell) return;
+        try {
+            const { col, row } = parseCellRef(selectedCell);
+            const colLetter = SpreadsheetModel.colNumberToLetter(col);
+            // Sort from the current row to the last visible row with data
+            const rangeRef = `${colLetter}${row}:${colLetter}20`;
+            model.sortRange(rangeRef, colLetter, ascending);
+            if (onUpdate) onUpdate();
+            setShowSortDialog(false);
+        } catch (error) {
+            console.error('Sort error:', error);
+            alert('Error sorting: ' + error.message);
+        }
+    };
+
+    return (
+        <div className="ribbon">
+            <div className="ribbon-group">
+                <span className="ribbon-label">Column:</span>
+                <button className="ribbon-button" onClick={handleHideColumn} disabled={!selectedCell}>
+                    Hide Column
+                </button>
+                <button className="ribbon-button" onClick={handleShowAllColumns}>
+                    Show All Columns
+                </button>
+            </div>
+            <div className="ribbon-group">
+                <span className="ribbon-label">Row:</span>
+                <button className="ribbon-button" onClick={handleHideRow} disabled={!selectedCell}>
+                    Hide Row
+                </button>
+                <button className="ribbon-button" onClick={handleShowAllRows}>
+                    Show All Rows
+                </button>
+            </div>
+            <div className="ribbon-group">
+                <span className="ribbon-label">Sort:</span>
+                <button className="ribbon-button" onClick={() => handleSort(true)} disabled={!selectedCell}>
+                    Sort A→Z
+                </button>
+                <button className="ribbon-button" onClick={() => handleSort(false)} disabled={!selectedCell}>
+                    Sort Z→A
+                </button>
+            </div>
         </div>
     );
 }
@@ -2267,6 +2441,12 @@ function App() {
                 onEdit={handleEditCell}
             />
 
+            <Ribbon
+                model={model}
+                selectedCell={selectedCell}
+                onUpdate={() => setUpdateCounter(c => c + 1)}
+            />
+
             <SheetTabs
                 model={model}
                 activeSheet={sheetName}
@@ -2294,6 +2474,7 @@ function App() {
                     onChartClick={handleChartClick}
                     bufferedKeysRef={bufferedKeys}
                     isTransitioningRef={isTransitioningToEdit}
+                    onResize={() => setUpdateCounter(c => c + 1)}
                 />
 
                 <InfoPanel
