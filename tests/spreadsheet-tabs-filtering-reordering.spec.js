@@ -244,8 +244,8 @@ describe('SpreadsheetModel - Tabs, Filtering, and Reordering', () => {
 
             model.moveColumnRight('A');
 
-            // Absolute reference should not change
-            expect(model.getCell('C1').expression).toBe('$A$1 + B1');
+            // Absolute reference ($A$1) should not change, but relative reference (B1) should swap to A1
+            expect(model.getCell('C1').expression).toBe('$A$1 + A1');
         });
 
         it('should handle complex formulas when swapping', () => {
