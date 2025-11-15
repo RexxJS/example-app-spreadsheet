@@ -39,6 +39,8 @@ class SpreadsheetModel {
             evaluationInProgress: new Set(), // For circular reference detection
             hiddenRows: new Set(), // Set of hidden row numbers
             hiddenColumns: new Set(), // Set of hidden column numbers
+            columnWidths: new Map(), // key: column number, value: width in pixels
+            rowHeights: new Map(), // key: row number, value: height in pixels
             namedRanges: new Map(), // key: "MyRange", value: "A1:B5"
             frozenRows: 0, // Number of rows frozen at top
             frozenColumns: 0, // Number of columns frozen at left
@@ -148,6 +150,20 @@ class SpreadsheetModel {
     }
     set columnOrder(value) {
         this._getActiveSheet().columnOrder = value;
+    }
+
+    get columnWidths() {
+        return this._getActiveSheet().columnWidths;
+    }
+    set columnWidths(value) {
+        this._getActiveSheet().columnWidths = value;
+    }
+
+    get rowHeights() {
+        return this._getActiveSheet().rowHeights;
+    }
+    set rowHeights(value) {
+        this._getActiveSheet().rowHeights = value;
     }
 
     /**
@@ -581,6 +597,8 @@ class SpreadsheetModel {
                 cells: {},
                 hiddenRows: Array.from(sheet.hiddenRows),
                 hiddenColumns: Array.from(sheet.hiddenColumns),
+                columnWidths: Object.fromEntries(sheet.columnWidths),
+                rowHeights: Object.fromEntries(sheet.rowHeights),
                 namedRanges: Object.fromEntries(sheet.namedRanges),
                 frozenRows: sheet.frozenRows,
                 frozenColumns: sheet.frozenColumns,
@@ -660,6 +678,18 @@ class SpreadsheetModel {
                     sheetData.hiddenColumns.forEach(col => sheet.hiddenColumns.add(col));
                 }
 
+                // Restore column widths and row heights
+                if (sheetData.columnWidths) {
+                    Object.entries(sheetData.columnWidths).forEach(([col, width]) => {
+                        sheet.columnWidths.set(Number(col), width);
+                    });
+                }
+                if (sheetData.rowHeights) {
+                    Object.entries(sheetData.rowHeights).forEach(([row, height]) => {
+                        sheet.rowHeights.set(Number(row), height);
+                    });
+                }
+
                 // Restore named ranges
                 if (sheetData.namedRanges) {
                     Object.entries(sheetData.namedRanges).forEach(([name, range]) => {
@@ -720,6 +750,18 @@ class SpreadsheetModel {
             }
             if (data.hiddenColumns) {
                 data.hiddenColumns.forEach(col => this.hiddenColumns.add(col));
+            }
+
+            // Restore column widths and row heights
+            if (data.columnWidths) {
+                Object.entries(data.columnWidths).forEach(([col, width]) => {
+                    this.columnWidths.set(Number(col), width);
+                });
+            }
+            if (data.rowHeights) {
+                Object.entries(data.rowHeights).forEach(([row, height]) => {
+                    this.rowHeights.set(Number(row), height);
+                });
             }
 
             // Restore named ranges
@@ -1509,6 +1551,60 @@ class SpreadsheetModel {
             colNum = SpreadsheetModel.colLetterToNumber(colNum);
         }
         return this.hiddenColumns.has(colNum);
+    }
+
+    /**
+     * Set column width
+     * @param {number|string} colNum - Column number or letter
+     * @param {number} width - Width in pixels (must be > 0)
+     */
+    setColumnWidth(colNum, width) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+        if (colNum < 1 || colNum > this.cols) {
+            throw new Error(`Invalid column number: ${colNum}`);
+        }
+        if (width <= 0) {
+            throw new Error(`Width must be greater than 0: ${width}`);
+        }
+        this.columnWidths.set(colNum, width);
+    }
+
+    /**
+     * Get column width
+     * @param {number|string} colNum - Column number or letter
+     * @returns {number} Width in pixels (default 100 if not set)
+     */
+    getColumnWidth(colNum) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+        return this.columnWidths.get(colNum) || 100; // Default width 100px
+    }
+
+    /**
+     * Set row height
+     * @param {number} rowNum - Row number
+     * @param {number} height - Height in pixels (must be > 0)
+     */
+    setRowHeight(rowNum, height) {
+        if (rowNum < 1 || rowNum > this.rows) {
+            throw new Error(`Invalid row number: ${rowNum}`);
+        }
+        if (height <= 0) {
+            throw new Error(`Height must be greater than 0: ${height}`);
+        }
+        this.rowHeights.set(rowNum, height);
+    }
+
+    /**
+     * Get row height
+     * @param {number} rowNum - Row number
+     * @returns {number} Height in pixels (default 32 if not set)
+     */
+    getRowHeight(rowNum) {
+        return this.rowHeights.get(rowNum) || 32; // Default height 32px
     }
 
     /**

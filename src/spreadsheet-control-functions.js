@@ -872,6 +872,92 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * SETCOLWIDTH - Set column width
+     * Usage: CALL SETCOLWIDTH(5, 150)
+     *        CALL SETCOLWIDTH("E", 150)
+     */
+    SETCOLWIDTH: function(colNum, width) {
+      if (!colNum || !width) {
+        throw new Error('SETCOLWIDTH requires column number/letter and width as arguments');
+      }
+
+      const widthNum = parseFloat(width);
+      if (isNaN(widthNum) || widthNum <= 0) {
+        throw new Error('SETCOLWIDTH width must be a positive number');
+      }
+
+      model.setColumnWidth(colNum, widthNum);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * GETCOLWIDTH - Get column width
+     * Usage: width = GETCOLWIDTH(5)
+     *        width = GETCOLWIDTH("E")
+     * Returns: Width in pixels (default 100 if not set)
+     */
+    GETCOLWIDTH: function(colNum) {
+      if (!colNum) {
+        throw new Error('GETCOLWIDTH requires column number or letter as argument');
+      }
+
+      return model.getColumnWidth(colNum);
+    },
+
+    /**
+     * SETROWHEIGHT - Set row height
+     * Usage: CALL SETROWHEIGHT(5, 50)
+     */
+    SETROWHEIGHT: function(rowNum, height) {
+      if (!rowNum || !height) {
+        throw new Error('SETROWHEIGHT requires row number and height as arguments');
+      }
+
+      const rowNumber = parseInt(rowNum, 10);
+      if (isNaN(rowNumber)) {
+        throw new Error('SETROWHEIGHT requires a valid row number');
+      }
+
+      const heightNum = parseFloat(height);
+      if (isNaN(heightNum) || heightNum <= 0) {
+        throw new Error('SETROWHEIGHT height must be a positive number');
+      }
+
+      model.setRowHeight(rowNumber, heightNum);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return 'OK';
+    },
+
+    /**
+     * GETROWHEIGHT - Get row height
+     * Usage: height = GETROWHEIGHT(5)
+     * Returns: Height in pixels (default 32 if not set)
+     */
+    GETROWHEIGHT: function(rowNum) {
+      if (!rowNum) {
+        throw new Error('GETROWHEIGHT requires row number as argument');
+      }
+
+      const rowNumber = parseInt(rowNum, 10);
+      if (isNaN(rowNumber)) {
+        throw new Error('GETROWHEIGHT requires a valid row number');
+      }
+
+      return model.getRowHeight(rowNumber);
+    },
+
+    /**
      * DEFINENAMEDRANGE - Define a named range
      * Usage: CALL DEFINENAMEDRANGE("SalesData", "A1:B10")
      *        CALL DEFINENAMEDRANGE("TaxRate", "A1")

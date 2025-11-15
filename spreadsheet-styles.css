@@ -97,6 +97,48 @@ body {
     border-radius: 4px;
 }
 
+/* Ribbon */
+.ribbon {
+    display: flex;
+    align-items: center;
+    padding: 8px 15px;
+    background: #fafafa;
+    border-bottom: 1px solid #ddd;
+    gap: 20px;
+}
+
+.ribbon-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ribbon-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+}
+
+.ribbon-button {
+    padding: 6px 12px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.ribbon-button:hover:not(:disabled) {
+    background: #e8f4fd;
+    border-color: #2196F3;
+}
+
+.ribbon-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Formatting Toolbar */
 .formatting-toolbar {
     display: flex;
@@ -278,6 +320,38 @@ body {
 
 .row-header:hover {
     background: #e8f4fd;
+}
+
+/* Resize handles */
+.resize-handle {
+    position: absolute;
+    z-index: 10;
+}
+
+.resize-handle-col {
+    right: 0;
+    top: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+}
+
+.resize-handle-col:hover {
+    background: #2196F3;
+}
+
+.resize-handle-row {
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    cursor: row-resize;
+    background: transparent;
+}
+
+.resize-handle-row:hover {
+    background: #2196F3;
 }
 
 .cell {
