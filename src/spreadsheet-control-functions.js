@@ -1384,6 +1384,253 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * MERGECELLS - Merge cells in a range
+     * Usage: CALL MERGECELLS("A1:C3")
+     *        topLeft = MERGECELLS("B2:D5")
+     */
+    MERGECELLS: async function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('MERGECELLS requires range reference as argument (e.g., "A1:C3")');
+      }
+
+      const topLeft = model.mergeCells(rangeRef, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return topLeft;
+    },
+
+    /**
+     * UNMERGECELLS - Unmerge cells
+     * Usage: CALL UNMERGECELLS("A1")
+     *        topLeft = UNMERGECELLS("B2")
+     */
+    UNMERGECELLS: async function(cellRef) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('UNMERGECELLS requires cell reference as argument (e.g., "A1")');
+      }
+
+      const topLeft = model.unmergeCells(cellRef);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return topLeft;
+    },
+
+    /**
+     * GETMERGEDRANGE - Get merged range information for a cell
+     * Usage: range = GETMERGEDRANGE("A1")
+     *        IF range <> '' THEN SAY "Cell is merged:" range
+     */
+    GETMERGEDRANGE: function(cellRef) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('GETMERGEDRANGE requires cell reference as argument (e.g., "A1")');
+      }
+
+      const mergeInfo = model.getMergedRange(cellRef);
+      return mergeInfo ? mergeInfo.range : '';
+    },
+
+    /**
+     * ISCELLMERGED - Check if a cell is part of a merged range
+     * Usage: merged = ISCELLMERGED("A1")
+     *        IF ISCELLMERGED("B2") THEN SAY "Cell is merged"
+     */
+    ISCELLMERGED: function(cellRef) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('ISCELLMERGED requires cell reference as argument (e.g., "A1")');
+      }
+
+      return model.isCellMerged(cellRef) ? '1' : '0';
+    },
+
+    /**
+     * SETCELLEDITOR - Set custom editor for a cell
+     * Usage: CALL SETCELLEDITOR("A1", "checkbox")
+     *        CALL SETCELLEDITOR("B1", "dropdown", '{"options":["Red","Green","Blue"]}')
+     *        CALL SETCELLEDITOR("C1", "date", '{"format":"YYYY-MM-DD"}')
+     */
+    SETCELLEDITOR: async function(cellRef, type, config) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('SETCELLEDITOR requires cell reference as first argument (e.g., "A1")');
+      }
+      if (!type || typeof type !== 'string') {
+        throw new Error('SETCELLEDITOR requires editor type as second argument (checkbox, dropdown, date)');
+      }
+
+      // Parse config if it's a JSON string
+      let configObj = {};
+      if (config && typeof config === 'string') {
+        try {
+          configObj = JSON.parse(config);
+        } catch (e) {
+          throw new Error('SETCELLEDITOR config must be valid JSON string');
+        }
+      } else if (config && typeof config === 'object') {
+        configObj = config;
+      }
+
+      model.setCellEditor(cellRef, type, configObj);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return cellRef;
+    },
+
+    /**
+     * GETCELLEDITOR - Get custom editor information for a cell
+     * Usage: editor = GETCELLEDITOR("A1")
+     *        SAY "Editor type:" GETCELLEDITOR("A1")
+     */
+    GETCELLEDITOR: function(cellRef) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('GETCELLEDITOR requires cell reference as argument (e.g., "A1")');
+      }
+
+      const editor = model.getCellEditor(cellRef);
+      return editor ? JSON.stringify(editor) : '';
+    },
+
+    /**
+     * REMOVECELLEDITOR - Remove custom editor from a cell
+     * Usage: CALL REMOVECELLEDITOR("A1")
+     */
+    REMOVECELLEDITOR: async function(cellRef) {
+      if (!cellRef || typeof cellRef !== 'string') {
+        throw new Error('REMOVECELLEDITOR requires cell reference as argument (e.g., "A1")');
+      }
+
+      model.removeCellEditor(cellRef);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return cellRef;
+    },
+
+    /**
+     * CREATEPIVOT - Create a pivot table
+     * Usage: CALL CREATEPIVOT("pivot1", '{"sourceRange":"A1:D10","rowFields":["Category"],"colFields":["Month"],"valueField":"Sales","aggFunction":"SUM","outputCell":"F1"}')
+     *        pivotId = CREATEPIVOT("sales_pivot", configJson)
+     */
+    CREATEPIVOT: async function(pivotId, configJson) {
+      if (!pivotId || typeof pivotId !== 'string') {
+        throw new Error('CREATEPIVOT requires pivot ID as first argument');
+      }
+      if (!configJson || typeof configJson !== 'string') {
+        throw new Error('CREATEPIVOT requires configuration JSON as second argument');
+      }
+
+      let config;
+      try {
+        config = JSON.parse(configJson);
+      } catch (e) {
+        throw new Error('CREATEPIVOT config must be valid JSON string');
+      }
+
+      model.createPivotTable(pivotId, config, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return pivotId;
+    },
+
+    /**
+     * UPDATEPIVOT - Update/refresh a pivot table
+     * Usage: CALL UPDATEPIVOT("pivot1")
+     */
+    UPDATEPIVOT: async function(pivotId) {
+      if (!pivotId || typeof pivotId !== 'string') {
+        throw new Error('UPDATEPIVOT requires pivot ID as argument');
+      }
+
+      model.updatePivotTable(pivotId, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return pivotId;
+    },
+
+    /**
+     * DELETEPIVOT - Delete a pivot table
+     * Usage: CALL DELETEPIVOT("pivot1")
+     */
+    DELETEPIVOT: async function(pivotId) {
+      if (!pivotId || typeof pivotId !== 'string') {
+        throw new Error('DELETEPIVOT requires pivot ID as argument');
+      }
+
+      model.deletePivotTable(pivotId);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return pivotId;
+    },
+
+    /**
+     * GETPIVOT - Get pivot table configuration
+     * Usage: config = GETPIVOT("pivot1")
+     */
+    GETPIVOT: function(pivotId) {
+      if (!pivotId || typeof pivotId !== 'string') {
+        throw new Error('GETPIVOT requires pivot ID as argument');
+      }
+
+      const pivot = model.getPivotTable(pivotId);
+      return pivot ? JSON.stringify(pivot) : '';
+    },
+
+    /**
+     * LISTPIVOTS - Get list of all pivot tables
+     * Usage: pivots = LISTPIVOTS()
+     */
+    LISTPIVOTS: function() {
+      const pivots = model.getAllPivotTables();
+      return JSON.stringify(pivots);
+    },
+
+    /**
+     * PIVOTCONFIG - Helper function to build pivot configuration
+     * Usage: config = PIVOTCONFIG("A1:D10", "Sales", "SUM", "F1", '["Category"]', '["Month"]')
+     */
+    PIVOTCONFIG: function(sourceRange, valueField, aggFunction, outputCell, rowFields, colFields) {
+      if (!sourceRange || !valueField || !aggFunction || !outputCell) {
+        throw new Error('PIVOTCONFIG requires sourceRange, valueField, aggFunction, and outputCell');
+      }
+
+      const config = {
+        sourceRange,
+        valueField,
+        aggFunction: aggFunction.toUpperCase(),
+        outputCell,
+        rowFields: rowFields ? JSON.parse(rowFields) : [],
+        colFields: colFields ? JSON.parse(colFields) : []
+      };
+
+      return JSON.stringify(config);
+    },
+
+    /**
      * LISTCOMMANDS - Get list of available commands
      * Usage: commands = LISTCOMMANDS()
      * Returns: REXX stem array with command names
@@ -1408,6 +1655,9 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'ADDSHEET', 'DELETESHEET', 'RENAMESHEET', 'SETACTIVESHEET', 'GETACTIVESHEET', 'GETSHEETNAMES',
         'APPLYROWFILTER', 'CLEARROWFILTER', 'GETFILTERCRITERIA', 'ISROWVISIBLE',
         'MOVECOLUMNLEFT', 'MOVECOLUMNRIGHT',
+        'MERGECELLS', 'UNMERGECELLS', 'GETMERGEDRANGE', 'ISCELLMERGED',
+        'SETCELLEDITOR', 'GETCELLEDITOR', 'REMOVECELLEDITOR',
+        'CREATEPIVOT', 'UPDATEPIVOT', 'DELETEPIVOT', 'GETPIVOT', 'LISTPIVOTS', 'PIVOTCONFIG',
         'LISTCOMMANDS'
       ];
 
@@ -1735,6 +1985,121 @@ export const functionMetadata = {
     examples: [
       'CALL MOVECOLUMNRIGHT("B")',
       'CALL MOVECOLUMNRIGHT(2)'
+    ]
+  },
+  MERGECELLS: {
+    name: 'MERGECELLS',
+    params: ['rangeRef'],
+    description: 'Merge cells in a range',
+    examples: [
+      'CALL MERGECELLS("A1:C3")',
+      'topLeft = MERGECELLS("B2:D5")'
+    ]
+  },
+  UNMERGECELLS: {
+    name: 'UNMERGECELLS',
+    params: ['cellRef'],
+    description: 'Unmerge cells',
+    examples: [
+      'CALL UNMERGECELLS("A1")',
+      'topLeft = UNMERGECELLS("B2")'
+    ]
+  },
+  GETMERGEDRANGE: {
+    name: 'GETMERGEDRANGE',
+    params: ['cellRef'],
+    description: 'Get merged range information for a cell',
+    examples: [
+      'range = GETMERGEDRANGE("A1")',
+      'IF range <> "" THEN SAY "Cell is merged:" range'
+    ]
+  },
+  ISCELLMERGED: {
+    name: 'ISCELLMERGED',
+    params: ['cellRef'],
+    description: 'Check if a cell is part of a merged range',
+    examples: [
+      'merged = ISCELLMERGED("A1")',
+      'IF ISCELLMERGED("B2") THEN SAY "Cell is merged"'
+    ]
+  },
+  SETCELLEDITOR: {
+    name: 'SETCELLEDITOR',
+    params: ['cellRef', 'type', 'config'],
+    description: 'Set custom editor for a cell (checkbox, dropdown, date)',
+    examples: [
+      'CALL SETCELLEDITOR("A1", "checkbox")',
+      'CALL SETCELLEDITOR("B1", "dropdown", \'{"options":["Red","Green","Blue"]}\')',
+      'CALL SETCELLEDITOR("C1", "date", \'{"format":"YYYY-MM-DD"}\')'
+    ]
+  },
+  GETCELLEDITOR: {
+    name: 'GETCELLEDITOR',
+    params: ['cellRef'],
+    description: 'Get custom editor information for a cell',
+    examples: [
+      'editor = GETCELLEDITOR("A1")',
+      'SAY "Editor type:" GETCELLEDITOR("A1")'
+    ]
+  },
+  REMOVECELLEDITOR: {
+    name: 'REMOVECELLEDITOR',
+    params: ['cellRef'],
+    description: 'Remove custom editor from a cell',
+    examples: [
+      'CALL REMOVECELLEDITOR("A1")'
+    ]
+  },
+  CREATEPIVOT: {
+    name: 'CREATEPIVOT',
+    params: ['pivotId', 'configJson'],
+    description: 'Create a pivot table with configuration',
+    examples: [
+      'config = PIVOTCONFIG("A1:D10", "Sales", "SUM", "F1", \'["Category"]\', \'["Month"]\')',
+      'CALL CREATEPIVOT("sales_pivot", config)'
+    ]
+  },
+  UPDATEPIVOT: {
+    name: 'UPDATEPIVOT',
+    params: ['pivotId'],
+    description: 'Update/refresh a pivot table',
+    examples: [
+      'CALL UPDATEPIVOT("sales_pivot")'
+    ]
+  },
+  DELETEPIVOT: {
+    name: 'DELETEPIVOT',
+    params: ['pivotId'],
+    description: 'Delete a pivot table',
+    examples: [
+      'CALL DELETEPIVOT("sales_pivot")'
+    ]
+  },
+  GETPIVOT: {
+    name: 'GETPIVOT',
+    params: ['pivotId'],
+    description: 'Get pivot table configuration (JSON)',
+    examples: [
+      'config = GETPIVOT("sales_pivot")',
+      'SAY "Pivot config:" config'
+    ]
+  },
+  LISTPIVOTS: {
+    name: 'LISTPIVOTS',
+    params: [],
+    description: 'Get list of all pivot tables (JSON)',
+    examples: [
+      'pivots = LISTPIVOTS()',
+      'SAY "All pivots:" pivots'
+    ]
+  },
+  PIVOTCONFIG: {
+    name: 'PIVOTCONFIG',
+    params: ['sourceRange', 'valueField', 'aggFunction', 'outputCell', 'rowFields', 'colFields'],
+    description: 'Helper to build pivot configuration (JSON)',
+    examples: [
+      'config = PIVOTCONFIG("A1:D10", "Sales", "SUM", "F1", \'["Category"]\', \'["Month"]\')',
+      'config = PIVOTCONFIG("A1:E20", "Amount", "AVERAGE", "G1", \'["Product"]\', \'[]\')'
     ]
   },
   LISTCOMMANDS: {
