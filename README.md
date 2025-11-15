@@ -6,6 +6,8 @@ A proof-of-concept spreadsheet powered by RexxJS expressions, built with React.
 - **Web**: Static HTML/JS that can be served from any web server
 - **Desktop**: Native application for Mac, Windows, and Linux via Tauri
 
+**📚 [Visual Feature Guide with Screenshots](docs/FEATURES.md)** - See the spreadsheet in action with step-by-step screenshots
+
 ## Quick Start
 
 ### Development Mode (Tauri)
@@ -632,6 +634,15 @@ npm test -- --testPathPattern="spreadsheet"
 ### Playwright Tests (UI)
 ```bash
 PLAYWRIGHT_HTML_OPEN=never npx playwright test examples/spreadsheet-poc/tests/
+```
+
+### Generate Documentation Screenshots
+```bash
+# Generate screenshots for the visual feature guide
+npm run test:screenshots
+
+# Screenshots are saved to docs/screenshots/
+# See docs/FEATURES.md for the complete visual guide
 ```
 
 ## Limitations & Future Enhancements
