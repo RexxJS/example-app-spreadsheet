@@ -14,6 +14,15 @@ import { createSpreadsheetControlFunctions } from './spreadsheet-control-functio
 import SpreadsheetModel from './spreadsheet-model.js';
 
 /**
+ * Helper function to check if a value is a base64 image data URI
+ */
+function isBase64Image(value) {
+    if (typeof value !== 'string') return false;
+    // Check for data URI with image MIME type
+    return /^data:image\/(png|jpg|jpeg|gif|bmp|webp|svg\+xml);base64,/.test(value);
+}
+
+/**
  * Cell Component
  */
 function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onStartEdit, viewMode, onMouseDown, onMouseEnter, onContextMenu, onChartClick, bufferedKeysRef, isTransitioningRef }) {
@@ -148,9 +157,12 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
 
     const hasWrap = !!cell.wrapText;
 
+    // Check if the display value is a base64 image
+    const isImage = isBase64Image(displayValue);
+
     return (
         <div
-            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasChart ? 'has-chart' : ''} ${hasWrap ? 'wrapped' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
+            className={`cell ${isSelected ? 'selected' : ''} ${isInSelection ? 'in-selection' : ''} ${hasError ? 'error' : ''} ${hasFormula ? 'formula' : ''} ${hasFormat ? 'formatted' : ''} ${hasComment ? 'commented' : ''} ${hasChart ? 'has-chart' : ''} ${hasWrap ? 'wrapped' : ''} ${isImage ? 'has-image' : ''} ${viewMode !== 'normal' ? 'view-mode-' + viewMode : ''}`}
             onClick={handleCellClick}
             onDoubleClick={handleDoubleClick}
             onMouseDown={onMouseDown}
@@ -170,7 +182,23 @@ function Cell({ cellRef, cell, isSelected, isInSelection, onSelect, onEdit, onSt
                     className="cell-input"
                 />
             ) : (
-                showCell && <span className="cell-value">{displayValue}</span>
+                showCell && (
+                    isImage ? (
+                        <img
+                            src={displayValue}
+                            alt="Cell content"
+                            className="cell-image"
+                            style={{
+                                maxWidth: '100%',
+                                maxHeight: '100%',
+                                objectFit: 'contain',
+                                display: 'block'
+                            }}
+                        />
+                    ) : (
+                        <span className="cell-value">{displayValue}</span>
+                    )
+                )
             )}
         </div>
     );
