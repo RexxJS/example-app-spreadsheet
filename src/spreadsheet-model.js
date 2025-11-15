@@ -13,20 +13,141 @@ class SpreadsheetModel {
     constructor(rows = 100, cols = 26) {
         this.rows = rows;
         this.cols = cols;
-        this.cells = new Map(); // key: "A1", value: {value, expression, dependencies}
-        this.dependents = new Map(); // key: "A1", value: Set of cells that depend on A1
-        this.evaluationInProgress = new Set(); // For circular reference detection
+
+        // Multi-sheet support
+        this.sheets = new Map(); // key: sheet name, value: sheet data
+        this.activeSheetName = 'Sheet1'; // Current active sheet
+        this.sheetOrder = ['Sheet1']; // Ordered list of sheet names
+
+        // Initialize default sheet
+        this._initializeSheet('Sheet1');
+
         this.setupScript = ''; // Page-level RexxJS code (REQUIRE statements, etc.)
-        this.hiddenRows = new Set(); // Set of hidden row numbers
-        this.hiddenColumns = new Set(); // Set of hidden column numbers
-        this.namedRanges = new Map(); // key: "MyRange", value: "A1:B5"
-        this.frozenRows = 0; // Number of rows frozen at top
-        this.frozenColumns = 0; // Number of columns frozen at left
-        this.validations = new Map(); // key: "A1", value: validation rules
         this.undoStack = []; // History for undo
         this.redoStack = []; // History for redo
         this.maxHistorySize = 100; // Limit undo/redo stack size
         this.recordingHistory = true; // Flag to enable/disable history recording
+    }
+
+    /**
+     * Initialize a new sheet with default values
+     */
+    _initializeSheet(name) {
+        this.sheets.set(name, {
+            cells: new Map(), // key: "A1", value: {value, expression, dependencies}
+            dependents: new Map(), // key: "A1", value: Set of cells that depend on A1
+            evaluationInProgress: new Set(), // For circular reference detection
+            hiddenRows: new Set(), // Set of hidden row numbers
+            hiddenColumns: new Set(), // Set of hidden column numbers
+            namedRanges: new Map(), // key: "MyRange", value: "A1:B5"
+            frozenRows: 0, // Number of rows frozen at top
+            frozenColumns: 0, // Number of columns frozen at left
+            validations: new Map(), // key: "A1", value: validation rules
+            filteredRows: null, // null = no filter, Set = visible rows
+            filterCriteria: null, // Filter criteria object
+            columnOrder: null // null = default order, Array = custom column order
+        });
+    }
+
+    /**
+     * Get the active sheet data
+     */
+    _getActiveSheet() {
+        return this.sheets.get(this.activeSheetName);
+    }
+
+    /**
+     * Get sheet data by name
+     */
+    _getSheet(sheetName) {
+        return this.sheets.get(sheetName || this.activeSheetName);
+    }
+
+    /**
+     * Legacy compatibility: expose cells, dependents, etc. from active sheet
+     */
+    get cells() {
+        return this._getActiveSheet().cells;
+    }
+    set cells(value) {
+        this._getActiveSheet().cells = value;
+    }
+
+    get dependents() {
+        return this._getActiveSheet().dependents;
+    }
+    set dependents(value) {
+        this._getActiveSheet().dependents = value;
+    }
+
+    get evaluationInProgress() {
+        return this._getActiveSheet().evaluationInProgress;
+    }
+    set evaluationInProgress(value) {
+        this._getActiveSheet().evaluationInProgress = value;
+    }
+
+    get hiddenRows() {
+        return this._getActiveSheet().hiddenRows;
+    }
+    set hiddenRows(value) {
+        this._getActiveSheet().hiddenRows = value;
+    }
+
+    get hiddenColumns() {
+        return this._getActiveSheet().hiddenColumns;
+    }
+    set hiddenColumns(value) {
+        this._getActiveSheet().hiddenColumns = value;
+    }
+
+    get namedRanges() {
+        return this._getActiveSheet().namedRanges;
+    }
+    set namedRanges(value) {
+        this._getActiveSheet().namedRanges = value;
+    }
+
+    get frozenRows() {
+        return this._getActiveSheet().frozenRows;
+    }
+    set frozenRows(value) {
+        this._getActiveSheet().frozenRows = value;
+    }
+
+    get frozenColumns() {
+        return this._getActiveSheet().frozenColumns;
+    }
+    set frozenColumns(value) {
+        this._getActiveSheet().frozenColumns = value;
+    }
+
+    get validations() {
+        return this._getActiveSheet().validations;
+    }
+    set validations(value) {
+        this._getActiveSheet().validations = value;
+    }
+
+    get filteredRows() {
+        return this._getActiveSheet().filteredRows;
+    }
+    set filteredRows(value) {
+        this._getActiveSheet().filteredRows = value;
+    }
+
+    get filterCriteria() {
+        return this._getActiveSheet().filterCriteria;
+    }
+    set filterCriteria(value) {
+        this._getActiveSheet().filterCriteria = value;
+    }
+
+    get columnOrder() {
+        return this._getActiveSheet().columnOrder;
+    }
+    set columnOrder(value) {
+        this._getActiveSheet().columnOrder = value;
     }
 
     /**
@@ -56,8 +177,20 @@ class SpreadsheetModel {
 
     /**
      * Parse cell reference like "A1" into {col: "A", row: 1}
+     * Also supports cross-sheet references like "Sheet2.A1"
      */
     static parseCellRef(ref) {
+        // Check for cross-sheet reference
+        const sheetMatch = ref.match(/^([A-Za-z][A-Za-z0-9_]*)\.([A-Z]+\d+)$/i);
+        if (sheetMatch) {
+            return {
+                sheet: sheetMatch[1],
+                col: sheetMatch[2].match(/^([A-Z]+)(\d+)$/i)[1].toUpperCase(),
+                row: parseInt(sheetMatch[2].match(/^([A-Z]+)(\d+)$/i)[2], 10)
+            };
+        }
+
+        // Regular cell reference
         const match = ref.match(/^([A-Z]+)(\d+)$/i);
         if (!match) {
             throw new Error(`Invalid cell reference: ${ref}`);
@@ -69,13 +202,120 @@ class SpreadsheetModel {
     }
 
     /**
-     * Format cell reference from {col, row}
+     * Format cell reference from {col, row, sheet?}
      */
-    static formatCellRef(col, row) {
+    static formatCellRef(col, row, sheet) {
         if (typeof col === 'number') {
             col = SpreadsheetModel.colNumberToLetter(col);
         }
-        return `${col}${row}`;
+        const cellRef = `${col}${row}`;
+        return sheet ? `${sheet}.${cellRef}` : cellRef;
+    }
+
+    /**
+     * Validate sheet name (must be valid Rexx variable name)
+     * - Must start with a letter
+     * - Can contain only letters, numbers, and underscores
+     * - No spaces or special characters
+     */
+    static isValidSheetName(name) {
+        return /^[A-Za-z][A-Za-z0-9_]*$/.test(name);
+    }
+
+    /**
+     * Sheet Management Methods
+     */
+
+    /**
+     * Add a new sheet
+     */
+    addSheet(name) {
+        if (!SpreadsheetModel.isValidSheetName(name)) {
+            throw new Error('Sheet name must be a valid Rexx variable name (start with letter, no spaces)');
+        }
+        if (this.sheets.has(name)) {
+            throw new Error(`Sheet "${name}" already exists`);
+        }
+        this._initializeSheet(name);
+        this.sheetOrder.push(name);
+        return name;
+    }
+
+    /**
+     * Delete a sheet
+     */
+    deleteSheet(name) {
+        if (this.sheets.size <= 1) {
+            throw new Error('Cannot delete the last sheet');
+        }
+        if (!this.sheets.has(name)) {
+            throw new Error(`Sheet "${name}" does not exist`);
+        }
+
+        this.sheets.delete(name);
+        const index = this.sheetOrder.indexOf(name);
+        if (index > -1) {
+            this.sheetOrder.splice(index, 1);
+        }
+
+        // If we deleted the active sheet, switch to another one
+        if (this.activeSheetName === name) {
+            this.activeSheetName = this.sheetOrder[0];
+        }
+    }
+
+    /**
+     * Rename a sheet
+     */
+    renameSheet(oldName, newName) {
+        if (!SpreadsheetModel.isValidSheetName(newName)) {
+            throw new Error('Sheet name must be a valid Rexx variable name (start with letter, no spaces)');
+        }
+        if (!this.sheets.has(oldName)) {
+            throw new Error(`Sheet "${oldName}" does not exist`);
+        }
+        if (this.sheets.has(newName)) {
+            throw new Error(`Sheet "${newName}" already exists`);
+        }
+
+        const sheetData = this.sheets.get(oldName);
+        this.sheets.delete(oldName);
+        this.sheets.set(newName, sheetData);
+
+        const index = this.sheetOrder.indexOf(oldName);
+        if (index > -1) {
+            this.sheetOrder[index] = newName;
+        }
+
+        if (this.activeSheetName === oldName) {
+            this.activeSheetName = newName;
+        }
+
+        // TODO: Update formulas that reference this sheet
+    }
+
+    /**
+     * Set the active sheet
+     */
+    setActiveSheet(name) {
+        if (!this.sheets.has(name)) {
+            throw new Error(`Sheet "${name}" does not exist`);
+        }
+        this.activeSheetName = name;
+    }
+
+    /**
+     * Get all sheet names in order
+     */
+    getSheetNames() {
+        return [...this.sheetOrder];
+    }
+
+    /**
+     * Get the active sheet name
+     */
+    getActiveSheetName() {
+        return this.activeSheetName;
     }
 
     /**
@@ -217,12 +457,32 @@ class SpreadsheetModel {
 
     /**
      * Extract cell references from an expression
-     * Matches patterns like A1, B2, AA10, etc.
+     * Matches patterns like A1, B2, AA10, and cross-sheet references like Sheet2.A1
      */
     extractCellReferences(expression) {
+        const crossSheetPattern = /\b([A-Za-z][A-Za-z0-9_]*)\.([A-Z]+\d+)\b/gi;
         const cellRefPattern = /\b([A-Z]+\d+)\b/g;
-        const matches = expression.match(cellRefPattern);
-        return matches ? [...new Set(matches)] : [];
+
+        const refs = new Set();
+
+        // Extract cross-sheet references first
+        let match;
+        while ((match = crossSheetPattern.exec(expression)) !== null) {
+            refs.add(match[0]); // Full match: Sheet2.A1
+        }
+
+        // Extract local cell references
+        const cellMatches = expression.match(cellRefPattern);
+        if (cellMatches) {
+            cellMatches.forEach(ref => {
+                // Only add if not already part of a cross-sheet reference
+                if (!Array.from(refs).some(r => r.endsWith('.' + ref))) {
+                    refs.add(ref);
+                }
+            });
+        }
+
+        return Array.from(refs);
     }
 
     /**
@@ -308,49 +568,68 @@ class SpreadsheetModel {
      */
     toJSON() {
         const data = {
+            version: 2, // Version 2 with multi-sheet support
             setupScript: this.setupScript,
-            cells: {},
-            hiddenRows: Array.from(this.hiddenRows),
-            hiddenColumns: Array.from(this.hiddenColumns),
-            namedRanges: Object.fromEntries(this.namedRanges),
-            frozenRows: this.frozenRows,
-            frozenColumns: this.frozenColumns,
-            validations: Object.fromEntries(this.validations)
+            activeSheetName: this.activeSheetName,
+            sheetOrder: [...this.sheetOrder],
+            sheets: {}
         };
 
-        for (const [ref, cell] of this.cells.entries()) {
-            const cellData = {};
+        // Export each sheet
+        for (const [sheetName, sheet] of this.sheets.entries()) {
+            const sheetData = {
+                cells: {},
+                hiddenRows: Array.from(sheet.hiddenRows),
+                hiddenColumns: Array.from(sheet.hiddenColumns),
+                namedRanges: Object.fromEntries(sheet.namedRanges),
+                frozenRows: sheet.frozenRows,
+                frozenColumns: sheet.frozenColumns,
+                validations: Object.fromEntries(sheet.validations)
+            };
 
-            if (cell.expression) {
-                cellData.content = '=' + cell.expression;
-            } else if (cell.value !== '') {
-                cellData.content = cell.value;
-            }
-
-            // Add metadata if present
-            if (cell.comment) {
-                cellData.comment = cell.comment;
-            }
-            if (cell.format) {
-                cellData.format = cell.format;
-            }
-            if (cell.chartScript) {
-                cellData.chartScript = cell.chartScript;
-            }
-            if (cell.wrapText) {
-                cellData.wrapText = cell.wrapText;
+            // Add filter criteria if present
+            if (sheet.filterCriteria) {
+                sheetData.filterCriteria = sheet.filterCriteria;
             }
 
-            // Only store if there's content or metadata
-            if (cellData.content || cellData.comment || cellData.format || cellData.chartScript || cellData.wrapText) {
-                // If only content, store as string for backward compatibility
-                if (Object.keys(cellData).length === 1 && cellData.content) {
-                    data.cells[ref] = cellData.content;
-                } else {
-                    data.cells[ref] = cellData;
+            // Export cells
+            for (const [ref, cell] of sheet.cells.entries()) {
+                const cellData = {};
+
+                if (cell.expression) {
+                    cellData.content = '=' + cell.expression;
+                } else if (cell.value !== '') {
+                    cellData.content = cell.value;
+                }
+
+                // Add metadata if present
+                if (cell.comment) {
+                    cellData.comment = cell.comment;
+                }
+                if (cell.format) {
+                    cellData.format = cell.format;
+                }
+                if (cell.chartScript) {
+                    cellData.chartScript = cell.chartScript;
+                }
+                if (cell.wrapText) {
+                    cellData.wrapText = cell.wrapText;
+                }
+
+                // Only store if there's content or metadata
+                if (cellData.content || cellData.comment || cellData.format || cellData.chartScript || cellData.wrapText) {
+                    // If only content, store as string for backward compatibility
+                    if (Object.keys(cellData).length === 1 && cellData.content) {
+                        sheetData.cells[ref] = cellData.content;
+                    } else {
+                        sheetData.cells[ref] = cellData;
+                    }
                 }
             }
+
+            data.sheets[sheetName] = sheetData;
         }
+
         return data;
     }
 
@@ -358,19 +637,87 @@ class SpreadsheetModel {
      * Import from JSON
      */
     fromJSON(data, rexxInterpreter = null) {
-        this.cells.clear();
-        this.dependents.clear();
-        this.evaluationInProgress.clear();
-        this.hiddenRows.clear();
-        this.hiddenColumns.clear();
-        this.namedRanges.clear();
-        this.validations.clear();
         this.undoStack = [];
         this.redoStack = [];
 
-        // Handle both old format (flat) and new format (with setupScript)
-        if (data.setupScript !== undefined) {
+        // Handle version 2 (multi-sheet) format
+        if (data.version === 2 && data.sheets) {
             this.setupScript = data.setupScript || '';
+            this.sheets.clear();
+            this.sheetOrder = data.sheetOrder || Object.keys(data.sheets);
+            this.activeSheetName = data.activeSheetName || this.sheetOrder[0] || 'Sheet1';
+
+            // Import each sheet
+            for (const [sheetName, sheetData] of Object.entries(data.sheets)) {
+                this._initializeSheet(sheetName);
+                const sheet = this.sheets.get(sheetName);
+
+                // Restore hidden rows/columns
+                if (sheetData.hiddenRows) {
+                    sheetData.hiddenRows.forEach(row => sheet.hiddenRows.add(row));
+                }
+                if (sheetData.hiddenColumns) {
+                    sheetData.hiddenColumns.forEach(col => sheet.hiddenColumns.add(col));
+                }
+
+                // Restore named ranges
+                if (sheetData.namedRanges) {
+                    Object.entries(sheetData.namedRanges).forEach(([name, range]) => {
+                        sheet.namedRanges.set(name, range);
+                    });
+                }
+
+                // Restore frozen panes
+                sheet.frozenRows = sheetData.frozenRows || 0;
+                sheet.frozenColumns = sheetData.frozenColumns || 0;
+
+                // Restore validations
+                if (sheetData.validations) {
+                    Object.entries(sheetData.validations).forEach(([ref, validation]) => {
+                        sheet.validations.set(ref, validation);
+                    });
+                }
+
+                // Restore filter criteria
+                if (sheetData.filterCriteria) {
+                    sheet.filterCriteria = sheetData.filterCriteria;
+                    // Re-apply filter
+                    const savedActive = this.activeSheetName;
+                    this.activeSheetName = sheetName;
+                    this.applyRowFilter(sheetData.filterCriteria.column, sheetData.filterCriteria.criteria);
+                    this.activeSheetName = savedActive;
+                }
+
+                // Import cells
+                const cells = sheetData.cells || {};
+                const savedActive = this.activeSheetName;
+                this.activeSheetName = sheetName;
+
+                for (const [ref, cellData] of Object.entries(cells)) {
+                    // Handle both string format and object format
+                    if (typeof cellData === 'string') {
+                        this.setCell(ref, cellData, rexxInterpreter);
+                    } else {
+                        const metadata = {
+                            comment: cellData.comment || '',
+                            format: cellData.format || '',
+                            chartScript: cellData.chartScript || null,
+                            wrapText: cellData.wrapText || false
+                        };
+                        this.setCell(ref, cellData.content || '', rexxInterpreter, metadata);
+                    }
+                }
+
+                this.activeSheetName = savedActive;
+            }
+        }
+        // Handle version 1 (single sheet) format - backward compatibility
+        else if (data.setupScript !== undefined) {
+            this.setupScript = data.setupScript || '';
+            this.sheets.clear();
+            this.sheetOrder = ['Sheet1'];
+            this.activeSheetName = 'Sheet1';
+            this._initializeSheet('Sheet1');
 
             // Restore hidden rows/columns
             if (data.hiddenRows) {
@@ -402,10 +749,8 @@ class SpreadsheetModel {
             for (const [ref, cellData] of Object.entries(cells)) {
                 // Handle both string format and object format
                 if (typeof cellData === 'string') {
-                    // Old format: just content
                     this.setCell(ref, cellData, rexxInterpreter);
                 } else {
-                    // New format: object with content and metadata
                     const metadata = {
                         comment: cellData.comment || '',
                         format: cellData.format || '',
@@ -416,8 +761,13 @@ class SpreadsheetModel {
                 }
             }
         } else {
-            // Old format - all entries are cells
+            // Very old format - all entries are cells
             this.setupScript = '';
+            this.sheets.clear();
+            this.sheetOrder = ['Sheet1'];
+            this.activeSheetName = 'Sheet1';
+            this._initializeSheet('Sheet1');
+
             for (const [ref, content] of Object.entries(data)) {
                 this.setCell(ref, content, rexxInterpreter);
             }
@@ -1360,6 +1710,193 @@ class SpreadsheetModel {
             default:
                 return { valid: true, message: '' };
         }
+    }
+
+    /**
+     * Row Filtering Methods
+     */
+
+    /**
+     * Apply a filter to show only rows that match criteria
+     * @param {number} columnNum - Column to filter by (1-based)
+     * @param {string|Function} criteria - Filter criteria (string, number, or function)
+     */
+    applyRowFilter(columnNum, criteria) {
+        const sheet = this._getActiveSheet();
+        const filteredRows = new Set();
+
+        // Convert column number to letter if needed
+        const colLetter = typeof columnNum === 'number' ?
+            SpreadsheetModel.colNumberToLetter(columnNum) :
+            columnNum;
+
+        // Iterate through all rows
+        for (let row = 1; row <= this.rows; row++) {
+            const cellRef = SpreadsheetModel.formatCellRef(colLetter, row);
+            const cell = this.getCell(cellRef);
+            const value = cell.value;
+
+            let matches = false;
+
+            if (typeof criteria === 'function') {
+                matches = criteria(value, row);
+            } else if (typeof criteria === 'string') {
+                // String matching (case-insensitive)
+                matches = String(value).toLowerCase().includes(criteria.toLowerCase());
+            } else {
+                // Exact match
+                matches = value == criteria;
+            }
+
+            if (matches) {
+                filteredRows.add(row);
+            }
+        }
+
+        sheet.filteredRows = filteredRows;
+        sheet.filterCriteria = { column: columnNum, criteria };
+    }
+
+    /**
+     * Clear all row filters
+     */
+    clearRowFilter() {
+        const sheet = this._getActiveSheet();
+        sheet.filteredRows = null;
+        sheet.filterCriteria = null;
+    }
+
+    /**
+     * Check if a row is visible (not filtered out)
+     */
+    isRowVisible(rowNum) {
+        const sheet = this._getActiveSheet();
+        if (sheet.filteredRows === null) {
+            return true; // No filter applied
+        }
+        return sheet.filteredRows.has(rowNum);
+    }
+
+    /**
+     * Get filter criteria
+     */
+    getFilterCriteria() {
+        return this._getActiveSheet().filterCriteria;
+    }
+
+    /**
+     * Column Reordering Methods
+     */
+
+    /**
+     * Move a column left (swap with previous column)
+     * @param {number|string} colNum - Column to move (1-based number or letter)
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    moveColumnLeft(colNum, rexxInterpreter = null) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+
+        if (colNum <= 1) {
+            throw new Error('Cannot move first column left');
+        }
+
+        this._swapColumns(colNum, colNum - 1, rexxInterpreter);
+    }
+
+    /**
+     * Move a column right (swap with next column)
+     * @param {number|string} colNum - Column to move (1-based number or letter)
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    moveColumnRight(colNum, rexxInterpreter = null) {
+        if (typeof colNum === 'string') {
+            colNum = SpreadsheetModel.colLetterToNumber(colNum);
+        }
+
+        if (colNum >= this.cols) {
+            throw new Error('Cannot move last column right');
+        }
+
+        this._swapColumns(colNum, colNum + 1, rexxInterpreter);
+    }
+
+    /**
+     * Swap two columns
+     * @param {number} col1 - First column number (1-based)
+     * @param {number} col2 - Second column number (1-based)
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    _swapColumns(col1, col2, rexxInterpreter = null) {
+        const newCells = new Map();
+        const col1Letter = SpreadsheetModel.colNumberToLetter(col1);
+        const col2Letter = SpreadsheetModel.colNumberToLetter(col2);
+
+        // Swap all cells in the two columns
+        for (const [ref, cell] of this.cells.entries()) {
+            const { col, row } = SpreadsheetModel.parseCellRef(ref);
+            const colNum = SpreadsheetModel.colLetterToNumber(col);
+            const cellCopy = { ...cell };
+
+            // Adjust formula references if this cell has an expression
+            if (cellCopy.expression) {
+                cellCopy.expression = this._adjustCellReferencesForColumnSwap(
+                    cellCopy.expression,
+                    col1,
+                    col2
+                );
+            }
+
+            let newRef;
+            if (colNum === col1) {
+                // Move from col1 to col2
+                newRef = SpreadsheetModel.formatCellRef(col2Letter, row);
+            } else if (colNum === col2) {
+                // Move from col2 to col1
+                newRef = SpreadsheetModel.formatCellRef(col1Letter, row);
+            } else {
+                // Keep in same position
+                newRef = ref;
+            }
+
+            newCells.set(newRef, cellCopy);
+        }
+
+        // Replace cells map
+        this.cells = newCells;
+
+        // Rebuild dependents map
+        this._rebuildDependents();
+
+        // Recalculate all formulas if interpreter provided
+        if (rexxInterpreter) {
+            this._recalculateAll(rexxInterpreter);
+        }
+    }
+
+    /**
+     * Adjust cell references in formulas when columns are swapped
+     */
+    _adjustCellReferencesForColumnSwap(expression, col1, col2) {
+        if (!expression) return expression;
+
+        const cellRefPattern = /(\$?)([A-Z]+)(\$?)(\d+)/g;
+
+        return expression.replace(cellRefPattern, (match, colAbs, col, rowAbs, row) => {
+            const colNum = SpreadsheetModel.colLetterToNumber(col);
+            let newCol = col;
+
+            if (!colAbs) { // Only adjust relative references
+                if (colNum === col1) {
+                    newCol = SpreadsheetModel.colNumberToLetter(col2);
+                } else if (colNum === col2) {
+                    newCol = SpreadsheetModel.colNumberToLetter(col1);
+                }
+            }
+
+            return `${colAbs}${newCol}${rowAbs}${row}`;
+        });
     }
 
     /**

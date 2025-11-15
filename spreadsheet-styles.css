@@ -1112,3 +1112,80 @@ body {
 .chart-example-link:hover {
     text-decoration: underline;
 }
+
+/* Sheet Tabs Styles */
+.sheet-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 20px;
+    background: #f0f0f0;
+    border-bottom: 2px solid #ddd;
+    overflow-x: auto;
+}
+
+.sheet-tab {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    background: #e0e0e0;
+    border: 1px solid #ccc;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+
+.sheet-tab:hover {
+    background: #d0d0d0;
+}
+
+.sheet-tab.active {
+    background: white;
+    border-bottom: 2px solid white;
+    font-weight: bold;
+}
+
+.sheet-tab span {
+    cursor: pointer;
+}
+
+.sheet-tab-rename,
+.sheet-tab-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.sheet-tab-rename:hover,
+.sheet-tab-delete:hover {
+    opacity: 1;
+}
+
+.sheet-tab-add {
+    padding: 6px 12px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.2s;
+}
+
+.sheet-tab-add:hover {
+    background: #45a049;
+}
+
+.sheet-tab input {
+    border: 1px solid #2196F3;
+    padding: 2px 4px;
+    font-size: 13px;
+    border-radius: 2px;
+}

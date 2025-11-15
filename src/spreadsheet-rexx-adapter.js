@@ -71,13 +71,39 @@ class SpreadsheetRexxAdapter {
     /**
      * Inject cell reference functions (A1, B2, etc.) into RexxJS context
      * Sets up a variable_missing callback to resolve cell references on-demand
+     * Supports cross-sheet references like Sheet2.A1 (accessed as Sheet2_A1 in Rexx)
      */
     injectCellReferenceFunctions() {
         const self = this;
 
         // Set up a variable resolver callback for missing variables
         this.interpreter.variableResolver = function(name) {
-            // Check if it's a cell reference pattern (A1, B2, AA10, etc.)
+            // Check if it's a cross-sheet reference pattern (Sheet2_A1 -> Sheet2.A1)
+            // In Rexx, dots are not valid in variable names, so we use underscore
+            const crossSheetMatch = name.match(/^([A-Za-z][A-Za-z0-9_]*)_([A-Z]+\d+)$/);
+            if (crossSheetMatch) {
+                const sheetName = crossSheetMatch[1];
+                const cellRef = crossSheetMatch[2];
+
+                // Save current active sheet
+                const savedActiveSheet = self.model.activeSheetName;
+
+                try {
+                    // Temporarily switch to the target sheet
+                    if (self.model.sheets.has(sheetName)) {
+                        self.model.setActiveSheet(sheetName);
+                        const value = self.model.getCellValue(cellRef);
+                        // Try to parse as number if possible
+                        const numValue = parseFloat(value);
+                        return isNaN(numValue) ? value : numValue;
+                    }
+                } finally {
+                    // Restore original active sheet
+                    self.model.activeSheetName = savedActiveSheet;
+                }
+            }
+
+            // Check if it's a local cell reference pattern (A1, B2, AA10, etc.)
             if (/^[A-Z]+\d+$/.test(name)) {
                 const value = self.model.getCellValue(name);
                 // Try to parse as number if possible
