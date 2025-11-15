@@ -88,15 +88,35 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 
 ## Features
 
+### Core Spreadsheet
+
 - **Cells with Values or Expressions**: Enter literal values or formulas starting with `=`
 - **A1-Style Cell References**: Reference other cells using standard notation (A1, B2, etc.)
 - **RexxJS Expression Evaluation**: Full RexxJS language support in formulas
 - **Function Pipelines**: Use the `|>` operator for data transformation chains
 - **Range Functions**: Built-in functions for working with cell ranges
 - **Dependency Tracking**: Automatic recalculation when referenced cells change
-- **Cell Comments & Formats**: Attach metadata to cells for documentation
+
+### Excel/Google Sheets Features
+
+**📊 [Complete Excel Features Guide](EXCEL-FEATURES.md)** - Comprehensive documentation of all Excel/Google Sheets-like features
+
 - **🎨 Cell Formatting & Styling**: Number formats (currency, percentage, dates), custom styles (colors, fonts, alignment)
 - **✨ Conditional Formatting**: RexxJS expressions for dynamic cell styling based on values
+- **↩️ Text Wrapping**: Wrap text within cells for multi-line display
+- **❄️ Freeze Panes**: Lock rows and columns while scrolling
+- **🔢 Sort Data**: Sort ranges by column (ascending/descending)
+- **🔍 Find and Replace**: Search and replace values across the spreadsheet
+- **✅ Data Validation**: Dropdown lists, number ranges, text patterns
+- **📋 Autofill**: Fill down/right with automatic formula adjustment
+- **👁️ Hide/Unhide**: Hide rows and columns without deleting
+- **📛 Named Ranges**: Reference ranges by meaningful names
+- **⬅️➡️ Row/Column Operations**: Insert and delete rows/columns with automatic cell shifting
+- **↩️ Undo/Redo**: 100-level undo/redo history
+
+### Other Features
+
+- **Cell Comments & Formats**: Attach metadata to cells for documentation
 - **Named Variables**: Define constants in Setup Script (e.g., `LET TAX_RATE = 0.07`)
 - **Enhanced Info Panel**: Shows cell details, dependencies, type, comments
 - **View Mode Hotkeys**: Press V/E/F/N to toggle between different views
@@ -104,7 +124,6 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 - **📁 Load from File/URL**: Load spreadsheet data from JSON files (web mode via hash parameter)
 - **🔌 Control Bus**: Remote control via ARexx-inspired cross-application scripting (web mode: iframe postMessage, Tauri mode: HTTP API)
 - **🔢 NumPy Integration**: Real Python NumPy via PyOdide for 100% accurate scientific computing
-- **Row/Column Operations**: Insert and delete rows/columns with automatic cell shifting
 
 ## Deployment
 
@@ -649,15 +668,15 @@ npm run test:screenshots
 
 ### Current Limitations
 - No save functionality (load is supported via JSON files)
-- No undo/redo
 - No paste (copy is supported with Ctrl+C)
-- Basic styling only
 - Limited to 100 rows × 26 columns (configurable in code)
 - No backend integration
+- Some features accessible via Control Bus only (no UI yet)
 
-### Implemented Features
+### Implemented Features ✅
+
+**Core:**
 - ✅ Load from JSON files (web mode: hash parameter, Tauri mode: CLI argument)
-- ✅ Cell comments and formats
 - ✅ Keyboard navigation (arrow keys, Tab, Enter)
 - ✅ Cell selection ranges (click and drag, or Shift+Click)
 - ✅ Copy selection to clipboard (Ctrl+C)
@@ -665,19 +684,37 @@ npm run test:screenshots
 - ✅ Named variables via Setup Script
 - ✅ Control Bus for remote scripting (web mode: iframe postMessage, Tauri mode: HTTP API on port 2410)
 - ✅ Static binary build for production deployment (`./rexxsheet-static`)
+
+**Excel/Google Sheets Features:** (See [EXCEL-FEATURES.md](EXCEL-FEATURES.md))
+- ✅ Cell comments and formats
 - ✅ Number formatting (currency, percentage, dates)
-- ✅ Visual cell styling (colors, fonts, alignment, borders)
+- ✅ Visual cell styling (colors, fonts, alignment)
 - ✅ Conditional formatting with RexxJS expressions
+- ✅ **Text wrapping** (with UI)
+- ✅ **Freeze panes** (Control Bus ready, UI coming soon)
+- ✅ **Sort ranges** (Control Bus ready, UI coming soon)
+- ✅ **Find and Replace** (Control Bus ready, UI coming soon)
+- ✅ **Data validation** (dropdowns, number/text validation via Control Bus)
+- ✅ **Autofill** (FILLDOWN, FILLRIGHT via Control Bus)
+- ✅ **Hide/Unhide rows and columns** (via Control Bus)
+- ✅ **Named ranges** (via Control Bus)
+- ✅ **Row/column insert/delete** (with UI)
+- ✅ **Undo/Redo** (100-level history via Control Bus)
+- ✅ **Charts and visualizations** (Chart.js integration)
 
 ### Potential Enhancements
 - Save/export to JSON file (complement the load feature)
-- Undo/redo functionality
 - Paste from clipboard
+- UI for all Control Bus features (freeze, sort, find/replace, validation)
+- Smart autofill (detect series: 1,2,3... or Mon,Tue,Wed...)
 - Add more Excel-like functions (IF, VLOOKUP via extras/functions/excel)
 - Multi-sheet support (tabs)
 - Import/export CSV format
 - Collaborative editing
-- Charts and visualizations
+- Merge cells
+- Pivot tables
+- Filter rows
+- Sparklines
 
 ## RexxJS Functions Available
 
