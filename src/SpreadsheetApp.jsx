@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { createSpreadsheetControlFunctions } from './spreadsheet-control-functions';
+import SpreadsheetModel from './spreadsheet-model.js';
 
 /**
  * Cell Component
@@ -216,6 +217,11 @@ function Grid({ model, selectedCell, selectionRange, onSelectCell, onEditCell, o
 
     // Data rows
     for (let row = 1; row <= visibleRows; row++) {
+        // Skip filtered out rows
+        if (!model.isRowVisible(row)) {
+            continue;
+        }
+
         const cells = [];
 
         // Row header
@@ -561,7 +567,7 @@ function InfoPanel({ selectedCell, selectionRange, model, viewMode }) {
 /**
  * Context Menu Component
  */
-function ContextMenu({ x, y, cellRef, cell, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onEditChart, onCreateChart, onToggleWrap }) {
+function ContextMenu({ x, y, cellRef, cell, onClose, onFormat, onCut, onCopy, onPaste, onPasteValues, onInsertRow, onDeleteRow, onInsertColumn, onDeleteColumn, onEditChart, onCreateChart, onToggleWrap, onMoveColumnLeft, onMoveColumnRight, onApplyFilter, onClearFilter, model }) {
     const menuRef = useRef(null);
 
     useEffect(() => {
@@ -580,6 +586,8 @@ function ContextMenu({ x, y, cellRef, cell, onClose, onFormat, onCut, onCopy, on
     const [numberFormatMenuOpen, setNumberFormatMenuOpen] = useState(false);
     const [rowMenuOpen, setRowMenuOpen] = useState(false);
     const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+    const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+    const [columnMoveMenuOpen, setColumnMoveMenuOpen] = useState(false);
 
     const handleFormatClick = (format) => {
         onFormat(format);
@@ -655,6 +663,57 @@ function ContextMenu({ x, y, cellRef, cell, onClose, onFormat, onCut, onCopy, on
                         <div className="context-menu-item" onClick={() => { onDeleteColumn(); onClose(); }}>
                             <span>Delete This Column</span>
                         </div>
+                    </div>
+                )}
+            </div>
+            <div className="context-menu-separator"></div>
+            <div
+                className="context-menu-item context-menu-submenu"
+                onMouseEnter={() => setColumnMoveMenuOpen(true)}
+                onMouseLeave={() => setColumnMoveMenuOpen(false)}
+            >
+                <span>⬅️➡️ Move Column</span>
+                <span className="submenu-arrow">▶</span>
+                {columnMoveMenuOpen && (
+                    <div className="context-submenu">
+                        <div className="context-menu-item" onClick={() => { onMoveColumnLeft && onMoveColumnLeft(); onClose(); }}>
+                            <span>⬅️ Move Left</span>
+                        </div>
+                        <div className="context-menu-item" onClick={() => { onMoveColumnRight && onMoveColumnRight(); onClose(); }}>
+                            <span>➡️ Move Right</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div
+                className="context-menu-item context-menu-submenu"
+                onMouseEnter={() => setFilterMenuOpen(true)}
+                onMouseLeave={() => setFilterMenuOpen(false)}
+            >
+                <span>🔍 Filter Rows</span>
+                <span className="submenu-arrow">▶</span>
+                {filterMenuOpen && (
+                    <div className="context-submenu">
+                        <div className="context-menu-item" onClick={() => {
+                            const criteria = prompt('Enter filter text (rows containing this text will be shown):');
+                            if (criteria !== null && onApplyFilter) {
+                                onApplyFilter(criteria);
+                            }
+                            onClose();
+                        }}>
+                            <span>Apply Filter...</span>
+                        </div>
+                        <div className="context-menu-separator"></div>
+                        <div className="context-menu-item" onClick={() => { onClearFilter && onClearFilter(); onClose(); }}>
+                            <span>Clear Filter</span>
+                        </div>
+                        {model && model.getFilterCriteria() && (
+                            <div className="context-menu-item disabled">
+                                <span style={{ fontSize: '0.85em', fontStyle: 'italic' }}>
+                                    Active: "{model.getFilterCriteria().criteria}"
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -1120,6 +1179,94 @@ function SettingsModal({ isOpen, onClose, model, adapter, onScriptExecuted }) {
                     <button className="button-primary" onClick={handleSave}>Save & Execute</button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Sheet Tabs Component
+ */
+function SheetTabs({ model, activeSheet, onChangeSheet, onAddSheet, onRenameSheet, onDeleteSheet }) {
+    const [renamingSheet, setRenamingSheet] = useState(null);
+    const [newName, setNewName] = useState('');
+
+    const handleRename = (sheetName) => {
+        setRenamingSheet(sheetName);
+        setNewName(sheetName);
+    };
+
+    const handleRenameSubmit = (oldName) => {
+        if (newName && newName !== oldName && SpreadsheetModel.isValidSheetName(newName)) {
+            onRenameSheet(oldName, newName);
+        }
+        setRenamingSheet(null);
+    };
+
+    const handleAddNewSheet = () => {
+        const sheetNum = model.getSheetNames().length + 1;
+        let newSheetName = `Sheet${sheetNum}`;
+        let counter = sheetNum;
+        while (model.sheets.has(newSheetName)) {
+            counter++;
+            newSheetName = `Sheet${counter}`;
+        }
+        onAddSheet(newSheetName);
+    };
+
+    return (
+        <div className="sheet-tabs">
+            {model.getSheetNames().map(sheetName => (
+                <div
+                    key={sheetName}
+                    className={`sheet-tab ${sheetName === activeSheet ? 'active' : ''}`}
+                >
+                    {renamingSheet === sheetName ? (
+                        <input
+                            type="text"
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            onBlur={() => handleRenameSubmit(sheetName)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRenameSubmit(sheetName);
+                                if (e.key === 'Escape') setRenamingSheet(null);
+                            }}
+                            autoFocus
+                            style={{ width: '100px' }}
+                        />
+                    ) : (
+                        <>
+                            <span onClick={() => onChangeSheet(sheetName)}>{sheetName}</span>
+                            <button
+                                className="sheet-tab-rename"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRename(sheetName);
+                                }}
+                                title="Rename sheet"
+                            >
+                                ✏️
+                            </button>
+                            {model.getSheetNames().length > 1 && (
+                                <button
+                                    className="sheet-tab-delete"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm(`Delete sheet "${sheetName}"?`)) {
+                                            onDeleteSheet(sheetName);
+                                        }
+                                    }}
+                                    title="Delete sheet"
+                                >
+                                    ✕
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
+            ))}
+            <button className="sheet-tab-add" onClick={handleAddNewSheet} title="Add new sheet">
+                + Add Sheet
+            </button>
         </div>
     );
 }
@@ -1960,6 +2107,92 @@ function App() {
         return () => setStartEditCallback(null);
     };
 
+    // Sheet management handlers
+    const handleChangeSheet = useCallback((sheetName) => {
+        if (model) {
+            model.setActiveSheet(sheetName);
+            setSheetName(sheetName);
+            setUpdateCounter(c => c + 1);
+        }
+    }, [model]);
+
+    const handleAddSheet = useCallback((sheetName) => {
+        if (model) {
+            try {
+                model.addSheet(sheetName);
+                model.setActiveSheet(sheetName);
+                setSheetName(sheetName);
+                setUpdateCounter(c => c + 1);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    }, [model]);
+
+    const handleRenameSheet = useCallback((oldName, newName) => {
+        if (model) {
+            try {
+                model.renameSheet(oldName, newName);
+                if (sheetName === oldName) {
+                    setSheetName(newName);
+                }
+                setUpdateCounter(c => c + 1);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    }, [model, sheetName]);
+
+    const handleDeleteSheet = useCallback((sheetName) => {
+        if (model) {
+            try {
+                model.deleteSheet(sheetName);
+                setSheetName(model.getActiveSheetName());
+                setUpdateCounter(c => c + 1);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    }, [model]);
+
+    // Row filtering handlers
+    const handleApplyFilter = useCallback((columnNum, criteria) => {
+        if (model) {
+            model.applyRowFilter(columnNum, criteria);
+            setUpdateCounter(c => c + 1);
+        }
+    }, [model]);
+
+    const handleClearFilter = useCallback(() => {
+        if (model) {
+            model.clearRowFilter();
+            setUpdateCounter(c => c + 1);
+        }
+    }, [model]);
+
+    // Column reordering handlers
+    const handleMoveColumnLeft = useCallback((colNum) => {
+        if (model && adapter) {
+            try {
+                model.moveColumnLeft(colNum, adapter);
+                setUpdateCounter(c => c + 1);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    }, [model, adapter]);
+
+    const handleMoveColumnRight = useCallback((colNum) => {
+        if (model && adapter) {
+            try {
+                model.moveColumnRight(colNum, adapter);
+                setUpdateCounter(c => c + 1);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    }, [model, adapter]);
+
     if (isLoading) {
         return (
             <div className="app loading">
@@ -2006,6 +2239,15 @@ function App() {
                 onEdit={handleEditCell}
             />
 
+            <SheetTabs
+                model={model}
+                activeSheet={sheetName}
+                onChangeSheet={handleChangeSheet}
+                onAddSheet={handleAddSheet}
+                onRenameSheet={handleRenameSheet}
+                onDeleteSheet={handleDeleteSheet}
+            />
+
             <div className="main-content">
                 <Grid
                     model={model}
@@ -2040,6 +2282,7 @@ function App() {
                     y={contextMenu.y}
                     cellRef={contextMenu.cellRef}
                     cell={model?.getCell(contextMenu.cellRef)}
+                    model={model}
                     onClose={() => setContextMenu(null)}
                     onFormat={handleFormat}
                     onCut={() => { handleCut(); setContextMenu(null); }}
@@ -2053,6 +2296,19 @@ function App() {
                     onCreateChart={handleCreateChart}
                     onEditChart={contextMenu && model?.getCell(contextMenu.cellRef)?.chartScript ? handleEditChart : null}
                     onToggleWrap={handleToggleWrap}
+                    onMoveColumnLeft={() => {
+                        const { col } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+                        handleMoveColumnLeft(col);
+                    }}
+                    onMoveColumnRight={() => {
+                        const { col } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+                        handleMoveColumnRight(col);
+                    }}
+                    onApplyFilter={(criteria) => {
+                        const { col } = SpreadsheetModel.parseCellRef(contextMenu.cellRef);
+                        handleApplyFilter(col, criteria);
+                    }}
+                    onClearFilter={handleClearFilter}
                 />
             )}
 
