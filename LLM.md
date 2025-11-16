@@ -87,9 +87,56 @@ parent.postMessage({
 - **Structure**: `{version, sheets: [{name, cells, setupScript}], ...}`
 
 ## Testing
-- **Unit**: `tests/*.spec.js` (Jest, model logic)
-- **E2E**: `tests/*-web.spec.js` (Playwright)
-- **Control Bus**: `tests/*.rexx` (REXX automation scripts)
+We **really like tests** and expect proper use of the **test pyramid**:
+- **Unit tests** (base): Fast, isolated tests of business logic (`tests/*.spec.js` via Jest)
+- **Integration tests** (middle): Component interactions, API contracts
+- **UI tests** (top): Critical user flows only (`tests/*-web.spec.js` via Playwright)
+
+**Test Coverage**:
+- `spreadsheet-model.js`: Must have comprehensive unit tests (pure JS, no DOM)
+- Control bus commands: Validate via both unit tests and REXX automation scripts
+- React components: Focus on integration tests over shallow rendering
+- Avoid over-reliance on UI tests (slow, brittle)
+
+**Component Testing**:
+- Use **component tests** to verify components in isolation
+- Include UI tests of components using test harnesses
+- Test harnesses should provide controlled environments for component testing
+- Component tests sit between unit and integration tests in the pyramid
+
+## Development Guidelines
+
+### Design Principles
+
+**Separation of Concerns**:
+- Keep business logic separate from UI (e.g., `spreadsheet-model.js` is DOM-free)
+- Single responsibility: each module should have one clear purpose
+- Clear boundaries between layers (model, view, control)
+
+**Inversion of Control**:
+- Depend on abstractions, not concrete implementations
+- Use dependency injection for testability
+- Components should receive dependencies rather than creating them
+- Example: Pass resolvers/handlers as props instead of hardcoding
+
+### Fallback Logic
+**DO NOT implement fallback logic or error recovery without explicit approval.**
+
+When encountering errors or edge cases:
+1. **Ask first**: Clarify whether fallback behavior is desired
+2. **Be explicit**: If fallback is needed, propose the specific strategy
+3. **No assumptions**: Don't silently default to alternative approaches
+
+**Why**: Fallback logic can mask bugs, create unexpected behavior, and make debugging harder. We prefer failing fast and explicitly handling edge cases only when requirements are clear.
+
+**Example**:
+```js
+// ❌ BAD: Silent fallback
+const data = await fetchData().catch(() => []);
+
+// ✅ GOOD: Explicit error handling
+const data = await fetchData(); // Let it throw, handle at call site
+```
 
 ## Pitfalls
 1. **REXX != Excel**: Different syntax (concat, indexing, functions)
