@@ -98,7 +98,26 @@ We **really like tests** and expect proper use of the **test pyramid**:
 - React components: Focus on integration tests over shallow rendering
 - Avoid over-reliance on UI tests (slow, brittle)
 
+**Component Testing**:
+- Use **component tests** to verify components in isolation
+- Include UI tests of components using test harnesses
+- Test harnesses should provide controlled environments for component testing
+- Component tests sit between unit and integration tests in the pyramid
+
 ## Development Guidelines
+
+### Design Principles
+
+**Separation of Concerns**:
+- Keep business logic separate from UI (e.g., `spreadsheet-model.js` is DOM-free)
+- Single responsibility: each module should have one clear purpose
+- Clear boundaries between layers (model, view, control)
+
+**Inversion of Control**:
+- Depend on abstractions, not concrete implementations
+- Use dependency injection for testability
+- Components should receive dependencies rather than creating them
+- Example: Pass resolvers/handlers as props instead of hardcoding
 
 ### Fallback Logic
 **DO NOT implement fallback logic or error recovery without explicit approval.**
