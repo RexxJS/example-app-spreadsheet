@@ -160,6 +160,206 @@ describe('SpreadsheetModel - Advanced Features', () => {
             expect(validation.type).toBe('list');
             expect(validation.values).toEqual(['One', 'Two']);
         });
+
+        describe('Context-Aware Validation (Priority 3)', () => {
+            it('should accept contextual validation type', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    always: 'value != ""'
+                });
+
+                const validation = model.getCellValidation('A1');
+                expect(validation).not.toBeNull();
+                expect(validation.type).toBe('contextual');
+            });
+
+            it('should throw error for contextual validation without rules', () => {
+                expect(() => {
+                    model.setCellValidation('A1', {
+                        type: 'contextual'
+                    });
+                }).toThrow('Contextual validation requires at least one of: onCreate, onUpdate, or always');
+            });
+
+            it('should validate onCreate context', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onCreate: 'value != ""'
+                });
+
+                // Cell is empty, so this is a 'create' context
+                const result1 = model.validateCellValue('A1', 'Hello', 'create');
+                expect(result1.valid).toBe(true);
+
+                const result2 = model.validateCellValue('A1', '', 'create');
+                expect(result2.valid).toBe(false);
+                expect(result2.message).toContain('Validation failed');
+            });
+
+            it('should validate onUpdate context', () => {
+                // Set initial value
+                model.setCell('A1', 'Initial');
+
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onUpdate: 'value != ""'
+                });
+
+                // Updating with non-empty value should pass
+                const result1 = model.validateCellValue('A1', 'Updated', 'update');
+                expect(result1.valid).toBe(true);
+
+                // Updating with empty value should fail
+                const result2 = model.validateCellValue('A1', '', 'update');
+                expect(result2.valid).toBe(false);
+            });
+
+            it('should validate always context in both create and update', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    always: 'value != ""'
+                });
+
+                // Create context
+                const result1 = model.validateCellValue('A1', 'Hello', 'create');
+                expect(result1.valid).toBe(true);
+
+                // Set value
+                model.setCell('A1', 'Hello');
+
+                // Update context
+                const result2 = model.validateCellValue('A1', 'Updated', 'update');
+                expect(result2.valid).toBe(true);
+
+                // Both should fail with empty value
+                const result3 = model.validateCellValue('A1', '', 'create');
+                expect(result3.valid).toBe(false);
+
+                const result4 = model.validateCellValue('A1', '', 'update');
+                expect(result4.valid).toBe(false);
+            });
+
+            it('should auto-detect create vs update context', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onCreate: 'value == "NEW"',
+                    onUpdate: 'value == "UPDATED"'
+                });
+
+                // Cell is empty, so 'always' context should become 'create'
+                const result1 = model.validateCellValue('A1', 'NEW', 'always');
+                expect(result1.valid).toBe(true);
+
+                const result2 = model.validateCellValue('A1', 'UPDATED', 'always');
+                expect(result2.valid).toBe(false);
+
+                // Set initial value
+                model.setCell('A1', 'Initial');
+
+                // Cell has value, so 'always' context should become 'update'
+                const result3 = model.validateCellValue('A1', 'UPDATED', 'always');
+                expect(result3.valid).toBe(true);
+
+                const result4 = model.validateCellValue('A1', 'NEW', 'always');
+                expect(result4.valid).toBe(false);
+            });
+
+            it('should validate UNIQUE constraint', () => {
+                // Set up a column with some values
+                model.setCell('A1', '100');
+                model.setCell('A2', '200');
+                model.setCell('A3', '300');
+
+                model.setCellValidation('A4', {
+                    type: 'contextual',
+                    onCreate: 'UNIQUE("A1:A10", value)'
+                });
+
+                // Unique value should pass
+                const result1 = model.validateCellValue('A4', '400', 'create');
+                expect(result1.valid).toBe(true);
+
+                // Duplicate value should fail
+                const result2 = model.validateCellValue('A4', '200', 'create');
+                expect(result2.valid).toBe(false);
+                expect(result2.message).toContain('must be unique');
+            });
+
+            it('should exclude current cell in UNIQUE check', () => {
+                model.setCell('A1', '100');
+
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onUpdate: 'UNIQUE("A1:A10", value)'
+                });
+
+                // Same value should pass (it's the cell itself)
+                const result = model.validateCellValue('A1', '100', 'update');
+                expect(result.valid).toBe(true);
+            });
+
+            it('should validate PREVIOUS value comparison', () => {
+                model.setCell('A1', '100');
+
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onUpdate: 'value > PREVIOUS("A1")'
+                });
+
+                // Higher value should pass
+                const result1 = model.validateCellValue('A1', '150', 'update', { previousValue: 100 });
+                expect(result1.valid).toBe(true);
+
+                // Lower value should fail
+                const result2 = model.validateCellValue('A1', '50', 'update', { previousValue: 100 });
+                expect(result2.valid).toBe(false);
+            });
+
+            it('should support multiple context rules', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    onCreate: 'value != ""',
+                    onUpdate: 'value.length > 3',
+                    always: 'value.length < 100'
+                });
+
+                // Create: must be non-empty and < 100 chars
+                const result1 = model.validateCellValue('A1', 'Hi', 'create');
+                expect(result1.valid).toBe(true);
+
+                const result2 = model.validateCellValue('A1', '', 'create');
+                expect(result2.valid).toBe(false);
+
+                // Set initial value
+                model.setCell('A1', 'Initial');
+
+                // Update: must be > 3 chars and < 100 chars
+                const result3 = model.validateCellValue('A1', 'Hello', 'update');
+                expect(result3.valid).toBe(true);
+
+                const result4 = model.validateCellValue('A1', 'Hi', 'update');
+                expect(result4.valid).toBe(false); // Too short
+
+                // Always rule should apply to both
+                const longString = 'a'.repeat(101);
+                const result5 = model.validateCellValue('A1', longString, 'create');
+                expect(result5.valid).toBe(false);
+
+                const result6 = model.validateCellValue('A1', longString, 'update');
+                expect(result6.valid).toBe(false);
+            });
+
+            it('should handle validation formula errors gracefully', () => {
+                model.setCellValidation('A1', {
+                    type: 'contextual',
+                    always: 'invalid javascript syntax {{'
+                });
+
+                const result = model.validateCellValue('A1', 'test', 'create');
+                expect(result.valid).toBe(false);
+                expect(result.message).toContain('error');
+            });
+        });
     });
 
     describe('Undo/Redo', () => {

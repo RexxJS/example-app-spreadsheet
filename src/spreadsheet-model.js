@@ -2274,9 +2274,16 @@ class SpreadsheetModel {
             throw new Error('Validation must have a type');
         }
 
-        const validTypes = ['list', 'number', 'date', 'text', 'custom'];
+        const validTypes = ['list', 'number', 'date', 'text', 'custom', 'contextual'];
         if (!validTypes.includes(validation.type)) {
             throw new Error(`Invalid validation type: ${validation.type}`);
+        }
+
+        // For contextual validations, ensure at least one context rule exists
+        if (validation.type === 'contextual') {
+            if (!validation.onCreate && !validation.onUpdate && !validation.always) {
+                throw new Error('Contextual validation requires at least one of: onCreate, onUpdate, or always');
+            }
         }
 
         this.validations.set(cellRef, validation);
@@ -2295,14 +2302,32 @@ class SpreadsheetModel {
      * Validate a cell value against its validation rules
      * @param {string} cellRef - Cell reference
      * @param {string} value - Value to validate
+     * @param {string} context - Validation context: 'create', 'update', or 'always' (default: 'always')
+     * @param {Object} options - Optional: {interpreter, previousValue}
      * @returns {Object} {valid: boolean, message: string}
      */
-    validateCellValue(cellRef, value) {
+    validateCellValue(cellRef, value, context = 'always', options = {}) {
         const validation = this.validations.get(cellRef);
         if (!validation) {
             return { valid: true, message: '' };
         }
 
+        // Determine if this is create or update context
+        const currentValue = this.getCellValue(cellRef);
+        const isCreate = !currentValue || currentValue === '';
+        const isUpdate = !isCreate;
+
+        // Adjust context based on cell state if context is 'always'
+        if (context === 'always') {
+            context = isCreate ? 'create' : 'update';
+        }
+
+        // Handle contextual validation type
+        if (validation.type === 'contextual') {
+            return this._validateContextual(cellRef, value, context, validation, options);
+        }
+
+        // Standard validation types
         switch (validation.type) {
             case 'list':
                 if (!validation.values || !Array.isArray(validation.values)) {
@@ -2353,6 +2378,150 @@ class SpreadsheetModel {
 
             default:
                 return { valid: true, message: '' };
+        }
+    }
+
+    /**
+     * Validate contextual validation rules
+     * @private
+     */
+    _validateContextual(cellRef, value, context, validation, options) {
+        const results = [];
+
+        // Always validate 'always' rules
+        if (validation.always) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.always,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        // Validate context-specific rules
+        if (context === 'create' && validation.onCreate) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.onCreate,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        if (context === 'update' && validation.onUpdate) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.onUpdate,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        // All validations passed
+        return { valid: true, message: '' };
+    }
+
+    /**
+     * Evaluate a validation formula
+     * @private
+     */
+    _evaluateValidationFormula(cellRef, value, formula, context, options) {
+        try {
+            // Simple expression evaluation
+            // Support UNIQUE(range, value), PREVIOUS(cellRef), and simple comparisons
+
+            // Handle UNIQUE(range, value) - check if value is unique in range
+            const uniqueMatch = formula.match(/UNIQUE\(['"]([A-Z]+:\w+)['"]\s*,\s*(.+)\)/i);
+            if (uniqueMatch) {
+                const rangeRef = uniqueMatch[1];
+                const checkValue = value; // Use the value being validated
+
+                // Get all values in the range
+                const [start, end] = rangeRef.split(':');
+                const startParsed = SpreadsheetModel.parseCellRef(start);
+                const endParsed = SpreadsheetModel.parseCellRef(end);
+
+                const startCol = SpreadsheetModel.colLetterToNumber(startParsed.col);
+                const endCol = SpreadsheetModel.colLetterToNumber(endParsed.col);
+                const startRow = startParsed.row;
+                const endRow = endParsed.row;
+
+                // Check if value exists in range (excluding current cell)
+                for (let row = startRow; row <= endRow; row++) {
+                    for (let col = startCol; col <= endCol; col++) {
+                        const ref = SpreadsheetModel.formatCellRef(col, row);
+                        if (ref !== cellRef) {
+                            const cellValue = this.getCellValue(ref);
+                            if (cellValue === checkValue) {
+                                return {
+                                    valid: false,
+                                    message: `Value "${checkValue}" must be unique in range ${rangeRef}`
+                                };
+                            }
+                        }
+                    }
+                }
+
+                return { valid: true, message: '' };
+            }
+
+            // Handle PREVIOUS(cellRef) - get previous value of cell
+            const previousMatch = formula.match(/PREVIOUS\(['"]?(\w+)['"]\)/i);
+            if (previousMatch) {
+                const targetRef = previousMatch[1];
+                const previousValue = options.previousValue !== undefined
+                    ? options.previousValue
+                    : this.getCellValue(targetRef);
+
+                // Replace PREVIOUS() with the actual value
+                const evaluableFormula = formula.replace(/PREVIOUS\([^)]+\)/i, previousValue);
+
+                // Inject current value as a variable
+                const finalFormula = evaluableFormula.replace(/\bvalue\b/gi, value);
+
+                // Simple eval for comparisons
+                try {
+                    const result = eval(finalFormula);
+                    return {
+                        valid: result,
+                        message: result ? '' : `Validation failed: ${formula}`
+                    };
+                } catch (e) {
+                    return {
+                        valid: false,
+                        message: `Invalid validation formula: ${e.message}`
+                    };
+                }
+            }
+
+            // Simple expression evaluation (e.g., "value != ''", "value > 0")
+            const evaluableFormula = formula.replace(/\bvalue\b/gi, `"${value}"`);
+            const result = eval(evaluableFormula);
+
+            return {
+                valid: result,
+                message: result ? '' : `Validation failed: ${formula}`
+            };
+        } catch (error) {
+            return {
+                valid: false,
+                message: `Validation error: ${error.message}`
+            };
         }
     }
 

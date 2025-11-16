@@ -520,6 +520,177 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * BATCH_SET_CELLS - Set multiple cells with individual addresses
+     * More flexible than SETCELLS - each cell can have its own address
+     * Usage: updates = '[{"address":"A1","value":"100"},{"address":"B2","value":"200"}]'
+     *        CALL BATCH_SET_CELLS(updates)
+     *        count = BATCH_SET_CELLS(updates)
+     */
+    BATCH_SET_CELLS: async function(updatesJson) {
+      if (!updatesJson) {
+        throw new Error('BATCH_SET_CELLS requires updates JSON string or array');
+      }
+
+      // Parse JSON if string
+      let updates;
+      if (typeof updatesJson === 'string') {
+        try {
+          updates = JSON.parse(updatesJson);
+        } catch (e) {
+          throw new Error('BATCH_SET_CELLS requires valid JSON: ' + e.message);
+        }
+      } else if (Array.isArray(updatesJson)) {
+        updates = updatesJson;
+      } else {
+        throw new Error('BATCH_SET_CELLS requires array of {address, value} objects');
+      }
+
+      if (!Array.isArray(updates)) {
+        throw new Error('BATCH_SET_CELLS updates must be an array');
+      }
+
+      // Validate all updates first
+      for (const update of updates) {
+        if (!update.address || typeof update.address !== 'string') {
+          throw new Error('Each update must have an "address" field (e.g., "A1")');
+        }
+        if (update.value === undefined) {
+          throw new Error(`Update for ${update.address} must have a "value" field`);
+        }
+      }
+
+      // Apply all updates
+      let successCount = 0;
+      const errors = [];
+
+      for (const update of updates) {
+        try {
+          const contentStr = String(update.value);
+          await model.setCell(update.address, contentStr, adapter);
+          successCount++;
+        } catch (error) {
+          errors.push({
+            address: update.address,
+            error: error.message
+          });
+        }
+      }
+
+      // Trigger UI update once after all cells are set
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      // Return result summary
+      const result = {
+        total: updates.length,
+        success: successCount,
+        errors: errors.length
+      };
+
+      if (errors.length > 0) {
+        result.errorDetails = errors;
+      }
+
+      return JSON.stringify(result);
+    },
+
+    /**
+     * BATCH_EXECUTE - Execute multiple commands in sequence
+     * Usage: commands = '[{"command":"SETCELL","args":["A1","100"]},{"command":"SETCELL","args":["B1","200"]}]'
+     *        CALL BATCH_EXECUTE(commands)
+     *        results = BATCH_EXECUTE(commands)
+     */
+    BATCH_EXECUTE: async function(commandsJson) {
+      if (!commandsJson) {
+        throw new Error('BATCH_EXECUTE requires commands JSON string or array');
+      }
+
+      // Parse JSON if string
+      let commands;
+      if (typeof commandsJson === 'string') {
+        try {
+          commands = JSON.parse(commandsJson);
+        } catch (e) {
+          throw new Error('BATCH_EXECUTE requires valid JSON: ' + e.message);
+        }
+      } else if (Array.isArray(commandsJson)) {
+        commands = commandsJson;
+      } else {
+        throw new Error('BATCH_EXECUTE requires array of command objects');
+      }
+
+      if (!Array.isArray(commands)) {
+        throw new Error('BATCH_EXECUTE commands must be an array');
+      }
+
+      // Get reference to all control functions
+      const controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+
+      // Execute commands
+      const results = [];
+
+      for (let i = 0; i < commands.length; i++) {
+        const cmd = commands[i];
+
+        if (!cmd.command || typeof cmd.command !== 'string') {
+          results.push({
+            index: i,
+            success: false,
+            error: 'Command must have a "command" field'
+          });
+          continue;
+        }
+
+        if (!cmd.args || !Array.isArray(cmd.args)) {
+          results.push({
+            index: i,
+            success: false,
+            error: 'Command must have an "args" array'
+          });
+          continue;
+        }
+
+        const commandName = cmd.command.toUpperCase();
+        const func = controlFunctions[commandName];
+
+        if (!func) {
+          results.push({
+            index: i,
+            command: commandName,
+            success: false,
+            error: `Unknown command: ${commandName}`
+          });
+          continue;
+        }
+
+        try {
+          const result = await func(...cmd.args);
+          results.push({
+            index: i,
+            command: commandName,
+            success: true,
+            result: result
+          });
+        } catch (error) {
+          results.push({
+            index: i,
+            command: commandName,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+
+      // Trigger UI update once after all commands
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return JSON.stringify(results);
+    },
+
+    /**
      * CLEAR - Clear all cells in spreadsheet
      * Usage: CALL CLEAR()
      */

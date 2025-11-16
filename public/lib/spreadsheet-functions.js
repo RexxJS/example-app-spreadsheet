@@ -12,6 +12,282 @@ function getAdapter() {
     throw new Error('Spreadsheet adapter not available');
 }
 
+/**
+ * RangeQuery - Chainable query object for range operations
+ * Supports method chaining for filtering, transforming, and aggregating ranges
+ */
+class RangeQuery {
+    constructor(rangeRef, adapter) {
+        this.adapter = adapter || getAdapter();
+        this.rangeRef = rangeRef;
+
+        // Get initial data
+        if (typeof rangeRef === 'string') {
+            // Parse range reference (e.g., "A1:D100" or named range)
+            const model = this.adapter.model;
+
+            // Check if it's a named range
+            if (model.namedRanges.has(rangeRef)) {
+                this.rangeRef = model.namedRanges.get(rangeRef);
+            }
+
+            // Get the raw cell values as a 2D array
+            this.data = this._getRangeData(this.rangeRef);
+        } else if (Array.isArray(rangeRef)) {
+            // Already processed data
+            this.data = rangeRef;
+        } else {
+            throw new Error('Invalid range reference');
+        }
+
+        // Store column headers if first row looks like headers (all strings, no empties)
+        this.headers = null;
+        if (this.data.length > 0) {
+            const firstRow = this.data[0];
+            const allStrings = firstRow.every(cell => typeof cell === 'string' && cell !== '');
+            const hasNumbers = this.data.slice(1).some(row => row.some(cell => typeof cell === 'number'));
+
+            if (allStrings && hasNumbers) {
+                this.headers = firstRow;
+                this.data = this.data.slice(1); // Remove header row from data
+            }
+        }
+    }
+
+    _getRangeData(rangeRef) {
+        const [start, end] = rangeRef.split(':');
+        const model = this.adapter.model;
+        const startParsed = model.constructor.parseCellRef(start);
+        const endParsed = model.constructor.parseCellRef(end);
+
+        const startCol = model.constructor.colLetterToNumber(startParsed.col);
+        const endCol = model.constructor.colLetterToNumber(endParsed.col);
+        const startRow = startParsed.row;
+        const endRow = endParsed.row;
+
+        const rows = [];
+        for (let row = startRow; row <= endRow; row++) {
+            const rowData = [];
+            for (let col = startCol; col <= endCol; col++) {
+                const ref = model.constructor.formatCellRef(col, row);
+                const value = model.getCellValue(ref);
+                const numValue = parseFloat(value);
+                rowData.push(isNaN(numValue) ? value : numValue);
+            }
+            rows.push(rowData);
+        }
+
+        return rows;
+    }
+
+    _getColumnIndex(colRef) {
+        if (typeof colRef === 'number') {
+            return colRef;
+        }
+
+        // Check if it's a column name (header)
+        if (this.headers) {
+            const index = this.headers.indexOf(colRef);
+            if (index !== -1) {
+                return index;
+            }
+        }
+
+        // Check if it's a column letter (A, B, C, etc.)
+        if (typeof colRef === 'string' && /^[A-Z]+$/i.test(colRef)) {
+            const model = this.adapter.model;
+            const colNum = model.constructor.colLetterToNumber(colRef);
+            const startParsed = model.constructor.parseCellRef(this.rangeRef.split(':')[0]);
+            const startCol = model.constructor.colLetterToNumber(startParsed.col);
+            return colNum - startCol;
+        }
+
+        throw new Error(`Unknown column reference: ${colRef}`);
+    }
+
+    /**
+     * WHERE - Filter rows based on a condition
+     * @param {string|function} condition - Condition expression or function
+     */
+    WHERE(condition) {
+        let filteredData;
+
+        if (typeof condition === 'function') {
+            // Function filter
+            filteredData = this.data.filter(condition);
+        } else if (typeof condition === 'string') {
+            // Parse condition string (e.g., "column_C > 1000", "region='West'")
+            filteredData = this.data.filter(row => {
+                return this._evaluateCondition(row, condition);
+            });
+        } else {
+            throw new Error('WHERE condition must be a string or function');
+        }
+
+        // Return new RangeQuery with filtered data
+        const newQuery = new RangeQuery(filteredData, this.adapter);
+        newQuery.headers = this.headers;
+        newQuery.rangeRef = this.rangeRef;
+        return newQuery;
+    }
+
+    _evaluateCondition(row, condition) {
+        // Parse condition: "column_C > 1000" or "region='West'" or "column_A != ''"
+        // Support: column_X, colX, X (where X is letter or name)
+
+        // Replace column references with row values
+        let expr = condition;
+
+        // Match column_X or col_X patterns
+        const colPatterns = [
+            /column_([A-Z]+|\w+)/gi,
+            /col_([A-Z]+|\w+)/gi
+        ];
+
+        for (const pattern of colPatterns) {
+            expr = expr.replace(pattern, (match, colRef) => {
+                const colIndex = this._getColumnIndex(colRef);
+                const value = row[colIndex];
+                return typeof value === 'string' ? `"${value}"` : value;
+            });
+        }
+
+        // Match standalone column names (if we have headers)
+        if (this.headers) {
+            this.headers.forEach((header, index) => {
+                const regex = new RegExp(`\\b${header}\\b`, 'g');
+                expr = expr.replace(regex, () => {
+                    const value = row[index];
+                    return typeof value === 'string' ? `"${value}"` : value;
+                });
+            });
+        }
+
+        // Evaluate the expression
+        try {
+            return eval(expr);
+        } catch (e) {
+            throw new Error(`Invalid WHERE condition: ${condition} - ${e.message}`);
+        }
+    }
+
+    /**
+     * PLUCK - Extract a single column
+     * @param {string|number} colRef - Column reference (letter, name, or index)
+     */
+    PLUCK(colRef) {
+        const colIndex = this._getColumnIndex(colRef);
+        const column = this.data.map(row => row[colIndex]);
+
+        // Return array (not RangeQuery, since it's 1D)
+        return column;
+    }
+
+    /**
+     * GROUP_BY - Group rows by column value
+     * @param {string|number} colRef - Column to group by
+     */
+    GROUP_BY(colRef) {
+        const colIndex = this._getColumnIndex(colRef);
+
+        const groups = {};
+        this.data.forEach(row => {
+            const key = row[colIndex];
+            if (!groups[key]) {
+                groups[key] = [];
+            }
+            groups[key].push(row);
+        });
+
+        // Store groups for aggregation
+        const newQuery = new RangeQuery([], this.adapter);
+        newQuery.headers = this.headers;
+        newQuery.rangeRef = this.rangeRef;
+        newQuery.groups = groups;
+        newQuery.groupByColumn = colIndex;
+
+        return newQuery;
+    }
+
+    /**
+     * SUM - Sum values in a column (works after GROUP_BY)
+     * @param {string|number} colRef - Column to sum
+     */
+    SUM(colRef) {
+        const colIndex = this._getColumnIndex(colRef);
+
+        if (this.groups) {
+            // Aggregate by groups
+            const result = {};
+            Object.entries(this.groups).forEach(([key, rows]) => {
+                result[key] = rows.reduce((sum, row) => {
+                    const val = parseFloat(row[colIndex]);
+                    return sum + (isNaN(val) ? 0 : val);
+                }, 0);
+            });
+            return result;
+        } else {
+            // Simple sum across all rows
+            return this.data.reduce((sum, row) => {
+                const val = parseFloat(row[colIndex]);
+                return sum + (isNaN(val) ? 0 : val);
+            }, 0);
+        }
+    }
+
+    /**
+     * COUNT - Count rows (works after GROUP_BY)
+     */
+    COUNT() {
+        if (this.groups) {
+            const result = {};
+            Object.entries(this.groups).forEach(([key, rows]) => {
+                result[key] = rows.length;
+            });
+            return result;
+        } else {
+            return this.data.length;
+        }
+    }
+
+    /**
+     * AVG - Average values in a column (works after GROUP_BY)
+     * @param {string|number} colRef - Column to average
+     */
+    AVG(colRef) {
+        const colIndex = this._getColumnIndex(colRef);
+
+        if (this.groups) {
+            const result = {};
+            Object.entries(this.groups).forEach(([key, rows]) => {
+                const values = rows.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
+                result[key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+            });
+            return result;
+        } else {
+            const values = this.data.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
+            return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        }
+    }
+
+    /**
+     * RESULT - Finalize query and return data
+     */
+    RESULT() {
+        if (this.groups) {
+            // Return groups object
+            return this.groups;
+        }
+        return this.data;
+    }
+}
+
+// RANGE - Create a queryable range object for chaining operations
+function RANGE(rangeRef) {
+    const adapter = getAdapter();
+    return new RangeQuery(rangeRef, adapter);
+}
+
 // SUM a range of cells
 function SUM_RANGE(rangeRef) {
     const adapter = getAdapter();
@@ -222,10 +498,11 @@ function COUNTIF_RANGE(rangeRef, condition) {
 function SPREADSHEET_FUNCTIONS_META() {
     return {
         name: 'spreadsheet-functions',
-        version: '2.0.0',
+        version: '2.1.0',
         type: 'functions',
-        description: 'Comprehensive spreadsheet range functions for RexxJS - Excel-like statistical and conditional functions',
+        description: 'Comprehensive spreadsheet range functions for RexxJS - Excel-like statistical and conditional functions with query chaining support',
         functions: [
+            'RANGE',
             'SUM_RANGE',
             'AVERAGE_RANGE',
             'COUNT_RANGE',
@@ -240,6 +517,9 @@ function SPREADSHEET_FUNCTIONS_META() {
             'SUMIF_RANGE',
             'COUNTIF_RANGE',
             'CELL'
+        ],
+        classes: [
+            'RangeQuery'
         ]
     };
 }
@@ -247,6 +527,8 @@ function SPREADSHEET_FUNCTIONS_META() {
 // Export for Node.js/CommonJS
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
+        RANGE,
+        RangeQuery,
         SUM_RANGE,
         AVERAGE_RANGE,
         COUNT_RANGE,
@@ -267,6 +549,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Export for browser/window (required for RexxJS REQUIRE in web mode)
 if (typeof window !== 'undefined') {
+    window.RANGE = RANGE;
+    window.RangeQuery = RangeQuery;
     window.SUM_RANGE = SUM_RANGE;
     window.AVERAGE_RANGE = AVERAGE_RANGE;
     window.COUNT_RANGE = COUNT_RANGE;

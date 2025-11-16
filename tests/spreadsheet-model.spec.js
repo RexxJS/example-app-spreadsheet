@@ -759,4 +759,211 @@ describe('SpreadsheetModel', () => {
             });
         });
     });
+
+    describe('Batch Control Bus Operations (Priority 2)', () => {
+        let adapter;
+        let controlFunctions;
+
+        beforeEach(async () => {
+            model = new SpreadsheetModel(100, 26);
+
+            // Dynamically import ES modules
+            const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+            const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+
+            const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+            const { createSpreadsheetControlFunctions } = controlFunctionsModule;
+
+            adapter = new SpreadsheetRexxAdapter(model);
+            controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+        });
+
+        describe('BATCH_SET_CELLS', () => {
+            it('should set multiple cells with individual addresses', async () => {
+                const updates = [
+                    { address: 'A1', value: '100' },
+                    { address: 'B2', value: '200' },
+                    { address: 'C3', value: '300' }
+                ];
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updates);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(3);
+                expect(resultObj.success).toBe(3);
+                expect(resultObj.errors).toBe(0);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('B2')).toBe('200');
+                expect(model.getCellValue('C3')).toBe('300');
+            });
+
+            it('should accept JSON string', async () => {
+                const updatesJson = '[{"address":"A1","value":"100"},{"address":"B2","value":"200"}]';
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updatesJson);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(2);
+                expect(resultObj.success).toBe(2);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('B2')).toBe('200');
+            });
+
+            it('should handle mixed success and errors', async () => {
+                const updates = [
+                    { address: 'A1', value: '100' },
+                    { address: 'INVALID', value: '200' },  // Invalid address
+                    { address: 'C3', value: '300' }
+                ];
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updates);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(3);
+                expect(resultObj.success).toBe(2); // A1 and C3 succeeded
+                expect(resultObj.errors).toBe(1);
+                expect(resultObj.errorDetails).toBeDefined();
+                expect(resultObj.errorDetails.length).toBe(1);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('C3')).toBe('300');
+            });
+
+            it('should validate update structure', async () => {
+                await expect(async () => {
+                    await controlFunctions.BATCH_SET_CELLS([{ value: '100' }]); // Missing address
+                }).rejects.toThrow('address');
+            });
+
+            it('should handle formulas in batch', async () => {
+                const updates = [
+                    { address: 'A1', value: '10' },
+                    { address: 'A2', value: '20' },
+                    { address: 'A3', value: '=A1+A2' }
+                ];
+
+                await controlFunctions.BATCH_SET_CELLS(updates);
+
+                expect(model.getCellValue('A1')).toBe('10');
+                expect(model.getCellValue('A2')).toBe('20');
+                expect(model.getCellExpression('A3')).toBe('=A1+A2');
+            });
+        });
+
+        describe('BATCH_EXECUTE', () => {
+            it('should execute multiple commands in sequence', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'SETCELL', args: ['A2', '200'] },
+                    { command: 'SETCELL', args: ['A3', '=A1+A2'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(3);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(true);
+                expect(results[2].success).toBe(true);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('A2')).toBe('200');
+            });
+
+            it('should accept JSON string', async () => {
+                const commandsJson = '[{"command":"SETCELL","args":["A1","100"]},{"command":"GETCELL","args":["A1"]}]';
+
+                const result = await controlFunctions.BATCH_EXECUTE(commandsJson);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(2);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(true);
+            });
+
+            it('should handle mixed command successes and failures', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'INVALID_COMMAND', args: [] },
+                    { command: 'SETCELL', args: ['A2', '200'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(3);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(false);
+                expect(results[1].error).toContain('Unknown command');
+                expect(results[2].success).toBe(true);
+
+                // First and third commands should have succeeded
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('A2')).toBe('200');
+            });
+
+            it('should validate command structure', async () => {
+                const commands = [
+                    { args: ['A1', '100'] }  // Missing command field
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results[0].success).toBe(false);
+                expect(results[0].error).toContain('command');
+            });
+
+            it('should include command results in response', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'GETCELL', args: ['A1'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results[1].result).toBe('100');
+            });
+
+            it('should handle complex batch operations', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '10'] },
+                    { command: 'SETCELL', args: ['A2', '20'] },
+                    { command: 'SETCELL', args: ['A3', '30'] },
+                    { command: 'SUM_RANGE', args: ['A1:A3'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(4);
+                expect(results[3].success).toBe(true);
+                expect(results[3].result).toBe(60);
+            });
+        });
+
+        describe('Performance benefits', () => {
+            it('should update UI once for batch operations', async () => {
+                const updates = [];
+                for (let i = 1; i <= 100; i++) {
+                    updates.push({ address: `A${i}`, value: String(i) });
+                }
+
+                const startTime = Date.now();
+                await controlFunctions.BATCH_SET_CELLS(updates);
+                const endTime = Date.now();
+
+                // Batch operation should complete reasonably fast
+                expect(endTime - startTime).toBeLessThan(1000);
+
+                // Verify all cells were set
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.getCellValue('A50')).toBe('50');
+                expect(model.getCellValue('A100')).toBe('100');
+            });
+        });
+    });
 });
