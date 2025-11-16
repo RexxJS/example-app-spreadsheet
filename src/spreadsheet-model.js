@@ -53,7 +53,8 @@ class SpreadsheetModel {
             pivotTables: new Map(), // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
             autoIdColumn: null, // Column for auto-IDs (e.g., "A" or null if disabled)
             nextId: 1, // Next ID to assign
-            idPrefix: '' // Optional prefix for IDs (e.g., "ID-")
+            idPrefix: '', // Optional prefix for IDs (e.g., "ID-")
+            tableMetadata: new Map() // key: tableName, value: {range, columns, hasHeader, types, descriptions}
         });
     }
 
@@ -191,6 +192,13 @@ class SpreadsheetModel {
     }
     set pivotTables(value) {
         this._getActiveSheet().pivotTables = value;
+    }
+
+    get tableMetadata() {
+        return this._getActiveSheet().tableMetadata;
+    }
+    set tableMetadata(value) {
+        this._getActiveSheet().tableMetadata = value;
     }
 
     get autoIdColumn() {
@@ -1137,7 +1145,11 @@ class SpreadsheetModel {
                 validations: Object.fromEntries(sheet.validations),
                 mergedCells: Object.fromEntries(sheet.mergedCells),
                 cellEditors: Object.fromEntries(sheet.cellEditors),
-                pivotTables: Object.fromEntries(sheet.pivotTables)
+                pivotTables: Object.fromEntries(sheet.pivotTables),
+                tableMetadata: Object.fromEntries(sheet.tableMetadata),
+                autoIdColumn: sheet.autoIdColumn,
+                nextId: sheet.nextId,
+                idPrefix: sheet.idPrefix
             };
 
             // Add filter criteria if present
@@ -1262,6 +1274,24 @@ class SpreadsheetModel {
                     Object.entries(sheetData.pivotTables).forEach(([id, config]) => {
                         sheet.pivotTables.set(id, config);
                     });
+                }
+
+                // Restore table metadata
+                if (sheetData.tableMetadata) {
+                    Object.entries(sheetData.tableMetadata).forEach(([name, metadata]) => {
+                        sheet.tableMetadata.set(name, metadata);
+                    });
+                }
+
+                // Restore auto-ID configuration
+                if (sheetData.autoIdColumn !== undefined) {
+                    sheet.autoIdColumn = sheetData.autoIdColumn;
+                }
+                if (sheetData.nextId !== undefined) {
+                    sheet.nextId = sheetData.nextId;
+                }
+                if (sheetData.idPrefix !== undefined) {
+                    sheet.idPrefix = sheetData.idPrefix;
                 }
 
                 // Import cells first (filter needs cells to be present)
@@ -2309,6 +2339,86 @@ class SpreadsheetModel {
     }
 
     /**
+     * Set table metadata for a named range
+     * @param {string} tableName - Name of the table (must match a named range or range reference)
+     * @param {Object} metadata - Table metadata object
+     * @param {string} metadata.range - Range reference (e.g., "A1:D100")
+     * @param {Object} metadata.columns - Column name to column letter mappings (e.g., {id: "A", name: "B"})
+     * @param {boolean} metadata.hasHeader - Whether the range has a header row
+     * @param {Object} [metadata.types] - Optional column type information (e.g., {id: "number", name: "string"})
+     * @param {Object} [metadata.descriptions] - Optional column descriptions
+     */
+    setTableMetadata(tableName, metadata) {
+        // Validate table name
+        if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(tableName)) {
+            throw new Error('Table name must start with a letter and contain only letters, numbers, and underscores');
+        }
+
+        // Validate required fields
+        if (!metadata.range || !metadata.columns) {
+            throw new Error('Table metadata must include range and columns');
+        }
+
+        // Validate range reference
+        const match = metadata.range.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!match) {
+            throw new Error(`Invalid range reference: ${metadata.range}`);
+        }
+
+        // Validate columns object
+        if (typeof metadata.columns !== 'object' || Array.isArray(metadata.columns)) {
+            throw new Error('Columns must be an object mapping column names to column letters');
+        }
+
+        // Store the metadata
+        this.tableMetadata.set(tableName, {
+            range: metadata.range.toUpperCase(),
+            columns: metadata.columns,
+            hasHeader: metadata.hasHeader !== false, // Default to true
+            types: metadata.types || {},
+            descriptions: metadata.descriptions || {}
+        });
+
+        // Also create/update a named range for the table
+        this.namedRanges.set(tableName, metadata.range.toUpperCase());
+    }
+
+    /**
+     * Get table metadata
+     * @param {string} tableName - Name of the table
+     * @returns {Object|null} Table metadata or null if not found
+     */
+    getTableMetadata(tableName) {
+        return this.tableMetadata.get(tableName) || null;
+    }
+
+    /**
+     * Delete table metadata
+     * @param {string} tableName - Name of the table
+     */
+    deleteTableMetadata(tableName) {
+        this.tableMetadata.delete(tableName);
+        // Optionally delete the associated named range
+        this.namedRanges.delete(tableName);
+    }
+
+    /**
+     * Get all table metadata
+     * @returns {Object} Object with table name -> metadata mappings
+     */
+    getAllTableMetadata() {
+        return Object.fromEntries(this.tableMetadata);
+    }
+
+    /**
+     * List all table names
+     * @returns {Array<string>} Array of table names
+     */
+    listTables() {
+        return Array.from(this.tableMetadata.keys());
+    }
+
+    /**
      * Freeze panes - lock rows and columns in place
      * @param {number} rows - Number of rows to freeze from top
      * @param {number} cols - Number of columns to freeze from left
@@ -2815,6 +2925,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
 
@@ -2852,6 +2966,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
         this.redoStack.push(currentSnapshot);
@@ -2870,6 +2988,10 @@ class SpreadsheetModel {
         this.mergedCells = new Map(snapshot.mergedCells || new Map());
         this.cellEditors = new Map(snapshot.cellEditors || new Map());
         this.pivotTables = new Map(snapshot.pivotTables || new Map());
+        this.tableMetadata = new Map(snapshot.tableMetadata || new Map());
+        this.autoIdColumn = snapshot.autoIdColumn !== undefined ? snapshot.autoIdColumn : null;
+        this.nextId = snapshot.nextId !== undefined ? snapshot.nextId : 1;
+        this.idPrefix = snapshot.idPrefix !== undefined ? snapshot.idPrefix : '';
 
         this._rebuildDependents();
         if (rexxInterpreter) {
@@ -2903,6 +3025,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
         this.undoStack.push(currentSnapshot);
@@ -2921,6 +3047,10 @@ class SpreadsheetModel {
         this.mergedCells = new Map(snapshot.mergedCells || new Map());
         this.cellEditors = new Map(snapshot.cellEditors || new Map());
         this.pivotTables = new Map(snapshot.pivotTables || new Map());
+        this.tableMetadata = new Map(snapshot.tableMetadata || new Map());
+        this.autoIdColumn = snapshot.autoIdColumn !== undefined ? snapshot.autoIdColumn : null;
+        this.nextId = snapshot.nextId !== undefined ? snapshot.nextId : 1;
+        this.idPrefix = snapshot.idPrefix !== undefined ? snapshot.idPrefix : '';
 
         this._rebuildDependents();
         if (rexxInterpreter) {

@@ -508,4 +508,174 @@ describe('SpreadsheetModel - Advanced Features', () => {
             expect(model.frozenColumns).toBe(0);
         });
     });
+
+    describe('Named Range Query Builder with Table Metadata (Priority 5)', () => {
+        beforeEach(() => {
+            // Set up sample data
+            model.setCell('A1', 'ID');
+            model.setCell('B1', 'Region');
+            model.setCell('C1', 'Product');
+            model.setCell('D1', 'Amount');
+
+            model.setCell('A2', '1');
+            model.setCell('B2', 'West');
+            model.setCell('C2', 'Widget');
+            model.setCell('D2', '1500');
+
+            model.setCell('A3', '2');
+            model.setCell('B3', 'East');
+            model.setCell('C3', 'Gadget');
+            model.setCell('D3', '800');
+
+            model.setCell('A4', '3');
+            model.setCell('B4', 'West');
+            model.setCell('C4', 'Gizmo');
+            model.setCell('D4', '1700');
+
+            model.setCell('A5', '4');
+            model.setCell('B5', 'East');
+            model.setCell('C5', 'Widget');
+            model.setCell('D5', '900');
+        });
+
+        it('should set and get table metadata', () => {
+            const metadata = {
+                range: 'A1:D5',
+                columns: {
+                    id: 'A',
+                    region: 'B',
+                    product: 'C',
+                    amount: 'D'
+                },
+                hasHeader: true
+            };
+
+            model.setTableMetadata('SalesData', metadata);
+            const retrieved = model.getTableMetadata('SalesData');
+
+            expect(retrieved).toBeDefined();
+            expect(retrieved.range).toBe('A1:D5');
+            expect(retrieved.columns.id).toBe('A');
+            expect(retrieved.columns.region).toBe('B');
+            expect(retrieved.hasHeader).toBe(true);
+        });
+
+        it('should reject invalid table names', () => {
+            expect(() => {
+                model.setTableMetadata('123Invalid', {
+                    range: 'A1:D5',
+                    columns: { id: 'A' }
+                });
+            }).toThrow('Table name must start with a letter');
+        });
+
+        it('should reject missing required fields', () => {
+            expect(() => {
+                model.setTableMetadata('TestTable', {
+                    range: 'A1:D5'
+                    // Missing columns
+                });
+            }).toThrow('Table metadata must include range and columns');
+        });
+
+        it('should list all tables', () => {
+            model.setTableMetadata('Table1', {
+                range: 'A1:D5',
+                columns: { id: 'A', name: 'B' }
+            });
+
+            model.setTableMetadata('Table2', {
+                range: 'F1:H10',
+                columns: { x: 'F', y: 'G' }
+            });
+
+            const tables = model.listTables();
+            expect(tables).toContain('Table1');
+            expect(tables).toContain('Table2');
+            expect(tables.length).toBe(2);
+        });
+
+        it('should delete table metadata', () => {
+            model.setTableMetadata('TestTable', {
+                range: 'A1:D5',
+                columns: { id: 'A' }
+            });
+
+            model.deleteTableMetadata('TestTable');
+            expect(model.getTableMetadata('TestTable')).toBeNull();
+        });
+
+        it('should store table metadata with types and descriptions', () => {
+            const metadata = {
+                range: 'A1:D5',
+                columns: {
+                    id: 'A',
+                    region: 'B',
+                    product: 'C',
+                    amount: 'D'
+                },
+                hasHeader: true,
+                types: {
+                    id: 'number',
+                    region: 'string',
+                    product: 'string',
+                    amount: 'number'
+                },
+                descriptions: {
+                    id: 'Unique identifier',
+                    region: 'Sales region',
+                    product: 'Product name',
+                    amount: 'Sale amount in dollars'
+                }
+            };
+
+            model.setTableMetadata('SalesData', metadata);
+            const retrieved = model.getTableMetadata('SalesData');
+
+            expect(retrieved.types.id).toBe('number');
+            expect(retrieved.descriptions.region).toBe('Sales region');
+        });
+
+        it('should automatically create a named range when setting table metadata', () => {
+            model.setTableMetadata('SalesData', {
+                range: 'A1:D5',
+                columns: { id: 'A', region: 'B' }
+            });
+
+            expect(model.getNamedRange('SalesData')).toBe('A1:D5');
+        });
+
+        it('should persist table metadata in JSON export', () => {
+            model.setTableMetadata('SalesData', {
+                range: 'A1:D5',
+                columns: { id: 'A', region: 'B' },
+                hasHeader: true
+            });
+
+            const json = model.toJSON();
+            const newModel = new SpreadsheetModel(100, 26);
+            newModel.fromJSON(json);
+
+            const metadata = newModel.getTableMetadata('SalesData');
+            expect(metadata).toBeDefined();
+            expect(metadata.range).toBe('A1:D5');
+            expect(metadata.columns.id).toBe('A');
+        });
+
+        it('should restore table metadata after undo/redo', () => {
+            model.setTableMetadata('SalesData', {
+                range: 'A1:D5',
+                columns: { id: 'A', region: 'B' }
+            });
+
+            // Modify something to trigger history
+            model.setCell('A1', 'Modified');
+
+            model.undo();
+            expect(model.getTableMetadata('SalesData')).toBeDefined();
+
+            model.redo();
+            expect(model.getTableMetadata('SalesData')).toBeDefined();
+        });
+    });
 });

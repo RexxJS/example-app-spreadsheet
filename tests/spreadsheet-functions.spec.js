@@ -618,4 +618,151 @@ describe('Spreadsheet Range Functions', () => {
             });
         });
     });
+
+    describe('TABLE Query Builder with Metadata (Priority 5)', () => {
+        let adapter, TABLE;
+
+        beforeEach(async () => {
+            // Set up sample data
+            model.setCell('A1', 'id');
+            model.setCell('B1', 'region');
+            model.setCell('C1', 'product');
+            model.setCell('D1', 'amount');
+
+            model.setCell('A2', '1');
+            model.setCell('B2', 'West');
+            model.setCell('C2', 'Widget');
+            model.setCell('D2', '1500');
+
+            model.setCell('A3', '2');
+            model.setCell('B3', 'East');
+            model.setCell('C3', 'Gadget');
+            model.setCell('D3', '800');
+
+            model.setCell('A4', '3');
+            model.setCell('B4', 'West');
+            model.setCell('C4', 'Gizmo');
+            model.setCell('D4', '1700');
+
+            model.setCell('A5', '4');
+            model.setCell('B5', 'East');
+            model.setCell('C5', 'Widget');
+            model.setCell('D5', '900');
+
+            // Define table metadata
+            model.setTableMetadata('SalesData', {
+                range: 'A1:D5',
+                columns: {
+                    id: 'A',
+                    region: 'B',
+                    product: 'C',
+                    amount: 'D'
+                },
+                hasHeader: true,
+                types: {
+                    id: 'number',
+                    region: 'string',
+                    product: 'string',
+                    amount: 'number'
+                }
+            });
+
+            // Import adapter and TABLE function
+            const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+            const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+            adapter = new SpreadsheetRexxAdapter(model);
+
+            if (typeof window === 'undefined') {
+                global.window = { spreadsheetAdapter: adapter };
+            } else {
+                window.spreadsheetAdapter = adapter;
+            }
+
+            const functionsModule = await import('../public/lib/spreadsheet-functions.js');
+            TABLE = functionsModule.TABLE;
+        });
+
+        afterEach(() => {
+            if (typeof window !== 'undefined') {
+                delete window.spreadsheetAdapter;
+            } else if (global.window) {
+                delete global.window;
+            }
+        });
+
+        it('should create a query from table metadata', () => {
+            const query = TABLE('SalesData');
+
+            expect(query).toBeDefined();
+            expect(query.headers).toEqual(['id', 'region', 'product', 'amount']);
+            expect(query.data.length).toBe(4); // 4 data rows (header excluded)
+        });
+
+        it('should throw error for undefined table', () => {
+            expect(() => {
+                TABLE('NonExistentTable');
+            }).toThrow("Table 'NonExistentTable' not found");
+        });
+
+        it('should support WHERE with column names', () => {
+            const result = TABLE('SalesData').WHERE('region == "West"').RESULT();
+
+            // At least one West region should be found
+            expect(result.length).toBeGreaterThanOrEqual(1);
+            expect(result[0][1]).toBe('West'); // region column
+        });
+
+        it('should support PLUCK with column names', () => {
+            const result = TABLE('SalesData').PLUCK('product');
+
+            expect(result).toEqual(['Widget', 'Gadget', 'Gizmo', 'Widget']);
+        });
+
+        it('should support GROUP_BY with column names', () => {
+            const result = TABLE('SalesData')
+                .GROUP_BY('region')
+                .SUM('amount');
+
+            expect(result['West']).toBe(3200); // 1500 + 1700
+            expect(result['East']).toBe(1700); // 800 + 900
+        });
+
+        it('should support complex query chains with column names', () => {
+            const result = TABLE('SalesData')
+                .WHERE('amount > 1000')
+                .GROUP_BY('region')
+                .COUNT();
+
+            expect(result['West']).toBeGreaterThanOrEqual(1); // At least one West item over 1000
+            expect(result['East']).toBeUndefined(); // East items under 1000 filtered out
+        });
+
+        it('should preserve table metadata through query chaining', () => {
+            const query = TABLE('SalesData').WHERE('region == "West"');
+
+            expect(query.tableMetadata).toBeDefined();
+            expect(query.tableMetadata.columns.region).toBe('B');
+            expect(query.headers).toEqual(['id', 'region', 'product', 'amount']);
+        });
+
+        it('should support AVG aggregation with column names', () => {
+            const result = TABLE('SalesData')
+                .GROUP_BY('region')
+                .AVG('amount');
+
+            expect(result['West']).toBe(1600); // (1500 + 1700) / 2
+            expect(result['East']).toBe(850); // (800 + 900) / 2
+        });
+
+        it('should access table data through TABLE function', () => {
+            // Verify TABLE() returns data correctly
+            const query = TABLE('SalesData');
+
+            expect(query.data).toBeDefined();
+            expect(query.data.length).toBe(4); // 4 data rows (header excluded)
+            expect(query.headers).toBeDefined();
+            expect(query.headers).toContain('region');
+            expect(query.headers).toContain('product');
+        });
+    });
 });

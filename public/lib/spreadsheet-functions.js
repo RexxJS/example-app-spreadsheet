@@ -17,9 +17,10 @@ function getAdapter() {
  * Supports method chaining for filtering, transforming, and aggregating ranges
  */
 class RangeQuery {
-    constructor(rangeRef, adapter) {
+    constructor(rangeRef, adapter, tableMetadata) {
         this.adapter = adapter || getAdapter();
         this.rangeRef = rangeRef;
+        this.tableMetadata = tableMetadata || null; // Optional table metadata
 
         // Get initial data
         if (typeof rangeRef === 'string') {
@@ -40,16 +41,37 @@ class RangeQuery {
             throw new Error('Invalid range reference');
         }
 
-        // Store column headers if first row looks like headers (all strings, no empties)
-        this.headers = null;
-        if (this.data.length > 0) {
-            const firstRow = this.data[0];
-            const allStrings = firstRow.every(cell => typeof cell === 'string' && cell !== '');
-            const hasNumbers = this.data.slice(1).some(row => row.some(cell => typeof cell === 'number'));
+        // Use table metadata for headers if available
+        if (this.tableMetadata && this.tableMetadata.columns) {
+            this.columnMap = this.tableMetadata.columns; // Map column names to letters
 
-            if (allStrings && hasNumbers) {
-                this.headers = firstRow;
-                this.data = this.data.slice(1); // Remove header row from data
+            // Build headers array in column order (A, B, C, etc.)
+            const columnEntries = Object.entries(this.tableMetadata.columns);
+            // Sort by column letter to ensure proper order
+            columnEntries.sort((a, b) => {
+                const colA = this.adapter.model.constructor.colLetterToNumber(a[1]);
+                const colB = this.adapter.model.constructor.colLetterToNumber(b[1]);
+                return colA - colB;
+            });
+            this.headers = columnEntries.map(([name, letter]) => name);
+
+            // Skip header row if table has header
+            if (this.tableMetadata.hasHeader && this.data.length > 0) {
+                this.data = this.data.slice(1);
+            }
+        } else {
+            // Fallback: auto-detect headers from first row
+            this.headers = null;
+            this.columnMap = null;
+            if (this.data.length > 0) {
+                const firstRow = this.data[0];
+                const allStrings = firstRow.every(cell => typeof cell === 'string' && cell !== '');
+                const hasNumbers = this.data.slice(1).some(row => row.some(cell => typeof cell === 'number'));
+
+                if (allStrings && hasNumbers) {
+                    this.headers = firstRow;
+                    this.data = this.data.slice(1); // Remove header row from data
+                }
             }
         }
     }
@@ -125,8 +147,9 @@ class RangeQuery {
         }
 
         // Return new RangeQuery with filtered data
-        const newQuery = new RangeQuery(filteredData, this.adapter);
+        const newQuery = new RangeQuery(filteredData, this.adapter, this.tableMetadata);
         newQuery.headers = this.headers;
+        newQuery.columnMap = this.columnMap;
         newQuery.rangeRef = this.rangeRef;
         return newQuery;
     }
@@ -200,8 +223,9 @@ class RangeQuery {
         });
 
         // Store groups for aggregation
-        const newQuery = new RangeQuery([], this.adapter);
+        const newQuery = new RangeQuery([], this.adapter, this.tableMetadata);
         newQuery.headers = this.headers;
+        newQuery.columnMap = this.columnMap;
         newQuery.rangeRef = this.rangeRef;
         newQuery.groups = groups;
         newQuery.groupByColumn = colIndex;
@@ -286,6 +310,26 @@ class RangeQuery {
 function RANGE(rangeRef) {
     const adapter = getAdapter();
     return new RangeQuery(rangeRef, adapter);
+}
+
+/**
+ * TABLE - Create a queryable table with metadata
+ * Uses table metadata for column names and types
+ * @param {string} tableName - Name of the table (must have metadata defined)
+ * @returns {RangeQuery} Queryable range with table metadata
+ */
+function TABLE(tableName) {
+    const adapter = getAdapter();
+    const model = adapter.model;
+
+    // Get table metadata
+    const metadata = model.getTableMetadata(tableName);
+    if (!metadata) {
+        throw new Error(`Table '${tableName}' not found. Use setTableMetadata() to define table metadata.`);
+    }
+
+    // Create RangeQuery with table metadata
+    return new RangeQuery(metadata.range, adapter, metadata);
 }
 
 // SUM a range of cells
@@ -528,6 +572,7 @@ function SPREADSHEET_FUNCTIONS_META() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         RANGE,
+        TABLE,
         RangeQuery,
         SUM_RANGE,
         AVERAGE_RANGE,
@@ -550,6 +595,7 @@ if (typeof module !== 'undefined' && module.exports) {
 // Export for browser/window (required for RexxJS REQUIRE in web mode)
 if (typeof window !== 'undefined') {
     window.RANGE = RANGE;
+    window.TABLE = TABLE;
     window.RangeQuery = RangeQuery;
     window.SUM_RANGE = SUM_RANGE;
     window.AVERAGE_RANGE = AVERAGE_RANGE;

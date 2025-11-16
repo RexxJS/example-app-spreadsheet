@@ -1996,6 +1996,65 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * SET_TABLE_METADATA - Define table metadata for a named range
+     * Usage: CALL SET_TABLE_METADATA("SalesData", '{"range":"A1:D100","columns":{"id":"A","region":"B","product":"C","amount":"D"},"hasHeader":true}')
+     */
+    SET_TABLE_METADATA: function(tableName, metadataJson) {
+      if (!tableName || typeof tableName !== 'string') {
+        throw new Error('Table name is required and must be a string');
+      }
+
+      let metadata;
+      try {
+        metadata = typeof metadataJson === 'string' ? JSON.parse(metadataJson) : metadataJson;
+      } catch (e) {
+        throw new Error('Invalid JSON for table metadata: ' + e.message);
+      }
+
+      model.setTableMetadata(tableName, metadata);
+      return `Table metadata set for '${tableName}'`;
+    },
+
+    /**
+     * GET_TABLE_METADATA - Get table metadata
+     * Usage: metadata = GET_TABLE_METADATA("SalesData")
+     */
+    GET_TABLE_METADATA: function(tableName) {
+      if (!tableName || typeof tableName !== 'string') {
+        throw new Error('Table name is required and must be a string');
+      }
+
+      const metadata = model.getTableMetadata(tableName);
+      if (!metadata) {
+        return '';
+      }
+
+      return JSON.stringify(metadata);
+    },
+
+    /**
+     * DELETE_TABLE_METADATA - Remove table metadata
+     * Usage: CALL DELETE_TABLE_METADATA("SalesData")
+     */
+    DELETE_TABLE_METADATA: function(tableName) {
+      if (!tableName || typeof tableName !== 'string') {
+        throw new Error('Table name is required and must be a string');
+      }
+
+      model.deleteTableMetadata(tableName);
+      return `Table metadata deleted for '${tableName}'`;
+    },
+
+    /**
+     * LIST_TABLES - Get list of all tables with metadata
+     * Usage: tables = LIST_TABLES()
+     */
+    LIST_TABLES: function() {
+      const tables = model.listTables();
+      return JSON.stringify(tables);
+    },
+
+    /**
      * CREATEPIVOT - Create a pivot table
      * Usage: CALL CREATEPIVOT("pivot1", '{"sourceRange":"A1:D10","rowFields":["Category"],"colFields":["Month"],"valueField":"Sales","aggFunction":"SUM","outputCell":"F1"}')
      *        pivotId = CREATEPIVOT("sales_pivot", configJson)

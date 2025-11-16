@@ -1265,4 +1265,137 @@ describe('SpreadsheetModel', () => {
             });
         });
     });
+
+    describe('Table Metadata Control Bus Commands (Priority 5)', () => {
+        let model, controlFunctions;
+
+        beforeEach(async () => {
+            model = new SpreadsheetModel(100, 26);
+
+            // Set up sample data
+            model.setCell('A1', 'id');
+            model.setCell('B1', 'name');
+            model.setCell('C1', 'amount');
+
+            model.setCell('A2', '1');
+            model.setCell('B2', 'Alice');
+            model.setCell('C2', '100');
+
+            model.setCell('A3', '2');
+            model.setCell('B3', 'Bob');
+            model.setCell('C3', '200');
+
+            // Import control functions and adapter
+            const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+            const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+            const adapter = new SpreadsheetRexxAdapter(model);
+
+            const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+            const createSpreadsheetControlFunctions = controlFunctionsModule.createSpreadsheetControlFunctions;
+            controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+        });
+
+        it('should set table metadata via Control Bus', () => {
+            const metadata = {
+                range: 'A1:C3',
+                columns: {
+                    id: 'A',
+                    name: 'B',
+                    amount: 'C'
+                },
+                hasHeader: true
+            };
+
+            const result = controlFunctions.SET_TABLE_METADATA('TestTable', JSON.stringify(metadata));
+
+            expect(result).toContain("Table metadata set for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeDefined();
+        });
+
+        it('should get table metadata via Control Bus', () => {
+            model.setTableMetadata('TestTable', {
+                range: 'A1:C3',
+                columns: {
+                    id: 'A',
+                    name: 'B',
+                    amount: 'C'
+                },
+                hasHeader: true
+            });
+
+            const result = controlFunctions.GET_TABLE_METADATA('TestTable');
+            const parsed = JSON.parse(result);
+
+            expect(parsed.range).toBe('A1:C3');
+            expect(parsed.columns.id).toBe('A');
+            expect(parsed.hasHeader).toBe(true);
+        });
+
+        it('should return empty string for non-existent table', () => {
+            const result = controlFunctions.GET_TABLE_METADATA('NonExistent');
+            expect(result).toBe('');
+        });
+
+        it('should delete table metadata via Control Bus', () => {
+            model.setTableMetadata('TestTable', {
+                range: 'A1:C3',
+                columns: { id: 'A' }
+            });
+
+            const result = controlFunctions.DELETE_TABLE_METADATA('TestTable');
+
+            expect(result).toContain("Table metadata deleted for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeNull();
+        });
+
+        it('should list all tables via Control Bus', () => {
+            model.setTableMetadata('Table1', {
+                range: 'A1:C3',
+                columns: { id: 'A' }
+            });
+
+            model.setTableMetadata('Table2', {
+                range: 'D1:F5',
+                columns: { x: 'D' }
+            });
+
+            const result = controlFunctions.LIST_TABLES();
+            const parsed = JSON.parse(result);
+
+            expect(parsed).toContain('Table1');
+            expect(parsed).toContain('Table2');
+            expect(parsed.length).toBe(2);
+        });
+
+        it('should accept metadata as object (not just JSON string)', () => {
+            const metadata = {
+                range: 'A1:C3',
+                columns: { id: 'A', name: 'B' },
+                hasHeader: true
+            };
+
+            const result = controlFunctions.SET_TABLE_METADATA('TestTable', metadata);
+
+            expect(result).toContain("Table metadata set for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeDefined();
+        });
+
+        it('should reject invalid table name', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('123Invalid', '{"range":"A1:C3","columns":{"id":"A"}}');
+            }).toThrow('Table name must start with a letter');
+        });
+
+        it('should reject invalid JSON', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('TestTable', '{invalid json}');
+            }).toThrow('Invalid JSON for table metadata');
+        });
+
+        it('should reject missing table name parameter', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('', '{"range":"A1:C3","columns":{"id":"A"}}');
+            }).toThrow('Table name is required');
+        });
+    });
 });
