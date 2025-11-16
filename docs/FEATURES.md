@@ -407,36 +407,33 @@ RexxJS Spreadsheet includes powerful features for working with data like a datab
 
 ### Query Chaining with RANGE()
 
-Build complex data queries using method chaining, similar to SQL or LINQ.
+Build complex data queries using RexxJS's pipe operator (`|>`), similar to SQL or LINQ.
 
 **Basic Filtering:**
-```javascript
+```rexx
 // Filter rows where column C > 1000
-=RANGE('A1:D100').WHERE('column_C > 1000').RESULT()
+=RANGE('A1:D100') |> WHERE('column_C > 1000') |> RESULT()
 ```
 
 **Extract Single Column:**
-```javascript
+```rexx
 // Get all values from column B
-=RANGE('A1:D100').PLUCK('B')
+=RANGE('A1:D100') |> PLUCK('B')
 
 // Or using column names if headers exist
-=RANGE('SalesData').PLUCK('ProductName')
+=RANGE('SalesData') |> PLUCK('ProductName')
 ```
 
 **Group and Aggregate:**
-```javascript
+```rexx
 // Sum amounts by region
-=RANGE('A1:D100').GROUP_BY('B').SUM('D')
+=RANGE('A1:D100') |> GROUP_BY('B') |> SUM('D')
 
-// Multiple operations
-=RANGE('Sales!A:D')
-  .WHERE('Amount > 1000')
-  .GROUP_BY('Region')
-  .AVG('Amount')
+// Multiple operations - pipe operator chains left-to-right
+=RANGE('Sales!A:D') |> WHERE('Amount > 1000') |> GROUP_BY('Region') |> AVG('Amount')
 ```
 
-**Available Methods:**
+**Available Pipeline Functions:**
 - `WHERE(condition)` - Filter rows (supports column_X, colX, or column names)
 - `PLUCK(column)` - Extract single column
 - `GROUP_BY(column)` - Group rows for aggregation
@@ -444,6 +441,8 @@ Build complex data queries using method chaining, similar to SQL or LINQ.
 - `AVG(column)` - Average values (works with GROUP_BY)
 - `COUNT()` - Count rows (works with GROUP_BY)
 - `RESULT()` - Return final data array
+
+**Note:** Backward-compatible method chaining (`.WHERE().GROUP_BY()`) still works.
 
 ### Table Metadata & SQL-like Queries
 
@@ -473,12 +472,12 @@ CALL SET_TABLE_METADATA("SalesData", '{
 ```
 
 **Query Using Column Names:**
-```javascript
+```rexx
 // Much more readable than column letters!
-=TABLE('SalesData').WHERE('region == "West"').GROUP_BY('product').SUM('amount')
+=TABLE('SalesData') |> WHERE('region == "West"') |> GROUP_BY('product') |> SUM('amount')
 
 // vs the old way:
-=RANGE('A1:D100').WHERE('column_B == "West"').GROUP_BY('C').SUM('D')
+=RANGE('A1:D100') |> WHERE('column_B == "West"') |> GROUP_BY('C') |> SUM('D')
 ```
 
 **Benefits:**
@@ -645,15 +644,15 @@ model.setCellValidation('E2:E1000', {
 ```
 
 **4. Query Data:**
-```javascript
+```rexx
 // Total sales by region
-=TABLE('Sales').GROUP_BY('region').SUM('amount')
+=TABLE('Sales') |> GROUP_BY('region') |> SUM('amount')
 
 // High-value West coast orders
-=TABLE('Sales').WHERE('region == "West" && amount > 5000').RESULT()
+=TABLE('Sales') |> WHERE('region == "West" && amount > 5000') |> RESULT()
 
 // Average order value by product
-=TABLE('Sales').GROUP_BY('product').AVG('amount')
+=TABLE('Sales') |> GROUP_BY('product') |> AVG('amount')
 ```
 
 **5. Bulk Import Data:**

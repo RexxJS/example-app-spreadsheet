@@ -232,7 +232,7 @@ Now let's create powerful analytics using the TABLE() function and query chainin
 Create a new sheet called "Analytics" and add this formula in cell B2:
 
 ```javascript
-=TABLE('Orders').GROUP_BY('customer_id').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('customer_id') |> SUM('amount')
 ```
 
 This returns an object like:
@@ -250,7 +250,7 @@ To get sales by region, we need to join customer data. Create this formula:
 
 ```javascript
 // First, get customer regions
-=TABLE('Customers').PLUCK('region')
+=TABLE('Customers') |> PLUCK('region')
 
 // For more complex queries, you can use helper cells
 // Put customer lookup in one cell, then reference it
@@ -259,7 +259,7 @@ To get sales by region, we need to join customer data. Create this formula:
 Or create a more sophisticated query that groups by product:
 
 ```javascript
-=TABLE('Orders').GROUP_BY('product').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('product') |> SUM('amount')
 ```
 
 Result:
@@ -276,7 +276,7 @@ Result:
 Filter orders over $2000:
 
 ```javascript
-=TABLE('Orders').WHERE('amount > 2000').RESULT()
+=TABLE('Orders') |> WHERE('amount > 2000') |> RESULT()
 ```
 
 Returns an array of matching rows:
@@ -289,13 +289,13 @@ Returns an array of matching rows:
 ### 3.4 Average Order Value by Product
 
 ```javascript
-=TABLE('Orders').GROUP_BY('product').AVG('amount')
+=TABLE('Orders') |> GROUP_BY('product') |> AVG('amount')
 ```
 
 ### 3.5 Count Orders by Customer
 
 ```javascript
-=TABLE('Orders').GROUP_BY('customer_id').COUNT()
+=TABLE('Orders') |> GROUP_BY('customer_id') |> COUNT()
 ```
 
 ---
@@ -312,17 +312,17 @@ In your Analytics sheet, create a lookup function:
 // In cell A10, enter a customer ID: CUST-1000
 // In cell B10, look up the company name:
 
-=INDEX(TABLE('Customers').WHERE('customer_id == "' & A10 & '"').PLUCK('company'), 1)
+=INDEX(TABLE('Customers') |> WHERE('customer_id == "' & A10 & '"') |> PLUCK('company'), 1)
 ```
 
 ### 4.2 Customer Contact Info
 
 ```javascript
 // Get email for a customer
-=INDEX(TABLE('Customers').WHERE('customer_id == "' & A10 & '"').PLUCK('email'), 1)
+=INDEX(TABLE('Customers') |> WHERE('customer_id == "' & A10 & '"') |> PLUCK('email'), 1)
 
 // Get region for a customer
-=INDEX(TABLE('Customers').WHERE('customer_id == "' & A10 & '"').PLUCK('region'), 1)
+=INDEX(TABLE('Customers') |> WHERE('customer_id == "' & A10 & '"') |> PLUCK('region'), 1)
 ```
 
 ---
@@ -380,10 +380,10 @@ Create a "Dashboard" sheet with this layout:
 | A | B |
 |---|---|
 | **Metric** | **Value** |
-| Total Customers | `=COUNT(TABLE('Customers').RESULT())` |
-| Total Orders | `=COUNT(TABLE('Orders').RESULT())` |
-| Total Revenue | `=SUM(TABLE('Orders').PLUCK('amount'))` |
-| Average Order Value | `=AVG(TABLE('Orders').PLUCK('amount'))` |
+| Total Customers | `=COUNT(TABLE('Customers') |> RESULT())` |
+| Total Orders | `=COUNT(TABLE('Orders') |> RESULT())` |
+| Total Revenue | `=SUM(TABLE('Orders') |> PLUCK('amount'))` |
+| Average Order Value | `=AVG(TABLE('Orders') |> PLUCK('amount'))` |
 | Top Region by Revenue | (see below) |
 
 ### 6.2 Advanced Metrics
@@ -394,20 +394,20 @@ Since we need to join data, create a helper column in Orders sheet that looks up
 
 In Orders sheet, column G (Region lookup):
 ```javascript
-=INDEX(TABLE('Customers').WHERE('customer_id == "' & B2 & '"').PLUCK('region'), 1)
+=INDEX(TABLE('Customers') |> WHERE('customer_id == "' & B2 & '"') |> PLUCK('region'), 1)
 ```
 
 Then in Dashboard:
 ```javascript
 // Add region to Orders table definition first
-=TABLE('Orders').GROUP_BY('region_lookup').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('region_lookup') |> SUM('amount')
 ```
 
 **Top Product:**
 
 ```javascript
 // This is a simplified version; in real use you'd need to sort results
-=TABLE('Orders').GROUP_BY('product').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('product') |> SUM('amount')
 ```
 
 ---
@@ -495,14 +495,14 @@ Chain multiple WHERE conditions:
 ```javascript
 // Average revenue per customer
 // First get total by customer, then average those totals
-=AVG(VALUES(TABLE('Orders').GROUP_BY('customer_id').SUM('amount')))
+=AVG(VALUES(TABLE('Orders') |> GROUP_BY('customer_id') |> SUM('amount')))
 ```
 
 ### 8.3 Custom Calculations
 
 ```javascript
 // Revenue per unit by product
-const byProduct = TABLE('Orders').GROUP_BY('product');
+const byProduct = TABLE('Orders') |> GROUP_BY('product');
 const revenue = byProduct.SUM('amount');
 const quantity = byProduct.SUM('quantity');
 
@@ -530,20 +530,20 @@ Sales Report - Generated [DATE]
 
 **Summary Section:**
 ```javascript
-Total Orders: =COUNT(TABLE('Orders').RESULT())
-Total Revenue: =SUM(TABLE('Orders').PLUCK('amount'))
-Average Order: =AVG(TABLE('Orders').PLUCK('amount'))
+Total Orders: =COUNT(TABLE('Orders') |> RESULT())
+Total Revenue: =SUM(TABLE('Orders') |> PLUCK('amount'))
+Average Order: =AVG(TABLE('Orders') |> PLUCK('amount'))
 ```
 
 **Breakdown by Region:**
 ```javascript
 // Assuming you added region lookup column
-=TABLE('Orders').GROUP_BY('region_lookup').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('region_lookup') |> SUM('amount')
 ```
 
 **Top 5 Products:**
 ```javascript
-=TABLE('Orders').GROUP_BY('product').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('product') |> SUM('amount')
 // Then manually sort or use additional logic
 ```
 
@@ -551,13 +551,13 @@ Average Order: =AVG(TABLE('Orders').PLUCK('amount'))
 
 ```javascript
 // Orders per customer
-=TABLE('Orders').GROUP_BY('customer_id').COUNT()
+=TABLE('Orders') |> GROUP_BY('customer_id') |> COUNT()
 
 // Revenue per customer
-=TABLE('Orders').GROUP_BY('customer_id').SUM('amount')
+=TABLE('Orders') |> GROUP_BY('customer_id') |> SUM('amount')
 
 // Average order value per customer
-=TABLE('Orders').GROUP_BY('customer_id').AVG('amount')
+=TABLE('Orders') |> GROUP_BY('customer_id') |> AVG('amount')
 ```
 
 ---
@@ -568,7 +568,7 @@ Average Order: =AVG(TABLE('Orders').PLUCK('amount'))
 
 ```javascript
 // Get all emails
-const emails = TABLE('Customers').PLUCK('email');
+const emails = TABLE('Customers') |> PLUCK('email');
 
 // Find duplicates (manual check or use helper formula)
 =FILTER(emails, (email, idx) =>

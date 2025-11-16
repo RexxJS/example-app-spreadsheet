@@ -127,31 +127,9 @@ class RangeQuery {
         throw new Error(`Unknown column reference: ${colRef}`);
     }
 
-    /**
-     * WHERE - Filter rows based on a condition
-     * @param {string|function} condition - Condition expression or function
-     */
+    // Helper method for internal use (backward compatibility)
     WHERE(condition) {
-        let filteredData;
-
-        if (typeof condition === 'function') {
-            // Function filter
-            filteredData = this.data.filter(condition);
-        } else if (typeof condition === 'string') {
-            // Parse condition string (e.g., "column_C > 1000", "region='West'")
-            filteredData = this.data.filter(row => {
-                return this._evaluateCondition(row, condition);
-            });
-        } else {
-            throw new Error('WHERE condition must be a string or function');
-        }
-
-        // Return new RangeQuery with filtered data
-        const newQuery = new RangeQuery(filteredData, this.adapter, this.tableMetadata);
-        newQuery.headers = this.headers;
-        newQuery.columnMap = this.columnMap;
-        newQuery.rangeRef = this.rangeRef;
-        return newQuery;
+        return WHERE(this, condition);
     }
 
     _evaluateCondition(row, condition) {
@@ -194,117 +172,235 @@ class RangeQuery {
         }
     }
 
-    /**
-     * PLUCK - Extract a single column
-     * @param {string|number} colRef - Column reference (letter, name, or index)
-     */
+    // Helper method for internal use (backward compatibility)
     PLUCK(colRef) {
-        const colIndex = this._getColumnIndex(colRef);
-        const column = this.data.map(row => row[colIndex]);
-
-        // Return array (not RangeQuery, since it's 1D)
-        return column;
+        return PLUCK(this, colRef);
     }
 
-    /**
-     * GROUP_BY - Group rows by column value
-     * @param {string|number} colRef - Column to group by
-     */
+    // Helper method for internal use (backward compatibility)
     GROUP_BY(colRef) {
-        const colIndex = this._getColumnIndex(colRef);
-
-        const groups = {};
-        this.data.forEach(row => {
-            const key = row[colIndex];
-            if (!groups[key]) {
-                groups[key] = [];
-            }
-            groups[key].push(row);
-        });
-
-        // Store groups for aggregation
-        const newQuery = new RangeQuery([], this.adapter, this.tableMetadata);
-        newQuery.headers = this.headers;
-        newQuery.columnMap = this.columnMap;
-        newQuery.rangeRef = this.rangeRef;
-        newQuery.groups = groups;
-        newQuery.groupByColumn = colIndex;
-
-        return newQuery;
+        return GROUP_BY(this, colRef);
     }
 
-    /**
-     * SUM - Sum values in a column (works after GROUP_BY)
-     * @param {string|number} colRef - Column to sum
-     */
+    // Helper method for internal use (backward compatibility)
     SUM(colRef) {
-        const colIndex = this._getColumnIndex(colRef);
+        return SUM(this, colRef);
+    }
 
-        if (this.groups) {
-            // Aggregate by groups
-            const result = {};
-            Object.entries(this.groups).forEach(([key, rows]) => {
-                result[key] = rows.reduce((sum, row) => {
-                    const val = parseFloat(row[colIndex]);
-                    return sum + (isNaN(val) ? 0 : val);
-                }, 0);
-            });
-            return result;
-        } else {
-            // Simple sum across all rows
-            return this.data.reduce((sum, row) => {
+    // Helper method for internal use (backward compatibility)
+    COUNT() {
+        return COUNT(this);
+    }
+
+    // Helper method for internal use (backward compatibility)
+    AVG(colRef) {
+        return AVG(this, colRef);
+    }
+
+    // Helper method for internal use (backward compatibility)
+    RESULT() {
+        return RESULT(this);
+    }
+}
+
+// ============================================================================
+// Standalone Pipeline Functions (for use with |> operator)
+// ============================================================================
+
+/**
+ * WHERE - Filter rows based on a condition
+ * Usage: RANGE('A1:D100') |> WHERE('column_C > 1000')
+ * @param {RangeQuery} query - Input range query
+ * @param {string|function} condition - Condition expression or function
+ * @returns {RangeQuery} Filtered range query
+ */
+function WHERE(query, condition) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('WHERE requires a RangeQuery as first argument');
+    }
+
+    let filteredData;
+
+    if (typeof condition === 'function') {
+        // Function filter
+        filteredData = query.data.filter(condition);
+    } else if (typeof condition === 'string') {
+        // Parse condition string (e.g., "column_C > 1000", "region='West'")
+        filteredData = query.data.filter(row => {
+            return query._evaluateCondition(row, condition);
+        });
+    } else {
+        throw new Error('WHERE condition must be a string or function');
+    }
+
+    // Return new RangeQuery with filtered data
+    const newQuery = new RangeQuery(filteredData, query.adapter, query.tableMetadata);
+    newQuery.headers = query.headers;
+    newQuery.columnMap = query.columnMap;
+    newQuery.rangeRef = query.rangeRef;
+    return newQuery;
+}
+
+/**
+ * PLUCK - Extract a single column
+ * Usage: RANGE('A1:D100') |> PLUCK('B')
+ * @param {RangeQuery} query - Input range query
+ * @param {string|number} colRef - Column reference (letter, name, or index)
+ * @returns {Array} Column values
+ */
+function PLUCK(query, colRef) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('PLUCK requires a RangeQuery as first argument');
+    }
+
+    const colIndex = query._getColumnIndex(colRef);
+    const column = query.data.map(row => row[colIndex]);
+
+    // Return array (not RangeQuery, since it's 1D)
+    return column;
+}
+
+/**
+ * GROUP_BY - Group rows by column value
+ * Usage: RANGE('A1:D100') |> GROUP_BY('B')
+ * @param {RangeQuery} query - Input range query
+ * @param {string|number} colRef - Column to group by
+ * @returns {RangeQuery} Grouped range query
+ */
+function GROUP_BY(query, colRef) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('GROUP_BY requires a RangeQuery as first argument');
+    }
+
+    const colIndex = query._getColumnIndex(colRef);
+
+    const groups = {};
+    query.data.forEach(row => {
+        const key = row[colIndex];
+        if (!groups[key]) {
+            groups[key] = [];
+        }
+        groups[key].push(row);
+    });
+
+    // Store groups for aggregation
+    const newQuery = new RangeQuery([], query.adapter, query.tableMetadata);
+    newQuery.headers = query.headers;
+    newQuery.columnMap = query.columnMap;
+    newQuery.rangeRef = query.rangeRef;
+    newQuery.groups = groups;
+    newQuery.groupByColumn = colIndex;
+
+    return newQuery;
+}
+
+/**
+ * SUM - Sum values in a column (works after GROUP_BY)
+ * Usage: RANGE('A1:D100') |> GROUP_BY('B') |> SUM('D')
+ * @param {RangeQuery} query - Input range query
+ * @param {string|number} colRef - Column to sum
+ * @returns {Object|number} Sum by group or total sum
+ */
+function SUM(query, colRef) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('SUM requires a RangeQuery as first argument');
+    }
+
+    const colIndex = query._getColumnIndex(colRef);
+
+    if (query.groups) {
+        // Aggregate by groups
+        const result = {};
+        Object.entries(query.groups).forEach(([key, rows]) => {
+            result[key] = rows.reduce((sum, row) => {
                 const val = parseFloat(row[colIndex]);
                 return sum + (isNaN(val) ? 0 : val);
             }, 0);
-        }
-    }
-
-    /**
-     * COUNT - Count rows (works after GROUP_BY)
-     */
-    COUNT() {
-        if (this.groups) {
-            const result = {};
-            Object.entries(this.groups).forEach(([key, rows]) => {
-                result[key] = rows.length;
-            });
-            return result;
-        } else {
-            return this.data.length;
-        }
-    }
-
-    /**
-     * AVG - Average values in a column (works after GROUP_BY)
-     * @param {string|number} colRef - Column to average
-     */
-    AVG(colRef) {
-        const colIndex = this._getColumnIndex(colRef);
-
-        if (this.groups) {
-            const result = {};
-            Object.entries(this.groups).forEach(([key, rows]) => {
-                const values = rows.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
-                result[key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-            });
-            return result;
-        } else {
-            const values = this.data.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
-            return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-        }
-    }
-
-    /**
-     * RESULT - Finalize query and return data
-     */
-    RESULT() {
-        if (this.groups) {
-            // Return groups object
-            return this.groups;
-        }
-        return this.data;
+        });
+        return result;
+    } else {
+        // Simple sum across all rows
+        return query.data.reduce((sum, row) => {
+            const val = parseFloat(row[colIndex]);
+            return sum + (isNaN(val) ? 0 : val);
+        }, 0);
     }
 }
+
+/**
+ * AVG - Average values in a column (works after GROUP_BY)
+ * Usage: RANGE('A1:D100') |> GROUP_BY('B') |> AVG('D')
+ * @param {RangeQuery} query - Input range query
+ * @param {string|number} colRef - Column to average
+ * @returns {Object|number} Average by group or total average
+ */
+function AVG(query, colRef) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('AVG requires a RangeQuery as first argument');
+    }
+
+    const colIndex = query._getColumnIndex(colRef);
+
+    if (query.groups) {
+        // Average by groups
+        const result = {};
+        Object.entries(query.groups).forEach(([key, rows]) => {
+            const values = rows.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
+            result[key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+        });
+        return result;
+    } else {
+        // Simple average
+        const values = query.data.map(row => parseFloat(row[colIndex])).filter(v => !isNaN(v));
+        return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    }
+}
+
+/**
+ * COUNT - Count rows (works after GROUP_BY)
+ * Usage: RANGE('A1:D100') |> GROUP_BY('B') |> COUNT()
+ * @param {RangeQuery} query - Input range query
+ * @returns {Object|number} Count by group or total count
+ */
+function COUNT(query) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('COUNT requires a RangeQuery as first argument');
+    }
+
+    if (query.groups) {
+        // Count by groups
+        const result = {};
+        Object.entries(query.groups).forEach(([key, rows]) => {
+            result[key] = rows.length;
+        });
+        return result;
+    } else {
+        // Simple count
+        return query.data.length;
+    }
+}
+
+/**
+ * RESULT - Return the data (final step in chain)
+ * Usage: RANGE('A1:D100') |> WHERE('column_C > 1000') |> RESULT()
+ * @param {RangeQuery} query - Input range query
+ * @returns {Array|Object} Data array or groups object
+ */
+function RESULT(query) {
+    if (!(query instanceof RangeQuery)) {
+        throw new Error('RESULT requires a RangeQuery as first argument');
+    }
+
+    if (query.groups) {
+        // Return groups as is
+        return query.groups;
+    }
+    return query.data;
+}
+
+// ============================================================================
+// Main Functions
+// ============================================================================
 
 // RANGE - Create a queryable range object for chaining operations
 function RANGE(rangeRef) {
@@ -574,6 +670,15 @@ if (typeof module !== 'undefined' && module.exports) {
         RANGE,
         TABLE,
         RangeQuery,
+        // Pipeline functions (for |> operator)
+        WHERE,
+        PLUCK,
+        GROUP_BY,
+        SUM,
+        AVG,
+        COUNT,
+        RESULT,
+        // Traditional range functions
         SUM_RANGE,
         AVERAGE_RANGE,
         COUNT_RANGE,
@@ -597,6 +702,15 @@ if (typeof window !== 'undefined') {
     window.RANGE = RANGE;
     window.TABLE = TABLE;
     window.RangeQuery = RangeQuery;
+    // Pipeline functions (for |> operator)
+    window.WHERE = WHERE;
+    window.PLUCK = PLUCK;
+    window.GROUP_BY = GROUP_BY;
+    window.SUM = SUM;
+    window.AVG = AVG;
+    window.COUNT = COUNT;
+    window.RESULT = RESULT;
+    // Traditional range functions
     window.SUM_RANGE = SUM_RANGE;
     window.AVERAGE_RANGE = AVERAGE_RANGE;
     window.COUNT_RANGE = COUNT_RANGE;

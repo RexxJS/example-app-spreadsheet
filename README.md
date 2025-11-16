@@ -119,19 +119,20 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 ### Advanced Query & Data Features
 
 **🔗 Query Chaining for Data Manipulation:**
-- **RANGE() Function**: Create queryable range objects for method chaining
-  ```javascript
-  =RANGE('A1:D100').WHERE('column_C > 1000').GROUP_BY('B').SUM('D')
+- **RANGE() Function**: Create queryable range objects for RexxJS pipe operators
+  ```rexx
+  =RANGE('A1:D100') |> WHERE('column_C > 1000') |> GROUP_BY('B') |> SUM('D')
   ```
 - **WHERE Filtering**: Filter rows using expressions (column_X > value, col='text')
 - **PLUCK Extraction**: Extract single columns by name or letter
 - **GROUP_BY Aggregation**: Group rows and apply SUM, AVG, COUNT aggregations
-- **Chainable Operations**: Build complex data pipelines with method chaining
+- **RexxJS Pipelines**: Build complex data pipelines with the `|>` pipe operator
+- **Backward Compatible**: Also supports JavaScript method chaining (.WHERE().GROUP_BY())
 
 **📊 Table Metadata & SQL-like Queries:**
 - **TABLE() Function**: Query named ranges with column name support
-  ```javascript
-  =TABLE('SalesData').WHERE('region == "West"').GROUP_BY('product').SUM('amount')
+  ```rexx
+  =TABLE('SalesData') |> WHERE('region == "West"') |> GROUP_BY('product') |> SUM('amount')
   ```
 - **Column Name Queries**: Use readable column names instead of letters ('region' vs 'B')
 - **Schema Definitions**: Define tables with column types, descriptions, and constraints
