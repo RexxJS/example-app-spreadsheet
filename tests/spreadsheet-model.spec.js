@@ -759,4 +759,643 @@ describe('SpreadsheetModel', () => {
             });
         });
     });
+
+    describe('Batch Control Bus Operations (Priority 2)', () => {
+        let adapter;
+        let controlFunctions;
+
+        beforeEach(async () => {
+            model = new SpreadsheetModel(100, 26);
+
+            // Dynamically import ES modules
+            const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+            const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+
+            const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+            const { createSpreadsheetControlFunctions } = controlFunctionsModule;
+
+            adapter = new SpreadsheetRexxAdapter(model);
+            controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+        });
+
+        describe('BATCH_SET_CELLS', () => {
+            it('should set multiple cells with individual addresses', async () => {
+                const updates = [
+                    { address: 'A1', value: '100' },
+                    { address: 'B2', value: '200' },
+                    { address: 'C3', value: '300' }
+                ];
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updates);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(3);
+                expect(resultObj.success).toBe(3);
+                expect(resultObj.errors).toBe(0);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('B2')).toBe('200');
+                expect(model.getCellValue('C3')).toBe('300');
+            });
+
+            it('should accept JSON string', async () => {
+                const updatesJson = '[{"address":"A1","value":"100"},{"address":"B2","value":"200"}]';
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updatesJson);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(2);
+                expect(resultObj.success).toBe(2);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('B2')).toBe('200');
+            });
+
+            it('should handle mixed success and errors', async () => {
+                const updates = [
+                    { address: 'A1', value: '100' },
+                    { address: 'INVALID', value: '200' },  // Invalid address
+                    { address: 'C3', value: '300' }
+                ];
+
+                const result = await controlFunctions.BATCH_SET_CELLS(updates);
+                const resultObj = JSON.parse(result);
+
+                expect(resultObj.total).toBe(3);
+                expect(resultObj.success).toBe(2); // A1 and C3 succeeded
+                expect(resultObj.errors).toBe(1);
+                expect(resultObj.errorDetails).toBeDefined();
+                expect(resultObj.errorDetails.length).toBe(1);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('C3')).toBe('300');
+            });
+
+            it('should validate update structure', async () => {
+                await expect(async () => {
+                    await controlFunctions.BATCH_SET_CELLS([{ value: '100' }]); // Missing address
+                }).rejects.toThrow('address');
+            });
+
+            it('should handle formulas in batch', async () => {
+                const updates = [
+                    { address: 'A1', value: '10' },
+                    { address: 'A2', value: '20' },
+                    { address: 'A3', value: '=A1+A2' }
+                ];
+
+                await controlFunctions.BATCH_SET_CELLS(updates);
+
+                expect(model.getCellValue('A1')).toBe('10');
+                expect(model.getCellValue('A2')).toBe('20');
+                // Expression is stored without the '=' prefix
+                expect(model.getCellExpression('A3')).toBe('A1+A2');
+            });
+        });
+
+        describe('BATCH_EXECUTE', () => {
+            it('should execute multiple commands in sequence', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'SETCELL', args: ['A2', '200'] },
+                    { command: 'SETCELL', args: ['A3', '=A1+A2'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(3);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(true);
+                expect(results[2].success).toBe(true);
+
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('A2')).toBe('200');
+            });
+
+            it('should accept JSON string', async () => {
+                const commandsJson = '[{"command":"SETCELL","args":["A1","100"]},{"command":"GETCELL","args":["A1"]}]';
+
+                const result = await controlFunctions.BATCH_EXECUTE(commandsJson);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(2);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(true);
+            });
+
+            it('should handle mixed command successes and failures', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'INVALID_COMMAND', args: [] },
+                    { command: 'SETCELL', args: ['A2', '200'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(3);
+                expect(results[0].success).toBe(true);
+                expect(results[1].success).toBe(false);
+                expect(results[1].error).toContain('Unknown command');
+                expect(results[2].success).toBe(true);
+
+                // First and third commands should have succeeded
+                expect(model.getCellValue('A1')).toBe('100');
+                expect(model.getCellValue('A2')).toBe('200');
+            });
+
+            it('should validate command structure', async () => {
+                const commands = [
+                    { args: ['A1', '100'] }  // Missing command field
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results[0].success).toBe(false);
+                expect(results[0].error).toContain('command');
+            });
+
+            it('should include command results in response', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '100'] },
+                    { command: 'GETCELL', args: ['A1'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results[1].result).toBe('100');
+            });
+
+            it('should handle complex batch operations', async () => {
+                const commands = [
+                    { command: 'SETCELL', args: ['A1', '10'] },
+                    { command: 'SETCELL', args: ['A2', '20'] },
+                    { command: 'SETCELL', args: ['A3', '30'] },
+                    { command: 'SUM_RANGE', args: ['A1:A3'] }
+                ];
+
+                const result = await controlFunctions.BATCH_EXECUTE(commands);
+                const results = JSON.parse(result);
+
+                expect(results.length).toBe(4);
+                expect(results[3].success).toBe(true);
+                expect(results[3].result).toBe(60);
+            });
+        });
+
+        describe('Performance benefits', () => {
+            it('should update UI once for batch operations', async () => {
+                const updates = [];
+                for (let i = 1; i <= 100; i++) {
+                    updates.push({ address: `A${i}`, value: String(i) });
+                }
+
+                const startTime = Date.now();
+                await controlFunctions.BATCH_SET_CELLS(updates);
+                const endTime = Date.now();
+
+                // Batch operation should complete reasonably fast
+                expect(endTime - startTime).toBeLessThan(1000);
+
+                // Verify all cells were set
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.getCellValue('A50')).toBe('50');
+                expect(model.getCellValue('A100')).toBe('100');
+            });
+        });
+    });
+
+    describe('Auto-Increment Row IDs (Priority 4)', () => {
+        describe('Configuration', () => {
+            it('should configure auto-ID column', () => {
+                model.configureAutoId('A', 1, 'ID-');
+
+                expect(model.autoIdColumn).toBe('A');
+                expect(model.nextId).toBe(1);
+                expect(model.idPrefix).toBe('ID-');
+            });
+
+            it('should disable auto-ID when passed null', () => {
+                model.configureAutoId('A', 1);
+                model.configureAutoId(null);
+
+                expect(model.autoIdColumn).toBeNull();
+            });
+
+            it('should throw error for invalid column letter', () => {
+                expect(() => {
+                    model.configureAutoId('123');
+                }).toThrow('Invalid column letter');
+            });
+
+            it('should normalize column letter to uppercase', () => {
+                model.configureAutoId('b', 1);
+                expect(model.autoIdColumn).toBe('B');
+            });
+        });
+
+        describe('Auto-generation on row insert', () => {
+            beforeEach(() => {
+                model.configureAutoId('A', 1);
+            });
+
+            it('should auto-generate ID when inserting a row', () => {
+                model.insertRow(1);
+
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.nextId).toBe(2);
+            });
+
+            it('should auto-generate sequential IDs for multiple rows', () => {
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.getCellValue('A2')).toBe('2');
+                expect(model.getCellValue('A3')).toBe('3');
+                expect(model.nextId).toBe(4);
+            });
+
+            it('should include prefix in generated IDs', () => {
+                model.configureAutoId('A', 1000, 'ORDER-');
+
+                model.insertRow(1);
+                model.insertRow(2);
+
+                expect(model.getCellValue('A1')).toBe('ORDER-1000');
+                expect(model.getCellValue('A2')).toBe('ORDER-1001');
+                expect(model.nextId).toBe(1002);
+            });
+
+            it('should not generate ID when auto-ID is disabled', () => {
+                model.configureAutoId(null);
+
+                model.insertRow(1);
+
+                expect(model.getCellValue('A1')).toBe('');
+            });
+
+            it('should support different ID columns', () => {
+                model.configureAutoId('C', 1);
+
+                model.insertRow(1);
+
+                expect(model.getCellValue('C1')).toBe('1');
+                expect(model.getCellValue('A1')).toBe('');
+            });
+
+            it('should start from custom start ID', () => {
+                model.configureAutoId('A', 5000);
+
+                model.insertRow(1);
+                model.insertRow(2);
+
+                expect(model.getCellValue('A1')).toBe('5000');
+                expect(model.getCellValue('A2')).toBe('5001');
+            });
+        });
+
+        describe('Finding rows by ID', () => {
+            beforeEach(() => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+            });
+
+            it('should find row by ID', () => {
+                const rowNum = model.findRowById('100');
+                expect(rowNum).toBe(1);
+
+                const rowNum2 = model.findRowById('101');
+                expect(rowNum2).toBe(2);
+            });
+
+            it('should handle numeric ID values', () => {
+                const rowNum = model.findRowById(100);
+                expect(rowNum).toBe(1);
+            });
+
+            it('should return null when ID not found', () => {
+                const rowNum = model.findRowById('999');
+                expect(rowNum).toBeNull();
+            });
+
+            it('should throw error when auto-ID not configured', () => {
+                model.configureAutoId(null);
+
+                expect(() => {
+                    model.findRowById('100');
+                }).toThrow('Auto-ID column is not configured');
+            });
+
+            it('should find rows with prefixed IDs', () => {
+                model.configureAutoId('A', 1, 'USER-');
+                model.insertRow(1);
+
+                const rowNum = model.findRowById('USER-1');
+                expect(rowNum).toBe(1);
+            });
+        });
+
+        describe('Get next ID', () => {
+            it('should return next ID without prefix', () => {
+                model.configureAutoId('A', 42);
+                expect(model.getNextId()).toBe('42');
+            });
+
+            it('should return next ID with prefix', () => {
+                model.configureAutoId('A', 100, 'ORD-');
+                expect(model.getNextId()).toBe('ORD-100');
+            });
+
+            it('should update after row insert', () => {
+                model.configureAutoId('A', 1);
+
+                expect(model.getNextId()).toBe('1');
+                model.insertRow(1);
+                expect(model.getNextId()).toBe('2');
+            });
+        });
+
+        describe('Control Bus Commands', () => {
+            let adapter;
+            let controlFunctions;
+
+            beforeEach(async () => {
+                model = new SpreadsheetModel(100, 26);
+
+                const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+                const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+
+                const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+                const { createSpreadsheetControlFunctions } = controlFunctionsModule;
+
+                adapter = new SpreadsheetRexxAdapter(model);
+                controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+            });
+
+            it('should configure auto-ID via Control Bus', async () => {
+                const result = await controlFunctions.CONFIGURE_AUTO_ID('A', 100, 'ID-');
+
+                expect(result).toContain('Auto-ID configured');
+                expect(model.autoIdColumn).toBe('A');
+                expect(model.nextId).toBe(100);
+                expect(model.idPrefix).toBe('ID-');
+            });
+
+            it('should disable auto-ID via Control Bus', async () => {
+                await controlFunctions.CONFIGURE_AUTO_ID('A', 1);
+                const result = await controlFunctions.CONFIGURE_AUTO_ID(null);
+
+                expect(result).toBe('Auto-ID disabled');
+                expect(model.autoIdColumn).toBeNull();
+            });
+
+            it('should find row by ID via Control Bus', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.insertRow(2);
+
+                const rowNum = controlFunctions.FIND_ROW_BY_ID('100');
+                expect(rowNum).toBe('1');
+
+                const rowNum2 = controlFunctions.FIND_ROW_BY_ID(101);
+                expect(rowNum2).toBe('2');
+            });
+
+            it('should return empty string when ID not found', () => {
+                model.configureAutoId('A', 100);
+
+                const rowNum = controlFunctions.FIND_ROW_BY_ID('999');
+                expect(rowNum).toBe('');
+            });
+
+            it('should update row by ID via Control Bus', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.setCell('B1', 'OldName');
+                model.setCell('C1', '25');
+
+                const updates = [
+                    { column: 'B', value: 'NewName' },
+                    { column: 'C', value: '30' }
+                ];
+
+                const rowNum = await controlFunctions.UPDATE_ROW_BY_ID('100', updates);
+
+                expect(rowNum).toBe('1');
+                expect(model.getCellValue('B1')).toBe('NewName');
+                expect(model.getCellValue('C1')).toBe('30');
+            });
+
+            it('should accept JSON string for UPDATE_ROW_BY_ID', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+
+                const updatesJson = '[{"column":"B","value":"Test"}]';
+                await controlFunctions.UPDATE_ROW_BY_ID('100', updatesJson);
+
+                expect(model.getCellValue('B1')).toBe('Test');
+            });
+
+            it('should throw error when updating non-existent ID', async () => {
+                model.configureAutoId('A', 100);
+
+                await expect(async () => {
+                    await controlFunctions.UPDATE_ROW_BY_ID('999', [{ column: 'B', value: 'Test' }]);
+                }).rejects.toThrow('Row with ID 999 not found');
+            });
+
+            it('should get next ID via Control Bus', () => {
+                model.configureAutoId('A', 5000, 'CUST-');
+
+                const nextId = controlFunctions.GET_NEXT_ID();
+                expect(nextId).toBe('CUST-5000');
+            });
+
+            it('should throw error when getting next ID without configuration', () => {
+                expect(() => {
+                    controlFunctions.GET_NEXT_ID();
+                }).toThrow('Auto-ID column is not configured');
+            });
+        });
+
+        describe('Integration with other features', () => {
+            it('should preserve IDs when sorting', () => {
+                model.configureAutoId('A', 1);
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+
+                model.setCell('B1', '30');
+                model.setCell('B2', '10');
+                model.setCell('B3', '20');
+
+                model.sortRange('A1:B3', 'B', true);
+
+                // IDs should stay with their rows
+                expect(model.getCellValue('A1')).toBe('2'); // Row with B=10
+                expect(model.getCellValue('A2')).toBe('3'); // Row with B=20
+                expect(model.getCellValue('A3')).toBe('1'); // Row with B=30
+            });
+
+            it('should work across multiple sheets', () => {
+                model.addSheet('Sheet2');
+
+                // Configure different auto-IDs for each sheet
+                model.setActiveSheet('Sheet1');
+                model.configureAutoId('A', 1);
+                model.insertRow(1);
+
+                model.setActiveSheet('Sheet2');
+                model.configureAutoId('A', 100, 'S2-');
+                model.insertRow(1);
+
+                // Verify each sheet has independent IDs
+                model.setActiveSheet('Sheet1');
+                expect(model.getCellValue('A1')).toBe('1');
+
+                model.setActiveSheet('Sheet2');
+                expect(model.getCellValue('A1')).toBe('S2-100');
+            });
+        });
+    });
+
+    describe('Table Metadata Control Bus Commands (Priority 5)', () => {
+        let model, controlFunctions;
+
+        beforeEach(async () => {
+            model = new SpreadsheetModel(100, 26);
+
+            // Set up sample data
+            model.setCell('A1', 'id');
+            model.setCell('B1', 'name');
+            model.setCell('C1', 'amount');
+
+            model.setCell('A2', '1');
+            model.setCell('B2', 'Alice');
+            model.setCell('C2', '100');
+
+            model.setCell('A3', '2');
+            model.setCell('B3', 'Bob');
+            model.setCell('C3', '200');
+
+            // Import control functions and adapter
+            const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+            const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+            const adapter = new SpreadsheetRexxAdapter(model);
+
+            const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+            const createSpreadsheetControlFunctions = controlFunctionsModule.createSpreadsheetControlFunctions;
+            controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+        });
+
+        it('should set table metadata via Control Bus', () => {
+            const metadata = {
+                range: 'A1:C3',
+                columns: {
+                    id: 'A',
+                    name: 'B',
+                    amount: 'C'
+                },
+                hasHeader: true
+            };
+
+            const result = controlFunctions.SET_TABLE_METADATA('TestTable', JSON.stringify(metadata));
+
+            expect(result).toContain("Table metadata set for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeDefined();
+        });
+
+        it('should get table metadata via Control Bus', () => {
+            model.setTableMetadata('TestTable', {
+                range: 'A1:C3',
+                columns: {
+                    id: 'A',
+                    name: 'B',
+                    amount: 'C'
+                },
+                hasHeader: true
+            });
+
+            const result = controlFunctions.GET_TABLE_METADATA('TestTable');
+            const parsed = JSON.parse(result);
+
+            expect(parsed.range).toBe('A1:C3');
+            expect(parsed.columns.id).toBe('A');
+            expect(parsed.hasHeader).toBe(true);
+        });
+
+        it('should return empty string for non-existent table', () => {
+            const result = controlFunctions.GET_TABLE_METADATA('NonExistent');
+            expect(result).toBe('');
+        });
+
+        it('should delete table metadata via Control Bus', () => {
+            model.setTableMetadata('TestTable', {
+                range: 'A1:C3',
+                columns: { id: 'A' }
+            });
+
+            const result = controlFunctions.DELETE_TABLE_METADATA('TestTable');
+
+            expect(result).toContain("Table metadata deleted for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeNull();
+        });
+
+        it('should list all tables via Control Bus', () => {
+            model.setTableMetadata('Table1', {
+                range: 'A1:C3',
+                columns: { id: 'A' }
+            });
+
+            model.setTableMetadata('Table2', {
+                range: 'D1:F5',
+                columns: { x: 'D' }
+            });
+
+            const result = controlFunctions.LIST_TABLES();
+            const parsed = JSON.parse(result);
+
+            expect(parsed).toContain('Table1');
+            expect(parsed).toContain('Table2');
+            expect(parsed.length).toBe(2);
+        });
+
+        it('should accept metadata as object (not just JSON string)', () => {
+            const metadata = {
+                range: 'A1:C3',
+                columns: { id: 'A', name: 'B' },
+                hasHeader: true
+            };
+
+            const result = controlFunctions.SET_TABLE_METADATA('TestTable', metadata);
+
+            expect(result).toContain("Table metadata set for 'TestTable'");
+            expect(model.getTableMetadata('TestTable')).toBeDefined();
+        });
+
+        it('should reject invalid table name', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('123Invalid', '{"range":"A1:C3","columns":{"id":"A"}}');
+            }).toThrow('Table name must start with a letter');
+        });
+
+        it('should reject invalid JSON', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('TestTable', '{invalid json}');
+            }).toThrow('Invalid JSON for table metadata');
+        });
+
+        it('should reject missing table name parameter', () => {
+            expect(() => {
+                controlFunctions.SET_TABLE_METADATA('', '{"range":"A1:C3","columns":{"id":"A"}}');
+            }).toThrow('Table name is required');
+        });
+    });
 });

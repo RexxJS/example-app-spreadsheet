@@ -50,7 +50,11 @@ class SpreadsheetModel {
             columnOrder: null, // null = default order, Array = custom column order
             mergedCells: new Map(), // key: "A1" (top-left), value: "C3" (bottom-right)
             cellEditors: new Map(), // key: "A1", value: {type: 'checkbox'|'dropdown'|'date', config: {}}
-            pivotTables: new Map() // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
+            pivotTables: new Map(), // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
+            autoIdColumn: null, // Column for auto-IDs (e.g., "A" or null if disabled)
+            nextId: 1, // Next ID to assign
+            idPrefix: '', // Optional prefix for IDs (e.g., "ID-")
+            tableMetadata: new Map() // key: tableName, value: {range, columns, hasHeader, types, descriptions}
         });
     }
 
@@ -188,6 +192,34 @@ class SpreadsheetModel {
     }
     set pivotTables(value) {
         this._getActiveSheet().pivotTables = value;
+    }
+
+    get tableMetadata() {
+        return this._getActiveSheet().tableMetadata;
+    }
+    set tableMetadata(value) {
+        this._getActiveSheet().tableMetadata = value;
+    }
+
+    get autoIdColumn() {
+        return this._getActiveSheet().autoIdColumn;
+    }
+    set autoIdColumn(value) {
+        this._getActiveSheet().autoIdColumn = value;
+    }
+
+    get nextId() {
+        return this._getActiveSheet().nextId;
+    }
+    set nextId(value) {
+        this._getActiveSheet().nextId = value;
+    }
+
+    get idPrefix() {
+        return this._getActiveSheet().idPrefix;
+    }
+    set idPrefix(value) {
+        this._getActiveSheet().idPrefix = value;
     }
 
     /**
@@ -1113,7 +1145,11 @@ class SpreadsheetModel {
                 validations: Object.fromEntries(sheet.validations),
                 mergedCells: Object.fromEntries(sheet.mergedCells),
                 cellEditors: Object.fromEntries(sheet.cellEditors),
-                pivotTables: Object.fromEntries(sheet.pivotTables)
+                pivotTables: Object.fromEntries(sheet.pivotTables),
+                tableMetadata: Object.fromEntries(sheet.tableMetadata),
+                autoIdColumn: sheet.autoIdColumn,
+                nextId: sheet.nextId,
+                idPrefix: sheet.idPrefix
             };
 
             // Add filter criteria if present
@@ -1238,6 +1274,24 @@ class SpreadsheetModel {
                     Object.entries(sheetData.pivotTables).forEach(([id, config]) => {
                         sheet.pivotTables.set(id, config);
                     });
+                }
+
+                // Restore table metadata
+                if (sheetData.tableMetadata) {
+                    Object.entries(sheetData.tableMetadata).forEach(([name, metadata]) => {
+                        sheet.tableMetadata.set(name, metadata);
+                    });
+                }
+
+                // Restore auto-ID configuration
+                if (sheetData.autoIdColumn !== undefined) {
+                    sheet.autoIdColumn = sheetData.autoIdColumn;
+                }
+                if (sheetData.nextId !== undefined) {
+                    sheet.nextId = sheetData.nextId;
+                }
+                if (sheetData.idPrefix !== undefined) {
+                    sheet.idPrefix = sheetData.idPrefix;
                 }
 
                 // Import cells first (filter needs cells to be present)
@@ -1402,6 +1456,14 @@ class SpreadsheetModel {
 
         // Replace cells map
         this.cells = newCells;
+
+        // Auto-generate ID if auto-ID column is configured
+        if (this.autoIdColumn) {
+            const idValue = this.idPrefix + this.nextId;
+            const idCellRef = `${this.autoIdColumn}${rowNum}`;
+            this.setCell(idCellRef, String(idValue), rexxInterpreter);
+            this.nextId++; // Increment for next row
+        }
 
         // Rebuild dependents map
         this._rebuildDependents();
@@ -1673,6 +1735,59 @@ class SpreadsheetModel {
             // Reconstruct the cell reference with absolute markers if present
             return `${colAbs}${newCol}${rowAbs}${newRow}`;
         });
+    }
+
+    /**
+     * Auto-ID Column Management
+     */
+
+    /**
+     * Configure auto-ID column for the current sheet
+     * @param {string|null} column - Column letter (e.g., "A") or null to disable
+     * @param {number} startId - Starting ID number (default: 1)
+     * @param {string} prefix - Optional prefix for IDs (default: '')
+     */
+    configureAutoId(column, startId = 1, prefix = '') {
+        if (column !== null && !/^[A-Z]+$/i.test(column)) {
+            throw new Error(`Invalid column letter: ${column}`);
+        }
+
+        this.autoIdColumn = column ? column.toUpperCase() : null;
+        this.nextId = startId;
+        this.idPrefix = prefix;
+    }
+
+    /**
+     * Find row number by ID value
+     * @param {string|number} idValue - ID to search for
+     * @returns {number|null} - Row number or null if not found
+     */
+    findRowById(idValue) {
+        if (!this.autoIdColumn) {
+            throw new Error('Auto-ID column is not configured for this sheet');
+        }
+
+        const searchValue = String(idValue);
+
+        // Search through the auto-ID column
+        for (let row = 1; row <= this.rows; row++) {
+            const cellRef = `${this.autoIdColumn}${row}`;
+            const cellValue = this.getCellValue(cellRef);
+
+            if (String(cellValue) === searchValue) {
+                return row;
+            }
+        }
+
+        return null; // Not found
+    }
+
+    /**
+     * Get the next ID that will be assigned
+     * @returns {string} - Next ID value with prefix
+     */
+    getNextId() {
+        return this.idPrefix + this.nextId;
     }
 
     /**
@@ -2224,6 +2339,86 @@ class SpreadsheetModel {
     }
 
     /**
+     * Set table metadata for a named range
+     * @param {string} tableName - Name of the table (must match a named range or range reference)
+     * @param {Object} metadata - Table metadata object
+     * @param {string} metadata.range - Range reference (e.g., "A1:D100")
+     * @param {Object} metadata.columns - Column name to column letter mappings (e.g., {id: "A", name: "B"})
+     * @param {boolean} metadata.hasHeader - Whether the range has a header row
+     * @param {Object} [metadata.types] - Optional column type information (e.g., {id: "number", name: "string"})
+     * @param {Object} [metadata.descriptions] - Optional column descriptions
+     */
+    setTableMetadata(tableName, metadata) {
+        // Validate table name
+        if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(tableName)) {
+            throw new Error('Table name must start with a letter and contain only letters, numbers, and underscores');
+        }
+
+        // Validate required fields
+        if (!metadata.range || !metadata.columns) {
+            throw new Error('Table metadata must include range and columns');
+        }
+
+        // Validate range reference
+        const match = metadata.range.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!match) {
+            throw new Error(`Invalid range reference: ${metadata.range}`);
+        }
+
+        // Validate columns object
+        if (typeof metadata.columns !== 'object' || Array.isArray(metadata.columns)) {
+            throw new Error('Columns must be an object mapping column names to column letters');
+        }
+
+        // Store the metadata
+        this.tableMetadata.set(tableName, {
+            range: metadata.range.toUpperCase(),
+            columns: metadata.columns,
+            hasHeader: metadata.hasHeader !== false, // Default to true
+            types: metadata.types || {},
+            descriptions: metadata.descriptions || {}
+        });
+
+        // Also create/update a named range for the table
+        this.namedRanges.set(tableName, metadata.range.toUpperCase());
+    }
+
+    /**
+     * Get table metadata
+     * @param {string} tableName - Name of the table
+     * @returns {Object|null} Table metadata or null if not found
+     */
+    getTableMetadata(tableName) {
+        return this.tableMetadata.get(tableName) || null;
+    }
+
+    /**
+     * Delete table metadata
+     * @param {string} tableName - Name of the table
+     */
+    deleteTableMetadata(tableName) {
+        this.tableMetadata.delete(tableName);
+        // Optionally delete the associated named range
+        this.namedRanges.delete(tableName);
+    }
+
+    /**
+     * Get all table metadata
+     * @returns {Object} Object with table name -> metadata mappings
+     */
+    getAllTableMetadata() {
+        return Object.fromEntries(this.tableMetadata);
+    }
+
+    /**
+     * List all table names
+     * @returns {Array<string>} Array of table names
+     */
+    listTables() {
+        return Array.from(this.tableMetadata.keys());
+    }
+
+    /**
      * Freeze panes - lock rows and columns in place
      * @param {number} rows - Number of rows to freeze from top
      * @param {number} cols - Number of columns to freeze from left
@@ -2274,9 +2469,16 @@ class SpreadsheetModel {
             throw new Error('Validation must have a type');
         }
 
-        const validTypes = ['list', 'number', 'date', 'text', 'custom'];
+        const validTypes = ['list', 'number', 'date', 'text', 'custom', 'contextual'];
         if (!validTypes.includes(validation.type)) {
             throw new Error(`Invalid validation type: ${validation.type}`);
+        }
+
+        // For contextual validations, ensure at least one context rule exists
+        if (validation.type === 'contextual') {
+            if (!validation.onCreate && !validation.onUpdate && !validation.always) {
+                throw new Error('Contextual validation requires at least one of: onCreate, onUpdate, or always');
+            }
         }
 
         this.validations.set(cellRef, validation);
@@ -2295,14 +2497,32 @@ class SpreadsheetModel {
      * Validate a cell value against its validation rules
      * @param {string} cellRef - Cell reference
      * @param {string} value - Value to validate
+     * @param {string} context - Validation context: 'create', 'update', or 'always' (default: 'always')
+     * @param {Object} options - Optional: {interpreter, previousValue}
      * @returns {Object} {valid: boolean, message: string}
      */
-    validateCellValue(cellRef, value) {
+    validateCellValue(cellRef, value, context = 'always', options = {}) {
         const validation = this.validations.get(cellRef);
         if (!validation) {
             return { valid: true, message: '' };
         }
 
+        // Determine if this is create or update context
+        const currentValue = this.getCellValue(cellRef);
+        const isCreate = !currentValue || currentValue === '';
+        const isUpdate = !isCreate;
+
+        // Adjust context based on cell state if context is 'always'
+        if (context === 'always') {
+            context = isCreate ? 'create' : 'update';
+        }
+
+        // Handle contextual validation type
+        if (validation.type === 'contextual') {
+            return this._validateContextual(cellRef, value, context, validation, options);
+        }
+
+        // Standard validation types
         switch (validation.type) {
             case 'list':
                 if (!validation.values || !Array.isArray(validation.values)) {
@@ -2353,6 +2573,150 @@ class SpreadsheetModel {
 
             default:
                 return { valid: true, message: '' };
+        }
+    }
+
+    /**
+     * Validate contextual validation rules
+     * @private
+     */
+    _validateContextual(cellRef, value, context, validation, options) {
+        const results = [];
+
+        // Always validate 'always' rules
+        if (validation.always) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.always,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        // Validate context-specific rules
+        if (context === 'create' && validation.onCreate) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.onCreate,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        if (context === 'update' && validation.onUpdate) {
+            const result = this._evaluateValidationFormula(
+                cellRef,
+                value,
+                validation.onUpdate,
+                context,
+                options
+            );
+            if (!result.valid) {
+                return result;
+            }
+            results.push(result);
+        }
+
+        // All validations passed
+        return { valid: true, message: '' };
+    }
+
+    /**
+     * Evaluate a validation formula
+     * @private
+     */
+    _evaluateValidationFormula(cellRef, value, formula, context, options) {
+        try {
+            // Simple expression evaluation
+            // Support UNIQUE(range, value), PREVIOUS(cellRef), and simple comparisons
+
+            // Handle UNIQUE(range, value) - check if value is unique in range
+            const uniqueMatch = formula.match(/UNIQUE\(['"]([A-Z]+\d+:[A-Z]+\d+)['"]\s*,\s*(.+)\)/i);
+            if (uniqueMatch) {
+                const rangeRef = uniqueMatch[1];
+                const checkValue = value; // Use the value being validated
+
+                // Get all values in the range
+                const [start, end] = rangeRef.split(':');
+                const startParsed = SpreadsheetModel.parseCellRef(start);
+                const endParsed = SpreadsheetModel.parseCellRef(end);
+
+                const startCol = SpreadsheetModel.colLetterToNumber(startParsed.col);
+                const endCol = SpreadsheetModel.colLetterToNumber(endParsed.col);
+                const startRow = startParsed.row;
+                const endRow = endParsed.row;
+
+                // Check if value exists in range (excluding current cell)
+                for (let row = startRow; row <= endRow; row++) {
+                    for (let col = startCol; col <= endCol; col++) {
+                        const ref = SpreadsheetModel.formatCellRef(col, row);
+                        if (ref !== cellRef) {
+                            const cellValue = this.getCellValue(ref);
+                            if (cellValue === checkValue) {
+                                return {
+                                    valid: false,
+                                    message: `Value "${checkValue}" must be unique in range ${rangeRef}`
+                                };
+                            }
+                        }
+                    }
+                }
+
+                return { valid: true, message: '' };
+            }
+
+            // Handle PREVIOUS(cellRef) - get previous value of cell
+            const previousMatch = formula.match(/PREVIOUS\(['"]?(\w+)['"]\)/i);
+            if (previousMatch) {
+                const targetRef = previousMatch[1];
+                const previousValue = options.previousValue !== undefined
+                    ? options.previousValue
+                    : this.getCellValue(targetRef);
+
+                // Replace PREVIOUS() with the actual value
+                const evaluableFormula = formula.replace(/PREVIOUS\([^)]+\)/i, previousValue);
+
+                // Inject current value as a variable
+                const finalFormula = evaluableFormula.replace(/\bvalue\b/gi, value);
+
+                // Simple eval for comparisons
+                try {
+                    const result = eval(finalFormula);
+                    return {
+                        valid: result,
+                        message: result ? '' : `Validation failed: ${formula}`
+                    };
+                } catch (e) {
+                    return {
+                        valid: false,
+                        message: `Invalid validation formula: ${e.message}`
+                    };
+                }
+            }
+
+            // Simple expression evaluation (e.g., "value != ''", "value > 0")
+            const evaluableFormula = formula.replace(/\bvalue\b/gi, `"${value}"`);
+            const result = eval(evaluableFormula);
+
+            return {
+                valid: result,
+                message: result ? '' : `Validation failed: ${formula}`
+            };
+        } catch (error) {
+            return {
+                valid: false,
+                message: `Validation error: ${error.message}`
+            };
         }
     }
 
@@ -2561,6 +2925,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
 
@@ -2598,6 +2966,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
         this.redoStack.push(currentSnapshot);
@@ -2616,6 +2988,10 @@ class SpreadsheetModel {
         this.mergedCells = new Map(snapshot.mergedCells || new Map());
         this.cellEditors = new Map(snapshot.cellEditors || new Map());
         this.pivotTables = new Map(snapshot.pivotTables || new Map());
+        this.tableMetadata = new Map(snapshot.tableMetadata || new Map());
+        this.autoIdColumn = snapshot.autoIdColumn !== undefined ? snapshot.autoIdColumn : null;
+        this.nextId = snapshot.nextId !== undefined ? snapshot.nextId : 1;
+        this.idPrefix = snapshot.idPrefix !== undefined ? snapshot.idPrefix : '';
 
         this._rebuildDependents();
         if (rexxInterpreter) {
@@ -2649,6 +3025,10 @@ class SpreadsheetModel {
             mergedCells: new Map(this.mergedCells),
             cellEditors: new Map(this.cellEditors),
             pivotTables: new Map(this.pivotTables),
+            tableMetadata: new Map(this.tableMetadata),
+            autoIdColumn: this.autoIdColumn,
+            nextId: this.nextId,
+            idPrefix: this.idPrefix,
             timestamp: Date.now()
         };
         this.undoStack.push(currentSnapshot);
@@ -2667,6 +3047,10 @@ class SpreadsheetModel {
         this.mergedCells = new Map(snapshot.mergedCells || new Map());
         this.cellEditors = new Map(snapshot.cellEditors || new Map());
         this.pivotTables = new Map(snapshot.pivotTables || new Map());
+        this.tableMetadata = new Map(snapshot.tableMetadata || new Map());
+        this.autoIdColumn = snapshot.autoIdColumn !== undefined ? snapshot.autoIdColumn : null;
+        this.nextId = snapshot.nextId !== undefined ? snapshot.nextId : 1;
+        this.idPrefix = snapshot.idPrefix !== undefined ? snapshot.idPrefix : '';
 
         this._rebuildDependents();
         if (rexxInterpreter) {
