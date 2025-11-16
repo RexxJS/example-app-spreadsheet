@@ -557,6 +557,11 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         if (update.value === undefined) {
           throw new Error(`Update for ${update.address} must have a "value" field`);
         }
+        // Validate cell reference format (e.g., A1, B2, AA10)
+        if (!/^[A-Z]+\d+$/i.test(update.address)) {
+          // Don't throw - collect as error instead for partial success
+          // throw new Error(`Invalid cell reference: ${update.address}`);
+        }
       }
 
       // Apply all updates
@@ -565,6 +570,11 @@ export function createSpreadsheetControlFunctions(model, adapter) {
 
       for (const update of updates) {
         try {
+          // Validate cell reference format
+          if (!/^[A-Z]+\d+$/i.test(update.address)) {
+            throw new Error(`Invalid cell reference format: ${update.address}`);
+          }
+
           const contentStr = String(update.value);
           await model.setCell(update.address, contentStr, adapter);
           successCount++;

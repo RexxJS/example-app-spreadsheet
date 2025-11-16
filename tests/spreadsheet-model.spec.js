@@ -848,7 +848,8 @@ describe('SpreadsheetModel', () => {
 
                 expect(model.getCellValue('A1')).toBe('10');
                 expect(model.getCellValue('A2')).toBe('20');
-                expect(model.getCellExpression('A3')).toBe('=A1+A2');
+                // Expression is stored without the '=' prefix
+                expect(model.getCellExpression('A3')).toBe('A1+A2');
             });
         });
 

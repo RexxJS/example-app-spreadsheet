@@ -2446,7 +2446,7 @@ class SpreadsheetModel {
             // Support UNIQUE(range, value), PREVIOUS(cellRef), and simple comparisons
 
             // Handle UNIQUE(range, value) - check if value is unique in range
-            const uniqueMatch = formula.match(/UNIQUE\(['"]([A-Z]+:\w+)['"]\s*,\s*(.+)\)/i);
+            const uniqueMatch = formula.match(/UNIQUE\(['"]([A-Z]+\d+:[A-Z]+\d+)['"]\s*,\s*(.+)\)/i);
             if (uniqueMatch) {
                 const rangeRef = uniqueMatch[1];
                 const checkValue = value; // Use the value being validated
