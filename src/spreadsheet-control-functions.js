@@ -103,6 +103,180 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * SUM_RANGE - Sum all numeric values in a range
+     * Usage: total = SUM_RANGE("A1:A10")
+     *        SAY "Total:" SUM_RANGE("B2:B20")
+     */
+    SUM_RANGE: function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('SUM_RANGE requires range reference as argument (e.g., "A1:A10")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+      return values.reduce((sum, val) => {
+        const num = parseFloat(val);
+        return sum + (isNaN(num) ? 0 : num);
+      }, 0);
+    },
+
+    /**
+     * AVERAGE_RANGE - Calculate average of numeric values in a range
+     * Usage: avg = AVERAGE_RANGE("A1:A10")
+     *        SAY "Average:" AVERAGE_RANGE("B2:B20")
+     */
+    AVERAGE_RANGE: function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('AVERAGE_RANGE requires range reference as argument (e.g., "A1:A10")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+      const numbers = values.filter(v => !isNaN(parseFloat(v)));
+      if (numbers.length === 0) return 0;
+      const sum = numbers.reduce((s, v) => s + parseFloat(v), 0);
+      return sum / numbers.length;
+    },
+
+    /**
+     * COUNT_RANGE - Count non-empty cells in a range
+     * Usage: count = COUNT_RANGE("A1:A10")
+     *        SAY "Count:" COUNT_RANGE("B2:B20")
+     */
+    COUNT_RANGE: function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('COUNT_RANGE requires range reference as argument (e.g., "A1:A10")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+      return values.filter(v => v !== '' && v !== null && v !== undefined).length;
+    },
+
+    /**
+     * MIN_RANGE - Find minimum value in a range
+     * Usage: min = MIN_RANGE("A1:A10")
+     *        SAY "Minimum:" MIN_RANGE("B2:B20")
+     */
+    MIN_RANGE: function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('MIN_RANGE requires range reference as argument (e.g., "A1:A10")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+      const numbers = values.filter(v => !isNaN(parseFloat(v))).map(v => parseFloat(v));
+      return numbers.length > 0 ? Math.min(...numbers) : 0;
+    },
+
+    /**
+     * MAX_RANGE - Find maximum value in a range
+     * Usage: max = MAX_RANGE("A1:A10")
+     *        SAY "Maximum:" MAX_RANGE("B2:B20")
+     */
+    MAX_RANGE: function(rangeRef) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('MAX_RANGE requires range reference as argument (e.g., "A1:A10")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+      const numbers = values.filter(v => !isNaN(parseFloat(v))).map(v => parseFloat(v));
+      return numbers.length > 0 ? Math.max(...numbers) : 0;
+    },
+
+    /**
+     * SUMIF_RANGE - Sum cells in range that meet a condition
+     * Usage: total = SUMIF_RANGE("A1:A10", ">5")
+     *        total = SUMIF_RANGE("B2:B20", "<=100")
+     *        SAY "Conditional sum:" SUMIF_RANGE("C1:C10", "!=0")
+     */
+    SUMIF_RANGE: function(rangeRef, condition) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('SUMIF_RANGE requires range reference as first argument (e.g., "A1:A10")');
+      }
+      if (!condition || typeof condition !== 'string') {
+        throw new Error('SUMIF_RANGE requires condition as second argument (e.g., ">5", "<=100")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+
+      // Parse condition (e.g., ">5", "=10", "<100")
+      const match = condition.match(/^([><=!]+)(.+)$/);
+      if (!match) {
+        throw new Error('Invalid condition format. Use: ">5", "=10", "<100", etc.');
+      }
+
+      const operator = match[1];
+      const threshold = parseFloat(match[2]);
+
+      if (isNaN(threshold)) {
+        throw new Error('Condition value must be a number');
+      }
+
+      return values.reduce((sum, val) => {
+        const num = parseFloat(val);
+        if (isNaN(num)) return sum;
+
+        let matches = false;
+        switch (operator) {
+          case '>': matches = num > threshold; break;
+          case '>=': matches = num >= threshold; break;
+          case '<': matches = num < threshold; break;
+          case '<=': matches = num <= threshold; break;
+          case '=': case '==': matches = num === threshold; break;
+          case '!=': case '<>': matches = num !== threshold; break;
+          default: throw new Error('Unknown operator: ' + operator);
+        }
+
+        return matches ? sum + num : sum;
+      }, 0);
+    },
+
+    /**
+     * COUNTIF_RANGE - Count cells in range that meet a condition
+     * Usage: count = COUNTIF_RANGE("A1:A10", ">5")
+     *        count = COUNTIF_RANGE("B2:B20", "<=100")
+     *        SAY "Conditional count:" COUNTIF_RANGE("C1:C10", "!=0")
+     */
+    COUNTIF_RANGE: function(rangeRef, condition) {
+      if (!rangeRef || typeof rangeRef !== 'string') {
+        throw new Error('COUNTIF_RANGE requires range reference as first argument (e.g., "A1:A10")');
+      }
+      if (!condition || typeof condition !== 'string') {
+        throw new Error('COUNTIF_RANGE requires condition as second argument (e.g., ">5", "<=100")');
+      }
+
+      const values = adapter.getCellRange(rangeRef);
+
+      // Parse condition (e.g., ">5", "=10", "<100")
+      const match = condition.match(/^([><=!]+)(.+)$/);
+      if (!match) {
+        throw new Error('Invalid condition format. Use: ">5", "=10", "<100", etc.');
+      }
+
+      const operator = match[1];
+      const threshold = parseFloat(match[2]);
+
+      if (isNaN(threshold)) {
+        throw new Error('Condition value must be a number');
+      }
+
+      return values.reduce((count, val) => {
+        const num = parseFloat(val);
+        if (isNaN(num)) return count;
+
+        let matches = false;
+        switch (operator) {
+          case '>': matches = num > threshold; break;
+          case '>=': matches = num >= threshold; break;
+          case '<': matches = num < threshold; break;
+          case '<=': matches = num <= threshold; break;
+          case '=': case '==': matches = num === threshold; break;
+          case '!=': case '<>': matches = num !== threshold; break;
+          default: throw new Error('Unknown operator: ' + operator);
+        }
+
+        return matches ? count + 1 : count;
+      }, 0);
+    },
+
+    /**
      * SPREADSHEET_VERSION - Get spreadsheet control functions version
      * Usage: SAY SPREADSHEET_VERSION()
      */
@@ -1638,6 +1812,8 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     LISTCOMMANDS: function() {
       const commands = [
         'SETCELL', 'GETCELL', 'GETEXPRESSION', 'CLEARCELL',
+        'SUM_RANGE', 'AVERAGE_RANGE', 'COUNT_RANGE', 'MIN_RANGE', 'MAX_RANGE',
+        'SUMIF_RANGE', 'COUNTIF_RANGE',
         'SPREADSHEET_VERSION', 'SETFORMAT', 'GETFORMAT',
         'SETCOMMENT', 'GETCOMMENT', 'GETROW', 'GETCOL',
         'GETCOLNAME', 'MAKECELLREF', 'GETCELLS', 'SETCELLS',
@@ -1648,6 +1824,7 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'SETWRAPTEXT', 'GETWRAPTEXT',
         'HIDEROW', 'UNHIDEROW', 'HIDECOLUMN', 'UNHIDECOLUMN',
         'ISROWHIDDEN', 'ISCOLUMNHIDDEN',
+        'SETCOLWIDTH', 'GETCOLWIDTH', 'SETROWHEIGHT', 'GETROWHEIGHT',
         'DEFINENAMEDRANGE', 'DELETENAMEDRANGE', 'GETNAMEDRANGE', 'GETALLNAMEDRANGES',
         'FREEZEPANES', 'UNFREEZEPANES', 'GETFROZENPANES',
         'SETCELLVALIDATION', 'CLEARCELLVALIDATION', 'VALIDATECELL',
@@ -1709,6 +1886,78 @@ export const functionMetadata = {
     description: 'Clear cell content',
     examples: [
       'CALL CLEARCELL("A1")'
+    ]
+  },
+  SUM_RANGE: {
+    name: 'SUM_RANGE',
+    params: ['rangeRef'],
+    description: 'Sum all numeric values in a range',
+    examples: [
+      'total = SUM_RANGE("A1:A10")',
+      'SAY "Total:" SUM_RANGE("B2:B20")',
+      'result = SUM_RANGE("C5:E5")'
+    ]
+  },
+  AVERAGE_RANGE: {
+    name: 'AVERAGE_RANGE',
+    params: ['rangeRef'],
+    description: 'Calculate average of numeric values in a range',
+    examples: [
+      'avg = AVERAGE_RANGE("A1:A10")',
+      'SAY "Average:" AVERAGE_RANGE("B2:B20")',
+      'mean = AVERAGE_RANGE("C1:C100")'
+    ]
+  },
+  COUNT_RANGE: {
+    name: 'COUNT_RANGE',
+    params: ['rangeRef'],
+    description: 'Count non-empty cells in a range',
+    examples: [
+      'count = COUNT_RANGE("A1:A10")',
+      'SAY "Count:" COUNT_RANGE("B2:B20")',
+      'items = COUNT_RANGE("D1:D50")'
+    ]
+  },
+  MIN_RANGE: {
+    name: 'MIN_RANGE',
+    params: ['rangeRef'],
+    description: 'Find minimum value in a range',
+    examples: [
+      'min = MIN_RANGE("A1:A10")',
+      'SAY "Minimum:" MIN_RANGE("B2:B20")',
+      'lowest = MIN_RANGE("C1:E10")'
+    ]
+  },
+  MAX_RANGE: {
+    name: 'MAX_RANGE',
+    params: ['rangeRef'],
+    description: 'Find maximum value in a range',
+    examples: [
+      'max = MAX_RANGE("A1:A10")',
+      'SAY "Maximum:" MAX_RANGE("B2:B20")',
+      'highest = MAX_RANGE("C1:E10")'
+    ]
+  },
+  SUMIF_RANGE: {
+    name: 'SUMIF_RANGE',
+    params: ['rangeRef', 'condition'],
+    description: 'Sum cells in range that meet a condition (supports >, >=, <, <=, =, !=)',
+    examples: [
+      'total = SUMIF_RANGE("A1:A10", ">5")',
+      'sum = SUMIF_RANGE("B2:B20", "<=100")',
+      'SAY "Conditional sum:" SUMIF_RANGE("C1:C10", "!=0")',
+      'result = SUMIF_RANGE("D1:D50", ">=10")'
+    ]
+  },
+  COUNTIF_RANGE: {
+    name: 'COUNTIF_RANGE',
+    params: ['rangeRef', 'condition'],
+    description: 'Count cells in range that meet a condition (supports >, >=, <, <=, =, !=)',
+    examples: [
+      'count = COUNTIF_RANGE("A1:A10", ">5")',
+      'cnt = COUNTIF_RANGE("B2:B20", "<=100")',
+      'SAY "Conditional count:" COUNTIF_RANGE("C1:C10", "!=0")',
+      'matches = COUNTIF_RANGE("D1:D50", "=0")'
     ]
   },
   SPREADSHEET_VERSION: {
