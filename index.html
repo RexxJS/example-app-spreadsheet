@@ -50,7 +50,7 @@
 
         const rexxScriptPath = isProduction
             ? './rexxjs.bundle.js'  // In dist folder for Tauri
-            : '../../core/src/repl/dist/rexxjs.bundle.js';  // Dev mode
+            : 'https://repl.rexxjs.org/repl/dist/rexxjs.bundle.js';  // Dev mode - load from remote
 
         debug('Loading RexxJS from: ' + rexxScriptPath);
 
