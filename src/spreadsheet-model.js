@@ -50,7 +50,10 @@ class SpreadsheetModel {
             columnOrder: null, // null = default order, Array = custom column order
             mergedCells: new Map(), // key: "A1" (top-left), value: "C3" (bottom-right)
             cellEditors: new Map(), // key: "A1", value: {type: 'checkbox'|'dropdown'|'date', config: {}}
-            pivotTables: new Map() // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
+            pivotTables: new Map(), // key: pivotId, value: {sourceRange, rowFields, colFields, valueField, aggFunction, outputCell}
+            autoIdColumn: null, // Column for auto-IDs (e.g., "A" or null if disabled)
+            nextId: 1, // Next ID to assign
+            idPrefix: '' // Optional prefix for IDs (e.g., "ID-")
         });
     }
 
@@ -188,6 +191,27 @@ class SpreadsheetModel {
     }
     set pivotTables(value) {
         this._getActiveSheet().pivotTables = value;
+    }
+
+    get autoIdColumn() {
+        return this._getActiveSheet().autoIdColumn;
+    }
+    set autoIdColumn(value) {
+        this._getActiveSheet().autoIdColumn = value;
+    }
+
+    get nextId() {
+        return this._getActiveSheet().nextId;
+    }
+    set nextId(value) {
+        this._getActiveSheet().nextId = value;
+    }
+
+    get idPrefix() {
+        return this._getActiveSheet().idPrefix;
+    }
+    set idPrefix(value) {
+        this._getActiveSheet().idPrefix = value;
     }
 
     /**
@@ -1403,6 +1427,14 @@ class SpreadsheetModel {
         // Replace cells map
         this.cells = newCells;
 
+        // Auto-generate ID if auto-ID column is configured
+        if (this.autoIdColumn) {
+            const idValue = this.idPrefix + this.nextId;
+            const idCellRef = `${this.autoIdColumn}${rowNum}`;
+            this.setCell(idCellRef, String(idValue), rexxInterpreter);
+            this.nextId++; // Increment for next row
+        }
+
         // Rebuild dependents map
         this._rebuildDependents();
 
@@ -1673,6 +1705,59 @@ class SpreadsheetModel {
             // Reconstruct the cell reference with absolute markers if present
             return `${colAbs}${newCol}${rowAbs}${newRow}`;
         });
+    }
+
+    /**
+     * Auto-ID Column Management
+     */
+
+    /**
+     * Configure auto-ID column for the current sheet
+     * @param {string|null} column - Column letter (e.g., "A") or null to disable
+     * @param {number} startId - Starting ID number (default: 1)
+     * @param {string} prefix - Optional prefix for IDs (default: '')
+     */
+    configureAutoId(column, startId = 1, prefix = '') {
+        if (column !== null && !/^[A-Z]+$/i.test(column)) {
+            throw new Error(`Invalid column letter: ${column}`);
+        }
+
+        this.autoIdColumn = column ? column.toUpperCase() : null;
+        this.nextId = startId;
+        this.idPrefix = prefix;
+    }
+
+    /**
+     * Find row number by ID value
+     * @param {string|number} idValue - ID to search for
+     * @returns {number|null} - Row number or null if not found
+     */
+    findRowById(idValue) {
+        if (!this.autoIdColumn) {
+            throw new Error('Auto-ID column is not configured for this sheet');
+        }
+
+        const searchValue = String(idValue);
+
+        // Search through the auto-ID column
+        for (let row = 1; row <= this.rows; row++) {
+            const cellRef = `${this.autoIdColumn}${row}`;
+            const cellValue = this.getCellValue(cellRef);
+
+            if (String(cellValue) === searchValue) {
+                return row;
+            }
+        }
+
+        return null; // Not found
+    }
+
+    /**
+     * Get the next ID that will be assigned
+     * @returns {string} - Next ID value with prefix
+     */
+    getNextId() {
+        return this.idPrefix + this.nextId;
     }
 
     /**

@@ -1875,6 +1875,127 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * Auto-ID Column Commands (Priority 4)
+     */
+
+    /**
+     * CONFIGURE_AUTO_ID - Configure auto-ID column for current sheet
+     * Usage: CALL CONFIGURE_AUTO_ID("A")
+     *        CALL CONFIGURE_AUTO_ID("A", 1000)
+     *        CALL CONFIGURE_AUTO_ID("A", 1, "ID-")
+     *        CALL CONFIGURE_AUTO_ID(null)  // Disable auto-ID
+     */
+    CONFIGURE_AUTO_ID: async function(column, startId, prefix) {
+      // Handle null to disable
+      if (column === null || column === 'null' || column === '') {
+        model.configureAutoId(null);
+        return 'Auto-ID disabled';
+      }
+
+      if (!column || typeof column !== 'string') {
+        throw new Error('CONFIGURE_AUTO_ID requires column letter as first argument (e.g., "A") or null to disable');
+      }
+
+      const start = startId !== undefined ? parseInt(startId, 10) : 1;
+      const prefixStr = prefix !== undefined ? String(prefix) : '';
+
+      model.configureAutoId(column, start, prefixStr);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return `Auto-ID configured: column=${column}, nextId=${start}, prefix="${prefixStr}"`;
+    },
+
+    /**
+     * FIND_ROW_BY_ID - Find row number by ID value
+     * Usage: rowNum = FIND_ROW_BY_ID("1005")
+     *        rowNum = FIND_ROW_BY_ID(1005)
+     */
+    FIND_ROW_BY_ID: function(idValue) {
+      if (idValue === undefined || idValue === null) {
+        throw new Error('FIND_ROW_BY_ID requires ID value as argument');
+      }
+
+      const rowNum = model.findRowById(idValue);
+
+      if (rowNum === null) {
+        return ''; // Return empty string if not found (REXX convention)
+      }
+
+      return String(rowNum);
+    },
+
+    /**
+     * UPDATE_ROW_BY_ID - Update cells in a row by its ID
+     * Usage: updates = '[{"column":"B","value":"John"},{"column":"C","value":"30"}]'
+     *        CALL UPDATE_ROW_BY_ID("1005", updates)
+     */
+    UPDATE_ROW_BY_ID: async function(idValue, updatesJson) {
+      if (idValue === undefined || idValue === null) {
+        throw new Error('UPDATE_ROW_BY_ID requires ID value as first argument');
+      }
+
+      if (!updatesJson) {
+        throw new Error('UPDATE_ROW_BY_ID requires updates JSON as second argument');
+      }
+
+      // Find row by ID
+      const rowNum = model.findRowById(idValue);
+      if (rowNum === null) {
+        throw new Error(`Row with ID ${idValue} not found`);
+      }
+
+      // Parse updates
+      let updates;
+      if (typeof updatesJson === 'string') {
+        try {
+          updates = JSON.parse(updatesJson);
+        } catch (e) {
+          throw new Error('UPDATE_ROW_BY_ID updates must be valid JSON: ' + e.message);
+        }
+      } else if (Array.isArray(updatesJson)) {
+        updates = updatesJson;
+      } else {
+        throw new Error('UPDATE_ROW_BY_ID updates must be an array');
+      }
+
+      // Apply updates
+      for (const update of updates) {
+        if (!update.column || typeof update.column !== 'string') {
+          throw new Error('Each update must have a "column" field (e.g., "B")');
+        }
+        if (update.value === undefined) {
+          throw new Error(`Update for column ${update.column} must have a "value" field`);
+        }
+
+        const cellRef = `${update.column}${rowNum}`;
+        await model.setCell(cellRef, String(update.value), adapter);
+      }
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return String(rowNum);
+    },
+
+    /**
+     * GET_NEXT_ID - Get the next ID that will be assigned
+     * Usage: nextId = GET_NEXT_ID()
+     */
+    GET_NEXT_ID: function() {
+      if (!model.autoIdColumn) {
+        throw new Error('Auto-ID column is not configured for this sheet');
+      }
+
+      return model.getNextId();
+    },
+
+    /**
      * CREATEPIVOT - Create a pivot table
      * Usage: CALL CREATEPIVOT("pivot1", '{"sourceRange":"A1:D10","rowFields":["Category"],"colFields":["Month"],"valueField":"Sales","aggFunction":"SUM","outputCell":"F1"}')
      *        pivotId = CREATEPIVOT("sales_pivot", configJson)

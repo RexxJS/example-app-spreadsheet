@@ -967,4 +967,302 @@ describe('SpreadsheetModel', () => {
             });
         });
     });
+
+    describe('Auto-Increment Row IDs (Priority 4)', () => {
+        describe('Configuration', () => {
+            it('should configure auto-ID column', () => {
+                model.configureAutoId('A', 1, 'ID-');
+
+                expect(model.autoIdColumn).toBe('A');
+                expect(model.nextId).toBe(1);
+                expect(model.idPrefix).toBe('ID-');
+            });
+
+            it('should disable auto-ID when passed null', () => {
+                model.configureAutoId('A', 1);
+                model.configureAutoId(null);
+
+                expect(model.autoIdColumn).toBeNull();
+            });
+
+            it('should throw error for invalid column letter', () => {
+                expect(() => {
+                    model.configureAutoId('123');
+                }).toThrow('Invalid column letter');
+            });
+
+            it('should normalize column letter to uppercase', () => {
+                model.configureAutoId('b', 1);
+                expect(model.autoIdColumn).toBe('B');
+            });
+        });
+
+        describe('Auto-generation on row insert', () => {
+            beforeEach(() => {
+                model.configureAutoId('A', 1);
+            });
+
+            it('should auto-generate ID when inserting a row', () => {
+                model.insertRow(1);
+
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.nextId).toBe(2);
+            });
+
+            it('should auto-generate sequential IDs for multiple rows', () => {
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+
+                expect(model.getCellValue('A1')).toBe('1');
+                expect(model.getCellValue('A2')).toBe('2');
+                expect(model.getCellValue('A3')).toBe('3');
+                expect(model.nextId).toBe(4);
+            });
+
+            it('should include prefix in generated IDs', () => {
+                model.configureAutoId('A', 1000, 'ORDER-');
+
+                model.insertRow(1);
+                model.insertRow(2);
+
+                expect(model.getCellValue('A1')).toBe('ORDER-1000');
+                expect(model.getCellValue('A2')).toBe('ORDER-1001');
+                expect(model.nextId).toBe(1002);
+            });
+
+            it('should not generate ID when auto-ID is disabled', () => {
+                model.configureAutoId(null);
+
+                model.insertRow(1);
+
+                expect(model.getCellValue('A1')).toBe('');
+            });
+
+            it('should support different ID columns', () => {
+                model.configureAutoId('C', 1);
+
+                model.insertRow(1);
+
+                expect(model.getCellValue('C1')).toBe('1');
+                expect(model.getCellValue('A1')).toBe('');
+            });
+
+            it('should start from custom start ID', () => {
+                model.configureAutoId('A', 5000);
+
+                model.insertRow(1);
+                model.insertRow(2);
+
+                expect(model.getCellValue('A1')).toBe('5000');
+                expect(model.getCellValue('A2')).toBe('5001');
+            });
+        });
+
+        describe('Finding rows by ID', () => {
+            beforeEach(() => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+            });
+
+            it('should find row by ID', () => {
+                const rowNum = model.findRowById('100');
+                expect(rowNum).toBe(1);
+
+                const rowNum2 = model.findRowById('101');
+                expect(rowNum2).toBe(2);
+            });
+
+            it('should handle numeric ID values', () => {
+                const rowNum = model.findRowById(100);
+                expect(rowNum).toBe(1);
+            });
+
+            it('should return null when ID not found', () => {
+                const rowNum = model.findRowById('999');
+                expect(rowNum).toBeNull();
+            });
+
+            it('should throw error when auto-ID not configured', () => {
+                model.configureAutoId(null);
+
+                expect(() => {
+                    model.findRowById('100');
+                }).toThrow('Auto-ID column is not configured');
+            });
+
+            it('should find rows with prefixed IDs', () => {
+                model.configureAutoId('A', 1, 'USER-');
+                model.insertRow(1);
+
+                const rowNum = model.findRowById('USER-1');
+                expect(rowNum).toBe(1);
+            });
+        });
+
+        describe('Get next ID', () => {
+            it('should return next ID without prefix', () => {
+                model.configureAutoId('A', 42);
+                expect(model.getNextId()).toBe('42');
+            });
+
+            it('should return next ID with prefix', () => {
+                model.configureAutoId('A', 100, 'ORD-');
+                expect(model.getNextId()).toBe('ORD-100');
+            });
+
+            it('should update after row insert', () => {
+                model.configureAutoId('A', 1);
+
+                expect(model.getNextId()).toBe('1');
+                model.insertRow(1);
+                expect(model.getNextId()).toBe('2');
+            });
+        });
+
+        describe('Control Bus Commands', () => {
+            let adapter;
+            let controlFunctions;
+
+            beforeEach(async () => {
+                model = new SpreadsheetModel(100, 26);
+
+                const SpreadsheetRexxAdapterModule = await import('../src/spreadsheet-rexx-adapter.js');
+                const controlFunctionsModule = await import('../src/spreadsheet-control-functions.js');
+
+                const SpreadsheetRexxAdapter = SpreadsheetRexxAdapterModule.default;
+                const { createSpreadsheetControlFunctions } = controlFunctionsModule;
+
+                adapter = new SpreadsheetRexxAdapter(model);
+                controlFunctions = createSpreadsheetControlFunctions(model, adapter);
+            });
+
+            it('should configure auto-ID via Control Bus', async () => {
+                const result = await controlFunctions.CONFIGURE_AUTO_ID('A', 100, 'ID-');
+
+                expect(result).toContain('Auto-ID configured');
+                expect(model.autoIdColumn).toBe('A');
+                expect(model.nextId).toBe(100);
+                expect(model.idPrefix).toBe('ID-');
+            });
+
+            it('should disable auto-ID via Control Bus', async () => {
+                await controlFunctions.CONFIGURE_AUTO_ID('A', 1);
+                const result = await controlFunctions.CONFIGURE_AUTO_ID(null);
+
+                expect(result).toBe('Auto-ID disabled');
+                expect(model.autoIdColumn).toBeNull();
+            });
+
+            it('should find row by ID via Control Bus', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.insertRow(2);
+
+                const rowNum = controlFunctions.FIND_ROW_BY_ID('100');
+                expect(rowNum).toBe('1');
+
+                const rowNum2 = controlFunctions.FIND_ROW_BY_ID(101);
+                expect(rowNum2).toBe('2');
+            });
+
+            it('should return empty string when ID not found', () => {
+                model.configureAutoId('A', 100);
+
+                const rowNum = controlFunctions.FIND_ROW_BY_ID('999');
+                expect(rowNum).toBe('');
+            });
+
+            it('should update row by ID via Control Bus', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+                model.setCell('B1', 'OldName');
+                model.setCell('C1', '25');
+
+                const updates = [
+                    { column: 'B', value: 'NewName' },
+                    { column: 'C', value: '30' }
+                ];
+
+                const rowNum = await controlFunctions.UPDATE_ROW_BY_ID('100', updates);
+
+                expect(rowNum).toBe('1');
+                expect(model.getCellValue('B1')).toBe('NewName');
+                expect(model.getCellValue('C1')).toBe('30');
+            });
+
+            it('should accept JSON string for UPDATE_ROW_BY_ID', async () => {
+                model.configureAutoId('A', 100);
+                model.insertRow(1);
+
+                const updatesJson = '[{"column":"B","value":"Test"}]';
+                await controlFunctions.UPDATE_ROW_BY_ID('100', updatesJson);
+
+                expect(model.getCellValue('B1')).toBe('Test');
+            });
+
+            it('should throw error when updating non-existent ID', async () => {
+                model.configureAutoId('A', 100);
+
+                await expect(async () => {
+                    await controlFunctions.UPDATE_ROW_BY_ID('999', [{ column: 'B', value: 'Test' }]);
+                }).rejects.toThrow('Row with ID 999 not found');
+            });
+
+            it('should get next ID via Control Bus', () => {
+                model.configureAutoId('A', 5000, 'CUST-');
+
+                const nextId = controlFunctions.GET_NEXT_ID();
+                expect(nextId).toBe('CUST-5000');
+            });
+
+            it('should throw error when getting next ID without configuration', () => {
+                expect(() => {
+                    controlFunctions.GET_NEXT_ID();
+                }).toThrow('Auto-ID column is not configured');
+            });
+        });
+
+        describe('Integration with other features', () => {
+            it('should preserve IDs when sorting', () => {
+                model.configureAutoId('A', 1);
+                model.insertRow(1);
+                model.insertRow(2);
+                model.insertRow(3);
+
+                model.setCell('B1', '30');
+                model.setCell('B2', '10');
+                model.setCell('B3', '20');
+
+                model.sortRange('A1:B3', 'B', true);
+
+                // IDs should stay with their rows
+                expect(model.getCellValue('A1')).toBe('2'); // Row with B=10
+                expect(model.getCellValue('A2')).toBe('3'); // Row with B=20
+                expect(model.getCellValue('A3')).toBe('1'); // Row with B=30
+            });
+
+            it('should work across multiple sheets', () => {
+                model.addSheet('Sheet2');
+
+                // Configure different auto-IDs for each sheet
+                model.setActiveSheet('Sheet1');
+                model.configureAutoId('A', 1);
+                model.insertRow(1);
+
+                model.setActiveSheet('Sheet2');
+                model.configureAutoId('A', 100, 'S2-');
+                model.insertRow(1);
+
+                // Verify each sheet has independent IDs
+                model.setActiveSheet('Sheet1');
+                expect(model.getCellValue('A1')).toBe('1');
+
+                model.setActiveSheet('Sheet2');
+                expect(model.getCellValue('A1')).toBe('S2-100');
+            });
+        });
+    });
 });
