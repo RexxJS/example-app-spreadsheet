@@ -90,13 +90,13 @@ parent.postMessage({
 We **really like tests** and expect proper use of the **test pyramid**:
 - **Unit tests** (base): Fast, isolated tests of business logic (`tests/*.spec.js` via Jest)
 - **Integration tests** (middle): Component interactions, API contracts
-- **End-to-End tests** (top): Critical user flows only (`tests/*-web.spec.js` via Playwright)
+- **UI tests** (top): Critical user flows only (`tests/*-web.spec.js` via Playwright)
 
 **Test Coverage**:
 - `spreadsheet-model.js`: Must have comprehensive unit tests (pure JS, no DOM)
 - Control bus commands: Validate via both unit tests and REXX automation scripts
 - React components: Focus on integration tests over shallow rendering
-- Avoid over-reliance on End-to-End tests (slow, brittle)
+- Avoid over-reliance on UI tests (slow, brittle)
 
 ## Development Guidelines
 
