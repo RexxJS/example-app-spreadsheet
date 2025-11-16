@@ -1,82 +1,110 @@
 # LLM Primer: RexxJS Spreadsheet Application
 
-## Quick Overview
-Hybrid web/desktop spreadsheet app using React + Tauri. Uses **RexxJS (REXX interpreter)** for formulas instead of traditional Excel syntax.
+## Deployment Modes (3 Corners)
+1. **Tauri Desktop** - Native app (Mac/Windows/Linux) with Rust backend
+2. **Standalone Web** - Static HTML/JS served from any web server
+3. **iframe/RexxJS-Controlled** - Embedded in RexxJS Director/Worker architecture
 
-## Architecture
-- **Frontend**: React 19 + Vite (src/)
-- **Desktop Backend**: Rust + Tauri 2.9 (src-tauri/)
-- **Formula Engine**: RexxJS (external dependency, loaded from CDN or bundled)
-- **Deployment**: Static web app OR native desktop app (same codebase)
+All modes share the same React codebase; control interfaces differ.
+
+## Architecture Stack
+- **Frontend**: React 19 + Vite
+- **Desktop Backend**: Rust + Tauri 2.9 (file I/O, HTTP control bus)
+- **Formula Engine**: RexxJS interpreter (REXX language, not Excel)
+- **Integration**: Variable resolver for lazy cell references, postMessage/HTTP APIs
 
 ## Key Source Files
 ```
 src/
-├── spreadsheet-model.js              # Core logic (pure JS, DOM-free, testable)
-├── spreadsheet-rexx-adapter.js       # RexxJS integration layer
-├── SpreadsheetApp.jsx                # React UI components
-├── spreadsheet-control-functions.js  # Control Bus commands (automation API)
-└── spreadsheet-import-export.js      # CSV/JSON/TOML/YAML support
+├── spreadsheet-model.js              # Pure JS core (DOM-free, testable)
+├── spreadsheet-rexx-adapter.js       # RexxJS integration (variable resolver)
+├── SpreadsheetApp.jsx                # React UI
+├── spreadsheet-control-functions.js  # Control protocol (MIT licensed)
+└── spreadsheet-import-export.js      # CSV/JSON/TOML/YAML
 
-src-tauri/src/
-└── lib.rs                            # HTTP Control Bus API, file handling
+spreadsheet-controlbus.js             # postMessage handler (iframe mode)
+src-tauri/src/lib.rs                  # HTTP API (Tauri mode, port 2410)
 ```
 
-## Development Commands
+## Development
 ```bash
-npm run dev              # Web mode (localhost:5173)
-npm run tauri:dev        # Desktop mode
-npm test                 # Jest + Playwright tests
-npm run build            # Production web build
-npm run tauri:build      # Desktop app build
+npm run dev          # Web mode (localhost:5173)
+npm run tauri:dev    # Desktop mode
+npm test             # Jest + Playwright
 ```
 
 ## Critical Concepts
 
 ### 1. RexxJS Formula Language
-- Formulas use REXX syntax, not Excel: `=SQRT(A1*A1 + B1*B1)`
-- Function pipelines supported: `=A1:A10 |> SUM() |> ROUND(2)`
-- Setup Scripts for globals/imports
-- Custom functions in `public/lib/spreadsheet-functions.js`
+- **REXX syntax**, not Excel: `=SQRT(A1*A1 + B1*B1)`
+- **Pipelines**: `=A1:A10 |> SUM_RANGE('A1:A10') |> ROUND(2)`
+- **Variable resolver**: Cell refs (A1, Sheet2_A1) resolved on-demand, not pre-injected
+- **Setup scripts**: Page-level REXX code for globals (TAX_RATE, REQUIRE'd functions)
+- **Async evaluation**: All formulas async (affects calc order)
 
-### 2. Model-View Separation
-- `spreadsheet-model.js` has ZERO React/DOM dependencies
-- All business logic testable with Jest (no browser needed)
-- UI components in `SpreadsheetApp.jsx` call model methods
+### 2. Control Bus (ARexx-inspired, MIT Protocol)
+**Purpose**: External automation from REXX scripts or other apps
 
-### 3. Control Bus (ARexx-inspired)
-- **Web mode**: iframe postMessage
-- **Desktop mode**: HTTP API (port 2410, long-polling)
-- Allows external REXX scripts to automate spreadsheet
-- 26 commands: SET_CELL, GET_CELL, LOAD_FILE, etc.
+**Modes**:
+- **Web/iframe**: `postMessage` with `type: 'spreadsheet-control'`
+- **Desktop**: HTTP long-polling on `http://localhost:2410/command`
+- **Commands**: 60+ (SETCELL, GETCELL, MERGECELLS, CREATEPIVOT, etc.)
 
-### 4. Multi-Sheet Architecture
-- Tabbed interface, independent cell data per sheet
-- Sheet state in `spreadsheet-model.js` (sheets array)
+**Usage in iframe**:
+```js
+parent.postMessage({
+  type: 'spreadsheet-control',
+  command: 'setCell',
+  params: {cellRef: 'A1', content: '=B1+B2'},
+  requestId: 123
+}, '*');
+```
 
-### 5. Advanced Features
-- Conditional formatting (RexxJS expressions)
-- Data validation, pivot tables, merged cells
-- Named ranges, charts
-- Optional PyOdide for NumPy/SciPy (Python, not JS polyfills)
+**RexxJS Director/Worker Pattern**:
+- RexxJS runs spreadsheet in worker iframe
+- Director iframe sends commands via postMessage
+- Enables pause/resume, progress monitoring, distributed workflows
+- APPLICATION ADDRESSING for secure iframe integration
 
-## Testing Strategy
-- **Unit tests**: `tests/*.spec.js` (Jest, model logic)
-- **E2E tests**: `tests/*-web.spec.js` (Playwright, browser UI)
-- **Integration**: `tests/*.rexx` (REXX scripts via Control Bus)
+### 3. Model-View Separation
+- `spreadsheet-model.js`: Zero React/DOM deps (pure business logic)
+- Multi-sheet state (Map of sheets), dependency graph, undo/redo stack
+- Testable via Jest without browser
+- UI triggers CustomEvents (`spreadsheet-update`) for re-renders
 
-## Common Pitfalls
-1. **RexxJS dependency**: Must exist at `../../core/src/repl/dist/rexxjs.bundle.js` for production builds
-2. **Cargo.lock**: Should be committed (application, not library)
-3. **Formula syntax**: REXX, not Excel (different string concat, array indexing)
-4. **Async formulas**: RexxJS formulas are async (affects calculation order)
+### 4. Multi-Sheet + Advanced Features
+- **Sheets**: Tabbed UI, cross-sheet refs (`Sheet2_A1` in REXX)
+- **Merged cells**: Range metadata, top-left anchor
+- **Conditional formatting**: RexxJS expressions evaluated per cell
+- **Data validation**: List, number, text patterns
+- **Pivot tables**: JSON config, dynamic aggregation
+- **Named ranges**: Symbolic refs (SalesData → A1:B10)
+- **PyOdide**: Optional NumPy/SciPy (PY_LINREGRESS, PY_FFT, PY_SOLVE)
 
-## Where to Start
-1. Read `README.md` for user-facing features
-2. Explore `src/spreadsheet-model.js` for core logic
-3. Check `tests/*.spec.js` for usage examples
-4. See `docs/FEATURES.md` for visual feature guide
+### 5. File Format
+- **Extensions**: `.json`, `.rexxsheet` (preferred for file associations)
+- **Imports**: CSV, JSON, TOML, YAML (converted to internal format)
+- **Structure**: `{version, sheets: [{name, cells, setupScript}], ...}`
+
+## Testing
+- **Unit**: `tests/*.spec.js` (Jest, model logic)
+- **E2E**: `tests/*-web.spec.js` (Playwright)
+- **Control Bus**: `tests/*.rexx` (REXX automation scripts)
+
+## Pitfalls
+1. **REXX != Excel**: Different syntax (concat, indexing, functions)
+2. **Cell refs**: Use variable resolver (no pre-injection), Sheet2_A1 not Sheet2.A1
+3. **Async**: All evals async, circular deps detected
+4. **RexxJS path**: Must be at `../../core/src/repl/dist/rexxjs.bundle.js` for builds
+
+## RexxJS Integration (from reference docs)
+- **Autonomous Web Mode**: Standalone browser execution
+- **Controlled Web Mode**: Director/Worker iframes + postMessage
+- **Variable Resolver**: Lazy resolution without caching (ideal for spreadsheets)
+- **Control Bus**: Checkpoints for pause/resume/abort
+- **ADDRESS handlers**: SQLite, System, APPLICATION (iframe integration)
+- **Excel-compat functions**: VLOOKUP, stats, financial (via REQUIRE)
 
 ## License
-- Application: AGPL-3.0
-- Control Protocol: MIT
+- App code: AGPL-3.0
+- Control protocol (spreadsheet-control-functions.js): MIT (encourages ecosystem)
