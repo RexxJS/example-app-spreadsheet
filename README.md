@@ -6,7 +6,9 @@ A proof-of-concept spreadsheet powered by RexxJS expressions, built with React.
 - **Web**: Static HTML/JS that can be served from any web server
 - **Desktop**: Native application for Mac, Windows, and Linux via Tauri
 
-**📚 [Visual Feature Guide with Screenshots](docs/FEATURES.md)** - See the spreadsheet in action with step-by-step screenshots
+**📚 Documentation:**
+- **[Visual Feature Guide with Screenshots](docs/FEATURES.md)** - See the spreadsheet in action with step-by-step screenshots
+- **[CRM Tutorial](docs/TUTORIAL-CRM.md)** - Build a complete CRM system using advanced query and data features
 
 ## Quick Start
 
@@ -113,6 +115,45 @@ See **[FILE-LOADING.md](FILE-LOADING.md)** for complete file format documentatio
 - **📛 Named Ranges**: Reference ranges by meaningful names
 - **⬅️➡️ Row/Column Operations**: Insert and delete rows/columns with automatic cell shifting
 - **↩️ Undo/Redo**: 100-level undo/redo history
+
+### Advanced Query & Data Features
+
+**🔗 Query Chaining for Data Manipulation:**
+- **RANGE() Function**: Create queryable range objects for method chaining
+  ```javascript
+  =RANGE('A1:D100').WHERE('column_C > 1000').GROUP_BY('B').SUM('D')
+  ```
+- **WHERE Filtering**: Filter rows using expressions (column_X > value, col='text')
+- **PLUCK Extraction**: Extract single columns by name or letter
+- **GROUP_BY Aggregation**: Group rows and apply SUM, AVG, COUNT aggregations
+- **Chainable Operations**: Build complex data pipelines with method chaining
+
+**📊 Table Metadata & SQL-like Queries:**
+- **TABLE() Function**: Query named ranges with column name support
+  ```javascript
+  =TABLE('SalesData').WHERE('region == "West"').GROUP_BY('product').SUM('amount')
+  ```
+- **Column Name Queries**: Use readable column names instead of letters ('region' vs 'B')
+- **Schema Definitions**: Define tables with column types, descriptions, and constraints
+- **Control Bus Integration**: SET_TABLE_METADATA, GET_TABLE_METADATA commands
+
+**✅ Context-Aware Validation:**
+- **onCreate Validation**: Rules that only apply when cells are first populated
+- **onUpdate Validation**: Rules that only apply when editing existing cells
+- **UNIQUE() Helper**: Enforce uniqueness across a range
+- **PREVIOUS() Helper**: Compare current value to previous value
+
+**🔢 Auto-Increment Row IDs:**
+- **Database-like IDs**: Automatically generate sequential IDs for new rows
+- **Custom Prefixes**: Support for ID formats like "ORDER-1001", "CUST-500"
+- **ID-Based Operations**: FIND_ROW_BY_ID, UPDATE_ROW_BY_ID for row manipulation
+- **Per-Sheet Configuration**: Each sheet can have independent ID sequences
+
+**⚡ Batch Operations:**
+- **BATCH_SET_CELLS**: Update multiple cells in a single operation
+- **BATCH_EXECUTE**: Execute multiple Control Bus commands at once
+- **Reduced Latency**: Minimizes round-trips for bulk operations
+- **Error Reporting**: Detailed success/failure tracking for each operation
 
 ### Other Features
 

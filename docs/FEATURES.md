@@ -401,6 +401,274 @@ See [TESTING-CONTROL-BUS.md](../TESTING-CONTROL-BUS.md) for complete documentati
 
 ---
 
+## Advanced Query & Data Features
+
+RexxJS Spreadsheet includes powerful features for working with data like a database, including query chaining, table metadata, context-aware validation, and auto-increment IDs.
+
+### Query Chaining with RANGE()
+
+Build complex data queries using method chaining, similar to SQL or LINQ.
+
+**Basic Filtering:**
+```javascript
+// Filter rows where column C > 1000
+=RANGE('A1:D100').WHERE('column_C > 1000').RESULT()
+```
+
+**Extract Single Column:**
+```javascript
+// Get all values from column B
+=RANGE('A1:D100').PLUCK('B')
+
+// Or using column names if headers exist
+=RANGE('SalesData').PLUCK('ProductName')
+```
+
+**Group and Aggregate:**
+```javascript
+// Sum amounts by region
+=RANGE('A1:D100').GROUP_BY('B').SUM('D')
+
+// Multiple operations
+=RANGE('Sales!A:D')
+  .WHERE('Amount > 1000')
+  .GROUP_BY('Region')
+  .AVG('Amount')
+```
+
+**Available Methods:**
+- `WHERE(condition)` - Filter rows (supports column_X, colX, or column names)
+- `PLUCK(column)` - Extract single column
+- `GROUP_BY(column)` - Group rows for aggregation
+- `SUM(column)` - Sum values (works with GROUP_BY)
+- `AVG(column)` - Average values (works with GROUP_BY)
+- `COUNT()` - Count rows (works with GROUP_BY)
+- `RESULT()` - Return final data array
+
+### Table Metadata & SQL-like Queries
+
+Define named ranges as "tables" with column metadata for more readable queries.
+
+**Define Table Metadata (via Control Bus):**
+```javascript
+// JavaScript example using Control Bus
+CALL SET_TABLE_METADATA("SalesData", '{
+  "range": "A1:D100",
+  "columns": {
+    "id": "A",
+    "region": "B",
+    "product": "C",
+    "amount": "D"
+  },
+  "hasHeader": true,
+  "types": {
+    "id": "number",
+    "amount": "number"
+  },
+  "descriptions": {
+    "region": "Sales region (North, South, East, West)",
+    "amount": "Sale amount in dollars"
+  }
+}')
+```
+
+**Query Using Column Names:**
+```javascript
+// Much more readable than column letters!
+=TABLE('SalesData').WHERE('region == "West"').GROUP_BY('product').SUM('amount')
+
+// vs the old way:
+=RANGE('A1:D100').WHERE('column_B == "West"').GROUP_BY('C').SUM('D')
+```
+
+**Benefits:**
+- **Readability**: Use meaningful names ('region') instead of letters ('B')
+- **Type Safety**: Optional type information for validation
+- **Documentation**: Built-in descriptions for each column
+- **Refactoring**: Change column order without breaking formulas
+
+**Control Bus Commands:**
+- `SET_TABLE_METADATA(name, jsonMetadata)` - Define table schema
+- `GET_TABLE_METADATA(name)` - Retrieve metadata as JSON
+- `DELETE_TABLE_METADATA(name)` - Remove table definition
+- `LIST_TABLES()` - Get array of all table names
+
+### Context-Aware Validation
+
+Apply different validation rules for creating vs. updating cells.
+
+**Setup Validation:**
+```javascript
+// Via model API
+model.setCellValidation('A4', {
+  type: 'contextual',
+  onCreate: 'UNIQUE("A1:A100", value)',  // Only check when first populated
+  onUpdate: 'value > PREVIOUS("A4")',    // Only check when editing
+  always: 'value != ""'                   // Always check
+});
+```
+
+**Use Cases:**
+```javascript
+// Ensure unique customer IDs on creation
+onCreate: 'UNIQUE("A:A", value)'
+
+// Require values to increase (audit trail)
+onUpdate: 'value > PREVIOUS("B5")'
+
+// Allow empty on update but not creation
+onCreate: 'value != ""'
+onUpdate: 'true'  // Always valid on update
+```
+
+**Helper Functions:**
+- `UNIQUE(range, value)` - Check if value is unique in range
+- `PREVIOUS(cellRef)` - Get previous value of cell (for comparisons)
+
+### Auto-Increment Row IDs
+
+Automatically generate sequential IDs for new rows, like database primary keys.
+
+**Configure Auto-ID (via Control Bus):**
+```javascript
+// Enable auto-ID on column A, starting at 1
+CALL CONFIGURE_AUTO_ID("A", 1, "")
+
+// With custom prefix
+CALL CONFIGURE_AUTO_ID("A", 1000, "ORDER-")
+// Generates: ORDER-1000, ORDER-1001, ORDER-1002, ...
+```
+
+**Insert Row (Auto-ID Applied):**
+```javascript
+// When you insert a row, the ID is automatically set
+model.insertRow(1);  // Cell A1 gets next ID
+
+// IDs increment automatically
+model.insertRow(2);  // A2 gets next ID
+model.insertRow(3);  // A3 gets next ID
+```
+
+**Find and Update by ID:**
+```javascript
+// Find row by ID value
+rowNum = FIND_ROW_BY_ID("ORDER-1005")
+
+// Update specific row by ID
+CALL UPDATE_ROW_BY_ID("ORDER-1005", '[
+  {"column": "B", "value": "Updated Name"},
+  {"column": "C", "value": "New Status"}
+]')
+
+// Get next ID that will be assigned
+nextId = GET_NEXT_ID()
+```
+
+**Per-Sheet Configuration:**
+Each sheet can have its own ID sequence with different prefixes.
+
+### Batch Operations
+
+Execute multiple operations in a single call for better performance.
+
+**Batch Set Cells:**
+```javascript
+// Update multiple cells at once
+CALL BATCH_SET_CELLS('[
+  {"address": "A1", "value": "100"},
+  {"address": "B2", "value": "200"},
+  {"address": "C3", "value": "=A1+B2"}
+]')
+
+// Returns: {"total": 3, "success": 3, "errors": 0}
+```
+
+**Batch Execute Commands:**
+```javascript
+// Execute multiple Control Bus commands
+CALL BATCH_EXECUTE('[
+  {"command": "SETCELL", "args": ["A1", "10"]},
+  {"command": "SETCELL", "args": ["A2", "20"]},
+  {"command": "INSERTROW", "args": ["3"]}
+]')
+
+// Returns detailed results for each command
+```
+
+**Benefits:**
+- **Performance**: Reduces HTTP round-trips in desktop mode
+- **Atomicity**: All operations processed together
+- **Error Handling**: Continues on error, reports which operations failed
+- **Automation**: Ideal for bulk data imports and scripts
+
+### Complete Example: Sales Tracking
+
+Here's a complete example using all the advanced features:
+
+**1. Define Table Schema:**
+```javascript
+CALL SET_TABLE_METADATA("Sales", '{
+  "range": "A1:E1000",
+  "columns": {
+    "order_id": "A",
+    "customer": "B",
+    "region": "C",
+    "product": "D",
+    "amount": "E"
+  },
+  "hasHeader": true,
+  "types": {
+    "order_id": "string",
+    "amount": "number"
+  }
+}')
+```
+
+**2. Configure Auto-IDs:**
+```javascript
+CALL CONFIGURE_AUTO_ID("A", 1000, "ORD-")
+```
+
+**3. Add Validation:**
+```javascript
+// Order IDs must be unique
+model.setCellValidation('A2:A1000', {
+  type: 'contextual',
+  onCreate: 'UNIQUE("A:A", value)'
+});
+
+// Amounts must be positive
+model.setCellValidation('E2:E1000', {
+  type: 'formula',
+  formula: 'value > 0'
+});
+```
+
+**4. Query Data:**
+```javascript
+// Total sales by region
+=TABLE('Sales').GROUP_BY('region').SUM('amount')
+
+// High-value West coast orders
+=TABLE('Sales').WHERE('region == "West" && amount > 5000').RESULT()
+
+// Average order value by product
+=TABLE('Sales').GROUP_BY('product').AVG('amount')
+```
+
+**5. Bulk Import Data:**
+```javascript
+CALL BATCH_SET_CELLS('[
+  {"address": "B2", "value": "Acme Corp"},
+  {"address": "C2", "value": "West"},
+  {"address": "D2", "value": "Widget"},
+  {"address": "E2", "value": "1500"}
+]')
+// A2 automatically gets "ORD-1000"
+```
+
+---
+
 ## Next Steps
 
 - **Try the Examples**: Load `sample-budget.json` or `example-formatted.json`
