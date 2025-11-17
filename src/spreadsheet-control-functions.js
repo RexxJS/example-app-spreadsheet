@@ -2166,6 +2166,177 @@ export function createSpreadsheetControlFunctions(model, adapter) {
     },
 
     /**
+     * DEFINETABLE - Define a table with header row
+     * Usage: CALL DEFINETABLE("SalesData", "A1:C10")
+     *        CALL DEFINETABLE("Employees", "E1:H50", 1)
+     */
+    DEFINETABLE: function(name, range, hasHeader) {
+      if (!name || typeof name !== 'string') {
+        throw new Error('DEFINETABLE requires table name as first argument');
+      }
+      if (!range || typeof range !== 'string') {
+        throw new Error('DEFINETABLE requires range as second argument (e.g., "A1:C10")');
+      }
+
+      const hasHeaderBool = hasHeader === undefined || hasHeader === 1 || hasHeader === true || hasHeader === 'true';
+      const table = model.defineTable(name, range, hasHeaderBool);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return JSON.stringify(table);
+    },
+
+    /**
+     * DELETETABLE - Delete a table definition
+     * Usage: CALL DELETETABLE("SalesData")
+     */
+    DELETETABLE: function(name) {
+      if (!name || typeof name !== 'string') {
+        throw new Error('DELETETABLE requires table name as argument');
+      }
+
+      model.deleteTable(name);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * GETTABLE - Get table metadata
+     * Usage: table = GETTABLE("SalesData")
+     * Returns: JSON string with table metadata
+     */
+    GETTABLE: function(name) {
+      if (!name || typeof name !== 'string') {
+        throw new Error('GETTABLE requires table name as argument');
+      }
+
+      const table = model.getTable(name);
+      if (!table) {
+        return '';
+      }
+
+      return JSON.stringify(table);
+    },
+
+    /**
+     * LISTTABLES - Get all table names
+     * Usage: tables = LISTTABLES()
+     * Returns: REXX stem array with table names
+     */
+    LISTTABLES: function() {
+      const tables = model.getTables();
+
+      // Return as REXX stem array
+      const result = { 0: tables.length };
+      tables.forEach((name, index) => {
+        result[index + 1] = name;
+      });
+
+      return result;
+    },
+
+    /**
+     * SORTTABLEBYCOLUMN - Sort table by column (cycles through asc/desc/original)
+     * Usage: CALL SORTTABLEBYCOLUMN("SalesData", "B")
+     *        state = SORTTABLEBYCOLUMN("Employees", "A")
+     * Returns: Sort state ('asc', 'desc', or 'original')
+     */
+    SORTTABLEBYCOLUMN: async function(tableName, columnLetter) {
+      if (!tableName || typeof tableName !== 'string') {
+        throw new Error('SORTTABLEBYCOLUMN requires table name as first argument');
+      }
+      if (!columnLetter || typeof columnLetter !== 'string') {
+        throw new Error('SORTTABLEBYCOLUMN requires column letter as second argument (e.g., "A", "B")');
+      }
+
+      const newState = model.sortTableByColumn(tableName, columnLetter, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return newState;
+    },
+
+    /**
+     * FILLUP - Fill cells upward with values and formulas
+     * Usage: CALL FILLUP("A5", "A1:A4")
+     *        CALL FILLUP("A4:B5", "A1:B3")
+     */
+    FILLUP: async function(sourceRef, targetRange) {
+      if (!sourceRef || typeof sourceRef !== 'string') {
+        throw new Error('FILLUP requires source reference as first argument (e.g., "A5" or "A4:A5")');
+      }
+      if (!targetRange || typeof targetRange !== 'string') {
+        throw new Error('FILLUP requires target range as second argument (e.g., "A1:A3")');
+      }
+
+      model.fillUp(sourceRef, targetRange, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * FILLLEFT - Fill cells leftward with values and formulas
+     * Usage: CALL FILLLEFT("E1", "A1:D1")
+     *        CALL FILLLEFT("D1:E2", "A1:C2")
+     */
+    FILLLEFT: async function(sourceRef, targetRange) {
+      if (!sourceRef || typeof sourceRef !== 'string') {
+        throw new Error('FILLLEFT requires source reference as first argument (e.g., "E1" or "D1:E1")');
+      }
+      if (!targetRange || typeof targetRange !== 'string') {
+        throw new Error('FILLLEFT requires target range as second argument (e.g., "A1:C1")');
+      }
+
+      model.fillLeft(sourceRef, targetRange, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
+     * AUTOFILL - Auto-detect direction and fill cells with values and formulas
+     * Usage: CALL AUTOFILL("A1:A3", "A4:A10")  -- fills down
+     *        CALL AUTOFILL("E1:E3", "A1:D3")   -- fills left
+     */
+    AUTOFILL: async function(sourceRange, targetRange) {
+      if (!sourceRange || typeof sourceRange !== 'string') {
+        throw new Error('AUTOFILL requires source range as first argument (e.g., "A1:A3")');
+      }
+      if (!targetRange || typeof targetRange !== 'string') {
+        throw new Error('AUTOFILL requires target range as second argument (e.g., "A4:A10")');
+      }
+
+      model.autofill(sourceRange, targetRange, adapter);
+
+      // Trigger UI update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('spreadsheet-update'));
+      }
+
+      return '';
+    },
+
+    /**
      * LISTCOMMANDS - Get list of available commands
      * Usage: commands = LISTCOMMANDS()
      * Returns: REXX stem array with command names
@@ -2181,7 +2352,8 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'CLEAR', 'EXPORT', 'IMPORT', 'GETSHEETNAME', 'SETSHEETNAME',
         'EVALUATE', 'RECALCULATE', 'GETSETUPSCRIPT', 'SETSETUPSCRIPT',
         'EXECUTESETUPSCRIPT', 'INSERTROW', 'DELETEROW', 'INSERTCOLUMN', 'DELETECOLUMN',
-        'FILLDOWN', 'FILLRIGHT', 'SORTRANGE', 'FIND', 'REPLACE',
+        'FILLDOWN', 'FILLRIGHT', 'FILLUP', 'FILLLEFT', 'AUTOFILL',
+        'SORTRANGE', 'FIND', 'REPLACE',
         'SETWRAPTEXT', 'GETWRAPTEXT',
         'HIDEROW', 'UNHIDEROW', 'HIDECOLUMN', 'UNHIDECOLUMN',
         'ISROWHIDDEN', 'ISCOLUMNHIDDEN',
@@ -2196,6 +2368,7 @@ export function createSpreadsheetControlFunctions(model, adapter) {
         'MERGECELLS', 'UNMERGECELLS', 'GETMERGEDRANGE', 'ISCELLMERGED',
         'SETCELLEDITOR', 'GETCELLEDITOR', 'REMOVECELLEDITOR',
         'CREATEPIVOT', 'UPDATEPIVOT', 'DELETEPIVOT', 'GETPIVOT', 'LISTPIVOTS', 'PIVOTCONFIG',
+        'DEFINETABLE', 'DELETETABLE', 'GETTABLE', 'LISTTABLES', 'SORTTABLEBYCOLUMN',
         'LISTCOMMANDS'
       ];
 
@@ -2710,6 +2883,84 @@ export const functionMetadata = {
     examples: [
       'config = PIVOTCONFIG("A1:D10", "Sales", "SUM", "F1", \'["Category"]\', \'["Month"]\')',
       'config = PIVOTCONFIG("A1:E20", "Amount", "AVERAGE", "G1", \'["Product"]\', \'[]\')'
+    ]
+  },
+  DEFINETABLE: {
+    name: 'DEFINETABLE',
+    params: ['name', 'range', 'hasHeader'],
+    description: 'Define a sortable table with headers',
+    examples: [
+      'CALL DEFINETABLE("SalesData", "A1:C10")',
+      'CALL DEFINETABLE("Employees", "E1:H50", 1)',
+      'table = DEFINETABLE("Products", "A1:D20", 0)'
+    ]
+  },
+  DELETETABLE: {
+    name: 'DELETETABLE',
+    params: ['name'],
+    description: 'Delete a table definition',
+    examples: [
+      'CALL DELETETABLE("SalesData")',
+      'CALL DELETETABLE("Employees")'
+    ]
+  },
+  GETTABLE: {
+    name: 'GETTABLE',
+    params: ['name'],
+    description: 'Get table metadata (JSON)',
+    examples: [
+      'table = GETTABLE("SalesData")',
+      'SAY "Table info:" table'
+    ]
+  },
+  LISTTABLES: {
+    name: 'LISTTABLES',
+    params: [],
+    description: 'Get list of all tables (REXX stem array)',
+    examples: [
+      'tables = LISTTABLES()',
+      'SAY tables.0 "tables defined"',
+      'DO i = 1 TO tables.0; SAY tables.i; END'
+    ]
+  },
+  SORTTABLEBYCOLUMN: {
+    name: 'SORTTABLEBYCOLUMN',
+    params: ['tableName', 'columnLetter'],
+    description: 'Sort table by column (cycles: original → asc ↑ → desc ↓ → original)',
+    examples: [
+      'CALL SORTTABLEBYCOLUMN("SalesData", "B")',
+      'state = SORTTABLEBYCOLUMN("Employees", "A")',
+      'SAY "Sort state:" state'
+    ]
+  },
+  FILLUP: {
+    name: 'FILLUP',
+    params: ['sourceRef', 'targetRange'],
+    description: 'Fill cells upward with values and formulas',
+    examples: [
+      'CALL FILLUP("A5", "A1:A4")',
+      'CALL FILLUP("A4:B5", "A1:B3")',
+      'CALL FILLUP("C10", "C1:C9")'
+    ]
+  },
+  FILLLEFT: {
+    name: 'FILLLEFT',
+    params: ['sourceRef', 'targetRange'],
+    description: 'Fill cells leftward with values and formulas',
+    examples: [
+      'CALL FILLLEFT("E1", "A1:D1")',
+      'CALL FILLLEFT("D1:E2", "A1:C2")',
+      'CALL FILLLEFT("F5", "B5:E5")'
+    ]
+  },
+  AUTOFILL: {
+    name: 'AUTOFILL',
+    params: ['sourceRange', 'targetRange'],
+    description: 'Auto-detect direction and fill cells with values and formulas',
+    examples: [
+      'CALL AUTOFILL("A1:A3", "A4:A10")',
+      'CALL AUTOFILL("E1:E3", "A1:D3")',
+      'CALL AUTOFILL("B2:B4", "B5:B20")'
     ]
   },
   LISTCOMMANDS: {
