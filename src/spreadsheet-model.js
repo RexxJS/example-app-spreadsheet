@@ -3082,6 +3082,588 @@ class SpreadsheetModel {
     canRedo() {
         return this.redoStack.length > 0;
     }
+
+    // ========================================================================
+    // Table Management (for sortable tables with headers)
+    // ========================================================================
+
+    /**
+     * Define a table within the sheet
+     * @param {string} name - Table name (e.g., "SalesData")
+     * @param {string} range - Range reference (e.g., "A1:C10")
+     * @param {boolean} hasHeader - Whether first row is a header (default: true)
+     * @returns {Object} Table metadata
+     */
+    defineTable(name, range, hasHeader = true) {
+        const sheet = this._getActiveSheet();
+
+        // Validate range format
+        const match = range.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!match) {
+            throw new Error(`Invalid range reference: ${range}. Expected format: "A1:C10"`);
+        }
+
+        const startColLetter = match[1].toUpperCase();
+        const startRow = parseInt(match[2], 10);
+        const endColLetter = match[3].toUpperCase();
+        const endRow = parseInt(match[4], 10);
+
+        const startCol = SpreadsheetModel.colLetterToNumber(startColLetter);
+        const endCol = SpreadsheetModel.colLetterToNumber(endColLetter);
+
+        // Extract header row if applicable
+        const headers = [];
+        if (hasHeader) {
+            for (let col = startCol; col <= endCol; col++) {
+                const headerRef = SpreadsheetModel.formatCellRef(col, startRow);
+                const headerCell = this.getCell(headerRef);
+                headers.push(headerCell.value || SpreadsheetModel.colNumberToLetter(col));
+            }
+        }
+
+        // Store original row order for restoration
+        const originalOrder = [];
+        const dataStartRow = hasHeader ? startRow + 1 : startRow;
+        for (let row = dataStartRow; row <= endRow; row++) {
+            originalOrder.push(row);
+        }
+
+        const tableMetadata = {
+            name,
+            range,
+            startCol,
+            endCol,
+            startRow,
+            endRow,
+            hasHeader,
+            headers,
+            originalOrder,  // Track original row order for restoration
+            currentSortColumn: null,  // null = unsorted
+            currentSortDirection: null  // null | 'asc' | 'desc'
+        };
+
+        sheet.tableMetadata.set(name, tableMetadata);
+        return tableMetadata;
+    }
+
+    /**
+     * Delete a table definition
+     * @param {string} name - Table name
+     */
+    deleteTable(name) {
+        const sheet = this._getActiveSheet();
+        if (!sheet.tableMetadata.has(name)) {
+            throw new Error(`Table ${name} does not exist`);
+        }
+        sheet.tableMetadata.delete(name);
+    }
+
+    /**
+     * Get table metadata
+     * @param {string} name - Table name
+     * @returns {Object} Table metadata
+     */
+    getTable(name) {
+        const sheet = this._getActiveSheet();
+        return sheet.tableMetadata.get(name);
+    }
+
+    /**
+     * Get all table names
+     * @returns {Array<string>} Array of table names
+     */
+    getTables() {
+        const sheet = this._getActiveSheet();
+        return Array.from(sheet.tableMetadata.keys());
+    }
+
+    /**
+     * Sort table by column with state cycling (original → asc → desc → original)
+     * @param {string} tableName - Name of the table
+     * @param {string} columnLetter - Column to sort by (e.g., "A", "B")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     * @returns {string} New sort state: 'asc', 'desc', or 'original'
+     */
+    sortTableByColumn(tableName, columnLetter, rexxInterpreter = null) {
+        const sheet = this._getActiveSheet();
+        const table = sheet.tableMetadata.get(tableName);
+
+        if (!table) {
+            throw new Error(`Table ${tableName} does not exist`);
+        }
+
+        const sortCol = SpreadsheetModel.colLetterToNumber(columnLetter.toUpperCase());
+
+        // Validate sort column is within table range
+        if (sortCol < table.startCol || sortCol > table.endCol) {
+            throw new Error(`Column ${columnLetter} is outside table range`);
+        }
+
+        // Determine next sort state
+        let newSortState;
+        let newDirection;
+
+        if (table.currentSortColumn !== columnLetter) {
+            // Sorting by a different column - start with ascending
+            newSortState = 'asc';
+            newDirection = true;
+        } else {
+            // Same column - cycle through states
+            if (table.currentSortDirection === null) {
+                // original → ascending
+                newSortState = 'asc';
+                newDirection = true;
+            } else if (table.currentSortDirection === 'asc') {
+                // ascending → descending
+                newSortState = 'desc';
+                newDirection = false;
+            } else {
+                // descending → original
+                newSortState = 'original';
+                newDirection = null;
+            }
+        }
+
+        const dataStartRow = table.hasHeader ? table.startRow + 1 : table.startRow;
+        const dataEndRow = table.endRow;
+
+        if (newSortState === 'original') {
+            // Restore original order
+            this._restoreTableOrder(table, rexxInterpreter);
+            table.currentSortColumn = null;
+            table.currentSortDirection = null;
+        } else {
+            // Perform sort
+            const dataRange = `${SpreadsheetModel.colNumberToLetter(table.startCol)}${dataStartRow}:${SpreadsheetModel.colNumberToLetter(table.endCol)}${dataEndRow}`;
+            this._sortTableRange(table, dataRange, columnLetter, newDirection, rexxInterpreter);
+            table.currentSortColumn = columnLetter;
+            table.currentSortDirection = newSortState;
+        }
+
+        return newSortState;
+    }
+
+    /**
+     * Internal: Sort a table range and update formula references
+     */
+    _sortTableRange(table, rangeRef, sortCol, ascending, rexxInterpreter) {
+        const match = rangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!match) {
+            throw new Error(`Invalid range reference: ${rangeRef}`);
+        }
+
+        const startColLetter = match[1].toUpperCase();
+        const startRow = parseInt(match[2], 10);
+        const endColLetter = match[3].toUpperCase();
+        const endRow = parseInt(match[4], 10);
+
+        const startCol = SpreadsheetModel.colLetterToNumber(startColLetter);
+        const endCol = SpreadsheetModel.colLetterToNumber(endColLetter);
+        const sortColNum = typeof sortCol === 'string' ?
+            SpreadsheetModel.colLetterToNumber(sortCol) :
+            sortCol;
+
+        // Extract all rows in the range
+        const rows = [];
+        for (let row = startRow; row <= endRow; row++) {
+            const rowData = {
+                rowNum: row,
+                cells: {}
+            };
+            for (let col = startCol; col <= endCol; col++) {
+                const ref = SpreadsheetModel.formatCellRef(col, row);
+                const cell = this.getCell(ref);
+                rowData.cells[col] = { ...cell };
+            }
+            rows.push(rowData);
+        }
+
+        // Sort rows by the sort column
+        rows.sort((a, b) => {
+            const aCell = a.cells[sortColNum];
+            const bCell = b.cells[sortColNum];
+            const aVal = aCell.value || '';
+            const bVal = bCell.value || '';
+
+            // Try numeric comparison first
+            const aNum = parseFloat(aVal);
+            const bNum = parseFloat(bVal);
+            if (!isNaN(aNum) && !isNaN(bNum)) {
+                return ascending ? aNum - bNum : bNum - aNum;
+            }
+
+            // Fall back to string comparison
+            const aStr = String(aVal).toLowerCase();
+            const bStr = String(bVal).toLowerCase();
+            if (aStr < bStr) return ascending ? -1 : 1;
+            if (aStr > bStr) return ascending ? 1 : -1;
+            return 0;
+        });
+
+        // Create row mapping (old row -> new row)
+        const rowMapping = new Map();
+        for (let i = 0; i < rows.length; i++) {
+            const oldRow = rows[i].rowNum;
+            const newRow = startRow + i;
+            rowMapping.set(oldRow, newRow);
+        }
+
+        // Write sorted rows back to the model
+        for (let i = 0; i < rows.length; i++) {
+            const targetRow = startRow + i;
+            const sourceRow = rows[i];
+
+            for (let col = startCol; col <= endCol; col++) {
+                const targetRef = SpreadsheetModel.formatCellRef(col, targetRow);
+                const sourceCell = sourceRow.cells[col];
+
+                if (sourceCell.expression) {
+                    // Update formula references based on row movement
+                    const adjustedExpression = this._updateFormulaAfterRowMove(
+                        sourceCell.expression,
+                        sourceRow.rowNum,
+                        targetRow,
+                        rowMapping,
+                        startRow,
+                        endRow
+                    );
+
+                    const metadata = {
+                        comment: sourceCell.comment || '',
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
+                    };
+                    this.setCell(targetRef, '=' + adjustedExpression, rexxInterpreter, metadata);
+                } else if (sourceCell.value !== '') {
+                    const metadata = {
+                        comment: sourceCell.comment || '',
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
+                    };
+                    this.setCell(targetRef, sourceCell.value, rexxInterpreter, metadata);
+                } else {
+                    this.setCell(targetRef, '', rexxInterpreter);
+                }
+            }
+        }
+
+        // Recalculate if interpreter provided
+        if (rexxInterpreter) {
+            this._recalculateAll(rexxInterpreter);
+        }
+    }
+
+    /**
+     * Update formula references after rows have moved
+     * This handles references to cells within the sorted range
+     */
+    _updateFormulaAfterRowMove(expression, oldRow, newRow, rowMapping, rangeStart, rangeEnd) {
+        if (!expression) return expression;
+
+        const cellRefPattern = /(\$?)([A-Z]+)(\$?)(\d+)/g;
+
+        return expression.replace(cellRefPattern, (match, colAbs, col, rowAbs, row) => {
+            const refRow = parseInt(row, 10);
+
+            // If this reference is within the sorted range and not absolute
+            if (!rowAbs && refRow >= rangeStart && refRow <= rangeEnd) {
+                // If the referenced row was moved, update to its new position
+                const newRefRow = rowMapping.get(refRow);
+                if (newRefRow !== undefined) {
+                    return `${colAbs}${col}${rowAbs}${newRefRow}`;
+                }
+            }
+
+            // Keep reference as-is
+            return match;
+        });
+    }
+
+    /**
+     * Restore table to original order
+     */
+    _restoreTableOrder(table, rexxInterpreter) {
+        const dataStartRow = table.hasHeader ? table.startRow + 1 : table.startRow;
+        const startCol = table.startCol;
+        const endCol = table.endCol;
+
+        // Extract all current rows
+        const rows = [];
+        for (let i = 0; i < table.originalOrder.length; i++) {
+            const currentRow = dataStartRow + i;
+            const rowData = {
+                currentRowNum: currentRow,
+                originalRowNum: table.originalOrder[i],
+                cells: {}
+            };
+            for (let col = startCol; col <= endCol; col++) {
+                const ref = SpreadsheetModel.formatCellRef(col, currentRow);
+                const cell = this.getCell(ref);
+                rowData.cells[col] = { ...cell };
+            }
+            rows.push(rowData);
+        }
+
+        // Sort by original row number
+        rows.sort((a, b) => a.originalRowNum - b.originalRowNum);
+
+        // Create row mapping for formula updates
+        const rowMapping = new Map();
+        for (let i = 0; i < rows.length; i++) {
+            const oldRow = rows[i].currentRowNum;
+            const newRow = dataStartRow + i;
+            rowMapping.set(oldRow, newRow);
+        }
+
+        // Write rows back in original order
+        for (let i = 0; i < rows.length; i++) {
+            const targetRow = dataStartRow + i;
+            const sourceRow = rows[i];
+
+            for (let col = startCol; col <= endCol; col++) {
+                const targetRef = SpreadsheetModel.formatCellRef(col, targetRow);
+                const sourceCell = sourceRow.cells[col];
+
+                if (sourceCell.expression) {
+                    // Update formula references
+                    const adjustedExpression = this._updateFormulaAfterRowMove(
+                        sourceCell.expression,
+                        sourceRow.currentRowNum,
+                        targetRow,
+                        rowMapping,
+                        dataStartRow,
+                        table.endRow
+                    );
+
+                    const metadata = {
+                        comment: sourceCell.comment || '',
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
+                    };
+                    this.setCell(targetRef, '=' + adjustedExpression, rexxInterpreter, metadata);
+                } else if (sourceCell.value !== '') {
+                    const metadata = {
+                        comment: sourceCell.comment || '',
+                        format: sourceCell.format || '',
+                        wrapText: sourceCell.wrapText || false
+                    };
+                    this.setCell(targetRef, sourceCell.value, rexxInterpreter, metadata);
+                } else {
+                    this.setCell(targetRef, '', rexxInterpreter);
+                }
+            }
+        }
+
+        if (rexxInterpreter) {
+            this._recalculateAll(rexxInterpreter);
+        }
+    }
+
+    // ========================================================================
+    // Autofill in All Directions
+    // ========================================================================
+
+    /**
+     * Fill up - Copy cell(s) upward to a range
+     * @param {string} sourceRef - Source cell or range (e.g., "A5" or "A4:A5")
+     * @param {string} targetRangeRef - Target range (e.g., "A1:A3")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    fillUp(sourceRef, targetRangeRef, rexxInterpreter = null) {
+        // Parse source range
+        const sourceMatch = sourceRef.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!sourceMatch) {
+            throw new Error(`Invalid source reference: ${sourceRef}`);
+        }
+
+        const sourceStartCol = sourceMatch[1].toUpperCase();
+        const sourceStartRow = parseInt(sourceMatch[2], 10);
+        const sourceEndCol = sourceMatch[3] ? sourceMatch[3].toUpperCase() : sourceStartCol;
+        const sourceEndRow = sourceMatch[4] ? parseInt(sourceMatch[4], 10) : sourceStartRow;
+
+        // Parse target range
+        const targetMatch = targetRangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!targetMatch) {
+            throw new Error(`Invalid target range: ${targetRangeRef}`);
+        }
+
+        const targetStartCol = targetMatch[1].toUpperCase();
+        const targetStartRow = parseInt(targetMatch[2], 10);
+        const targetEndCol = targetMatch[3].toUpperCase();
+        const targetEndRow = parseInt(targetMatch[4], 10);
+
+        const sourceColStart = SpreadsheetModel.colLetterToNumber(sourceStartCol);
+        const sourceColEnd = SpreadsheetModel.colLetterToNumber(sourceEndCol);
+        const targetColStart = SpreadsheetModel.colLetterToNumber(targetStartCol);
+        const targetColEnd = SpreadsheetModel.colLetterToNumber(targetEndCol);
+
+        const sourceWidth = sourceColEnd - sourceColStart + 1;
+        const targetWidth = targetColEnd - targetColStart + 1;
+
+        if (sourceWidth !== targetWidth) {
+            throw new Error('Source and target must have the same number of columns');
+        }
+
+        // Fill up (reverse direction)
+        for (let row = targetEndRow; row >= targetStartRow; row--) {
+            for (let colOffset = 0; colOffset < sourceWidth; colOffset++) {
+                const sourceCol = sourceColStart + colOffset;
+                const targetCol = targetColStart + colOffset;
+                const sourceRowToUse = sourceEndRow - ((targetEndRow - row) % (sourceEndRow - sourceStartRow + 1));
+
+                const sourceCellRef = SpreadsheetModel.formatCellRef(sourceCol, sourceRowToUse);
+                const targetCellRef = SpreadsheetModel.formatCellRef(targetCol, row);
+
+                const sourceCell = this.getCell(sourceCellRef);
+                if (sourceCell.expression) {
+                    // Adjust formula for new position
+                    const rowOffset = row - sourceRowToUse;
+                    const colOffset = targetCol - sourceCol;
+                    const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowOffset, colOffset);
+                    this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
+                    });
+                } else {
+                    this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * Fill left - Copy cell(s) leftward to a range
+     * @param {string} sourceRef - Source cell or range (e.g., "E1" or "D1:E1")
+     * @param {string} targetRangeRef - Target range (e.g., "A1:C1")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    fillLeft(sourceRef, targetRangeRef, rexxInterpreter = null) {
+        // Parse source range
+        const sourceMatch = sourceRef.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/i);
+        if (!sourceMatch) {
+            throw new Error(`Invalid source reference: ${sourceRef}`);
+        }
+
+        const sourceStartCol = sourceMatch[1].toUpperCase();
+        const sourceStartRow = parseInt(sourceMatch[2], 10);
+        const sourceEndCol = sourceMatch[3] ? sourceMatch[3].toUpperCase() : sourceStartCol;
+        const sourceEndRow = sourceMatch[4] ? parseInt(sourceMatch[4], 10) : sourceStartRow;
+
+        // Parse target range
+        const targetMatch = targetRangeRef.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        if (!targetMatch) {
+            throw new Error(`Invalid target range: ${targetRangeRef}`);
+        }
+
+        const targetStartCol = targetMatch[1].toUpperCase();
+        const targetStartRow = parseInt(targetMatch[2], 10);
+        const targetEndCol = targetMatch[3].toUpperCase();
+        const targetEndRow = parseInt(targetMatch[4], 10);
+
+        const sourceColStart = SpreadsheetModel.colLetterToNumber(sourceStartCol);
+        const sourceColEnd = SpreadsheetModel.colLetterToNumber(sourceEndCol);
+        const targetColStart = SpreadsheetModel.colLetterToNumber(targetStartCol);
+        const targetColEnd = SpreadsheetModel.colLetterToNumber(targetEndCol);
+
+        const sourceHeight = sourceEndRow - sourceStartRow + 1;
+        const targetHeight = targetEndRow - targetStartRow + 1;
+
+        if (sourceHeight !== targetHeight) {
+            throw new Error('Source and target must have the same number of rows');
+        }
+
+        // Fill left (iterate left-to-right, but map to source right-to-left)
+        for (let col = targetColStart; col <= targetColEnd; col++) {
+            for (let rowOffset = 0; rowOffset < sourceHeight; rowOffset++) {
+                const sourceRow = sourceStartRow + rowOffset;
+                const targetRow = targetStartRow + rowOffset;
+                const sourceColToUse = sourceColStart + ((targetColEnd - col) % (sourceColEnd - sourceColStart + 1));
+
+                const sourceCellRef = SpreadsheetModel.formatCellRef(sourceColToUse, sourceRow);
+                const targetCellRef = SpreadsheetModel.formatCellRef(col, targetRow);
+
+                const sourceCell = this.getCell(sourceCellRef);
+                if (sourceCell.expression) {
+                    // Adjust formula for new position
+                    const rowDiff = targetRow - sourceRow;
+                    const colDiff = col - sourceColToUse;
+                    const adjustedExpression = this._adjustFormulaForCopy(sourceCell.expression, rowDiff, colDiff);
+                    this.setCell(targetCellRef, '=' + adjustedExpression, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
+                    });
+                } else {
+                    this.setCell(targetCellRef, sourceCell.value, rexxInterpreter, {
+                        format: sourceCell.format,
+                        comment: sourceCell.comment,
+                        wrapText: sourceCell.wrapText
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * Generic autofill that detects patterns and fills in any direction
+     * @param {string} sourceRange - Source range (e.g., "A1:A3")
+     * @param {string} targetRange - Target range (e.g., "A4:A10")
+     * @param {Object} rexxInterpreter - Optional interpreter for recalculation
+     */
+    autofill(sourceRange, targetRange, rexxInterpreter = null) {
+        // Determine direction based on source and target ranges
+        const sourceMatch = sourceRange.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+        const targetMatch = targetRange.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i);
+
+        if (!sourceMatch || !targetMatch) {
+            throw new Error('Invalid range format. Use format like "A1:A3"');
+        }
+
+        const sourceStartCol = SpreadsheetModel.colLetterToNumber(sourceMatch[1].toUpperCase());
+        const sourceStartRow = parseInt(sourceMatch[2], 10);
+        const sourceEndCol = SpreadsheetModel.colLetterToNumber(sourceMatch[3].toUpperCase());
+        const sourceEndRow = parseInt(sourceMatch[4], 10);
+
+        const targetStartCol = SpreadsheetModel.colLetterToNumber(targetMatch[1].toUpperCase());
+        const targetStartRow = parseInt(targetMatch[2], 10);
+        const targetEndCol = SpreadsheetModel.colLetterToNumber(targetMatch[3].toUpperCase());
+        const targetEndRow = parseInt(targetMatch[4], 10);
+
+        // Detect direction
+        let direction;
+        if (targetStartRow > sourceEndRow) {
+            direction = 'down';
+        } else if (targetEndRow < sourceStartRow) {
+            direction = 'up';
+        } else if (targetStartCol > sourceEndCol) {
+            direction = 'right';
+        } else if (targetEndCol < sourceStartCol) {
+            direction = 'left';
+        } else {
+            throw new Error('Target range must be adjacent to source range');
+        }
+
+        // Use existing fill methods based on direction
+        switch (direction) {
+            case 'down':
+                this.fillDown(sourceRange, targetRange, rexxInterpreter);
+                break;
+            case 'up':
+                this.fillUp(sourceRange, targetRange, rexxInterpreter);
+                break;
+            case 'right':
+                this.fillRight(sourceRange, targetRange, rexxInterpreter);
+                break;
+            case 'left':
+                this.fillLeft(sourceRange, targetRange, rexxInterpreter);
+                break;
+        }
+    }
 }
 
 // Export for Node.js (Jest), ES6 modules, and browser
