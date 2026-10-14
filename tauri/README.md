@@ -1,5 +1,12 @@
 # RexxJS Spreadsheet POC
 
+> **Legacy.** This is the original React + Tauri app, kept for reference;
+> the spreadsheet carries on as a sae app in [`../app/`](../app/) (see
+> [`../README.md`](../README.md)). Its REXX scripts moved to
+> [`../rexx/`](../rexx/). It was written to live in the RexxJS repository
+> (paths such as `../../core/rexx` below), and does not build from here as
+> it is.
+
 A proof-of-concept spreadsheet powered by RexxJS expressions, built with React.
 
 **Deployment Modes:**
