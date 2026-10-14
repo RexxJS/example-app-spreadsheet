@@ -1,4 +1,22 @@
-# RexxSheet Dual Licensing
+# Licensing
+
+| What | License | Text |
+|---|---|---|
+| `app/`, `tests/`, `tools/`, `docs/`, `run-tests.sh` (the sae app) | MIT | [LICENSE-MIT](LICENSE-MIT) |
+| `vendor/rexxjs/` (RexxJS, vendored) | MIT | [vendor/rexxjs/LICENSE](vendor/rexxjs/LICENSE) |
+| `rexx/` (control-protocol scripts) and the protocol itself | MIT | [LICENSE-PROTOCOL-MIT](LICENSE-PROTOCOL-MIT) |
+| `tauri/` (the legacy app), but for its protocol files | AGPL v3 | [LICENSE-AGPL](LICENSE-AGPL) |
+
+The sae app was written in sae (MIT) and moved here on 2026-10-14. What it
+takes from the Tauri app, its author relicenses as MIT: the AGPL below
+covers `tauri/` as it stands, not the sae app.
+
+The rest of this file is the Tauri app's dual licensing, as it was written
+(paths now under `tauri/` and `rexx/`).
+
+---
+
+# RexxSheet Dual Licensing (the Tauri app)
 
 This project uses **dual licensing** to balance open source values with ecosystem growth:
 
@@ -28,13 +46,13 @@ The spreadsheet control protocol/grammar is licensed under **MIT License** to en
 ### AGPL Licensed (Application)
 See [LICENSE-AGPL](LICENSE-AGPL)
 
-- `src/SpreadsheetApp.jsx` - Main UI component
-- `src/spreadsheet-model.js` - Data model
-- `src/spreadsheet-rexx-adapter.js` - REXX integration
-- `src/spreadsheet-loader.js` - Application loader
-- `src/main.jsx` - Entry point
-- `src/spreadsheet-address-handler.js` - ADDRESS handler
-- `src-tauri/` - Tauri desktop app (Rust)
+- `tauri/src/SpreadsheetApp.jsx` - Main UI component
+- `tauri/src/spreadsheet-model.js` - Data model
+- `tauri/src/spreadsheet-rexx-adapter.js` - REXX integration
+- `tauri/src/spreadsheet-loader.js` - Application loader
+- `tauri/src/main.jsx` - Entry point
+- `tauri/src/spreadsheet-address-handler.js` - ADDRESS handler
+- `tauri/src-tauri/` - Tauri desktop app (Rust)
 - Build and distribution files
 - UI components and styling
 
@@ -47,8 +65,8 @@ See [LICENSE-AGPL](LICENSE-AGPL)
 ### MIT Licensed (Protocol)
 See [LICENSE-PROTOCOL-MIT](LICENSE-PROTOCOL-MIT)
 
-- `src/spreadsheet-control-functions.js` - **Protocol/Grammar Definition**
-- `test-spreadsheet-address.rexx` - Protocol example
+- `tauri/src/spreadsheet-control-functions.js` - **Protocol/Grammar Definition**
+- `rexx/test-spreadsheet-address.rexx` - Protocol example
 - Protocol documentation and specifications
 
 **Freedom granted:**

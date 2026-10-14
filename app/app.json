@@ -1,0 +1,10 @@
+{
+  "name": "Spreadsheet",
+  "start": "/sheet",
+  "capabilities": {
+    "documents": {},
+    "controlBus": {
+      "name": "spreadsheet"
+    }
+  }
+}
