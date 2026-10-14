@@ -85,14 +85,18 @@ to drive the sae app:
   still is not: it hands the app a variable of the script's
   (`IMPORT(exported)`).
 
-## RexxJS quirks met on the way
+## RexxJS bugs met on the way, fixed there
 
-These are RexxJS's, not the scripts'. RexxJS is canonical for REXX, so
-they would be fixed there:
+Found driving these scripts, and fixed in RexxJS (2026-10-14, `e987768`
+and `6ec1ab7`), which is canonical for REXX:
 
-- `rexx` (the CLI) exits 0 after `EXIT 1`. A failed expectation or an
-  error does exit 1. So `spec_app_sheet_rexx` also checks for each script's
-  own "passed" line.
-- In a single-quoted string, `''` stays as two quotes; classic REXX reads
-  it as one quote.
-- `SAY "(RC" RC || ")"` prints its source text instead of the values.
+- `rexx` (the CLI) exited 0 after `EXIT 1`; it now exits with EXIT's code.
+  `spec_app_sheet_rexx` checks both the status and each script's own
+  "passed" line.
+- Inside a string, a doubled quote of its own kind stayed as two quotes;
+  it is now one, as in classic REXX (`'it''s'` is it's).
+- `SAY "(RC" RC || ")"` printed its source text; each side of `||` is now
+  its terms joined by blanks.
+
+`vendor/rexxjs/` was re-vendored from that commit, so REXX inside the app
+reads strings the same way.

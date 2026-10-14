@@ -1,9 +1,8 @@
 // spec_app_sheet_rexx.ae — the REXX scripts in rexx/ drive the app over its
 // control bus, as a person would run them: RexxJS's own CLI, ADDRESS
 // SPREADSHEET (rexx/spreadsheet-address.js), and sae's sae-bus doing the
-// sealing. Each script must finish with its own "passed" line (RexxJS's CLI
-// exits 0 on EXIT 1, so the status alone is not enough), and what the
-// ARexx-style demonstration says it set must be on the grid.
+// sealing. Each script must exit 0 and finish with its own "passed" line,
+// and what the ARexx-style demonstration says it set must be on the grid.
 //   ./run-tests.sh spec_app_sheet_rexx
 // Needs node, a RexxJS checkout beside this repository (the RexxJS link)
 // and sae's target/sae-bus.
@@ -44,8 +43,9 @@ main() {
             spec.assert_true(b.wait_for_console("sae: control bus: listening"), "listening")
             ran_("test-connection.rexx", "✓ Connection successful: spreadsheet version sae demo 18")
         }
-        spec.it("test-connection: with no app to ask, RC 2 and sae-bus's reason") callback {
-            out, _s = rexx_("test-connection.rexx", "SAE_APPDATA_DIR=/nonexistent")
+        spec.it("test-connection: with no app to ask, RC 2 and sae-bus's reason, and EXIT 1") callback {
+            out, status = rexx_("test-connection.rexx", "SAE_APPDATA_DIR=/nonexistent")
+            spec.assert_eq(status, 1, "the script's EXIT 1 is the process's")
             spec.assert_contains(out, "ERROR: no answer, RC 2", "RC 2")
             spec.assert_contains(out, "sae-bus: no courier file at /nonexistent/.control-bus", "and why")
         }

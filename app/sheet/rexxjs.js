@@ -11099,6 +11099,14 @@ async function resolveValue(value, variableGetFn, variableHasFn, evaluateExpress
     if ((value.startsWith("'") && value.endsWith("'")) || 
         (value.startsWith('"') && value.endsWith('"'))) {
       let unquoted = value.substring(1, value.length - 1);
+      // A doubled quote of the literal's own kind is one quote ('a''b' is
+      // a'b), when the whole value is that one literal (as
+      // isSingleLiteral in interpreter-string-and-expression-processing.js;
+      // repeated here, as this module loads on its own in a browser)
+      const q = value[0];
+      if (!unquoted.split(q + q).join('').includes(q)) {
+        unquoted = unquoted.split(q + q).join(q);
+      }
       // Process escape sequences
       unquoted = unquoted.replace(/\\n/g, '\n');
       unquoted = unquoted.replace(/\\t/g, '\t');
@@ -14630,6 +14638,27 @@ module.exports = {
  * SOFTWARE.
  */
 
+// True when `part` is exactly one quoted literal, '...' or "...", in which a
+// doubled quote of its own kind stands for one quote ('it''s').
+const isSingleLiteral = function(part) {
+    const q = part[0];
+    if ((q !== '"' && q !== "'") || part.length < 2 || part[part.length - 1] !== q) return false;
+    for (let i = 1; i < part.length - 1; i++) {
+        if (part[i] === q) {
+            if (part[i + 1] !== q || i + 1 === part.length - 1) return false;
+            i++;
+        }
+    }
+    return true;
+}
+
+// A quoted literal's text, as classic REXX reads it: the quotes removed, and
+// a doubled quote of the same kind made one ('it''s' is it's).
+const unquoteLiteral = function(literal) {
+    const q = literal[0];
+    return literal.substring(1, literal.length - 1).split(q + q).join(q);
+}
+
 const parseQuotedParts = function(expression) {
     const parts = [];
     let current = '';
@@ -14786,11 +14815,11 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
       // escape-sequence-processor not available, skip processing
     }
 
-    const results = [];
-    for (const part of parts) {
-      if (part.startsWith('"') && part.endsWith('"')) {
+    // One term: a literal, or an expression or variable worked out.
+    const term = async (part) => {
+      if (isSingleLiteral(part) && part[0] === '"') {
         // Quoted string - remove quotes and interpolate if needed
-        let unquoted = part.substring(1, part.length - 1);
+        let unquoted = unquoteLiteral(part);
         // Check if we need to interpolate within the string
         if (typeof evaluateExpressionFn !== 'undefined' && unquoted.includes('{{')) {
           // Has interpolation patterns, but keep as-is for now
@@ -14799,10 +14828,10 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
           // No interpolation patterns, apply escape sequence processor
           unquoted = processEscapeSequences(unquoted);
         }
-        results.push(unquoted);
-      } else if (part.startsWith("'") && part.endsWith("'")) {
+        return unquoted;
+      } else if (isSingleLiteral(part)) {
         // Single quoted string - no interpolation, no escape sequences
-        results.push(part.substring(1, part.length - 1));
+        return unquoteLiteral(part);
       } else if (typeof evaluateExpressionFn !== 'undefined') {
         // For non-quoted, non-string parts, try different evaluation strategies
 
@@ -14818,21 +14847,40 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
             // This looks like an expression - try to evaluate it
             // Pass the raw string which evaluateExpressionFn should handle
             const evaluated = await evaluateExpressionFn(part);
-            results.push(String(evaluated));
+            return String(evaluated);
           } catch (error) {
             // If it fails as an expression, try as a variable
             const resolved = await resolveValueFn(part);
-            results.push(String(resolved));
+            return String(resolved);
           }
         } else {
           // No operators, treat as variable
           const resolved = await resolveValueFn(part);
-          results.push(String(resolved));
+          return String(resolved);
         }
       } else {
         // No expression evaluator - treat as variable reference
         const resolved = await resolveValueFn(part);
-        results.push(String(resolved));
+        return String(resolved);
+      }
+    };
+
+    // Each side of || is terms joined by blanks, as in classic REXX
+    // (SAY "(RC" rc || ")"): a side of several terms, none of them an
+    // operator or an operand of one, is each term worked out and joined
+    // with one blank.
+    const OPERATOR = /[+\-*\/%<>=]/;
+    const results = [];
+    for (const part of parts) {
+      const terms = isSingleLiteral(part) ? [part] : parseQuotedParts(part);
+      const blankJoined = terms.length > 1 &&
+        terms.every((t) => isSingleLiteral(t) || !OPERATOR.test(t));
+      if (blankJoined) {
+        const values = [];
+        for (const t of terms) values.push(await term(t));
+        results.push(values.join(' '));
+      } else {
+        results.push(await term(part));
       }
     }
 
@@ -14842,7 +14890,7 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
 // UMD pattern for both Node.js and browser compatibility
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js environment
-    module.exports = { parseQuotedParts, interpolateString, evaluateConcatenation };
+    module.exports = { parseQuotedParts, interpolateString, evaluateConcatenation, isSingleLiteral, unquoteLiteral };
 } else if (typeof window !== 'undefined') {
     // Browser environment - register in registry to avoid conflicts
     if (!window.rexxModuleRegistry) {
@@ -14852,7 +14900,9 @@ if (typeof module !== 'undefined' && module.exports) {
         window.rexxModuleRegistry.set('stringProcessing', {
             parseQuotedParts,
             interpolateString,
-            evaluateConcatenation
+            evaluateConcatenation,
+            isSingleLiteral,
+            unquoteLiteral
         });
     }
 }
@@ -15578,7 +15628,7 @@ if (typeof window !== 'undefined' && !window.rexxModuleRegistry) {
 }
 
 // Conditional loading for Node.js/browser compatibility
-let parseQuotedParts, interpolateString, evaluateConcatenation;
+let parseQuotedParts, interpolateString, evaluateConcatenation, isSingleLiteral, unquoteLiteral;
 let compareValues, isTruthy, isLikelyFunctionName, isNumericString, basicBase64Encode, basicBase64Decode;
 let executionContextUtils;
 let variableStackUtils;
@@ -15618,6 +15668,8 @@ if (typeof require !== 'undefined') {
   parseQuotedParts = stringProcessing.parseQuotedParts;
   interpolateString = stringProcessing.interpolateString;
   evaluateConcatenation = stringProcessing.evaluateConcatenation;
+  isSingleLiteral = stringProcessing.isSingleLiteral;
+  unquoteLiteral = stringProcessing.unquoteLiteral;
   
   const evaluationUtils = require('./interpreter-evaluation-utilities.js');
   compareValues = evaluationUtils.compareValues;
@@ -15670,6 +15722,8 @@ if (typeof require !== 'undefined') {
     parseQuotedParts = stringProcessing.parseQuotedParts;
     interpolateString = stringProcessing.interpolateString;
     evaluateConcatenation = stringProcessing.evaluateConcatenation;
+    isSingleLiteral = stringProcessing.isSingleLiteral;
+    unquoteLiteral = stringProcessing.unquoteLiteral;
     
     // Set up window globals for backward compatibility
     window.parseQuotedParts = parseQuotedParts;
@@ -17541,9 +17595,9 @@ class RexxInterpreter {
     const parts = parseQuotedParts(expression);
     
     for (const part of parts) {
-      if (part.startsWith('"') && part.endsWith('"')) {
+      if (isSingleLiteral(part) && part[0] === '"') {
         // Handle quoted string with potential interpolation
-        let rawString = part.substring(1, part.length - 1);
+        let rawString = unquoteLiteral(part);
         // Check for interpolation using current pattern
         let pattern;
         try {
@@ -17564,9 +17618,9 @@ class RexxInterpreter {
           }
           outputParts.push(rawString);
         }
-      } else if (part.startsWith("'") && part.endsWith("'")) {
+      } else if (isSingleLiteral(part)) {
         // Single quoted string (no interpolation)
-        outputParts.push(part.substring(1, part.length - 1));
+        outputParts.push(unquoteLiteral(part));
       } else {
         // Variable reference or literal
         const resolved = await this.resolveValue(part);
@@ -22749,6 +22803,27 @@ if (typeof module !== 'undefined' && module.exports) {
  * SOFTWARE.
  */
 
+// True when `text` is exactly one quoted literal, '...' or "...", in which a
+// doubled quote of its own kind stands for one quote ('it''s').
+function isSingleLiteral(text) {
+  const q = text[0];
+  if ((q !== '"' && q !== "'") || text.length < 2 || text[text.length - 1] !== q) return false;
+  for (let i = 1; i < text.length - 1; i++) {
+    if (text[i] === q) {
+      if (text[i + 1] !== q || i + 1 === text.length - 1) return false;
+      i++;
+    }
+  }
+  return true;
+}
+
+// A quoted literal's text, as classic REXX reads it: the quotes removed, and
+// a doubled quote of the same kind made one ('it''s' is it's).
+function unquoteLiteral(literal) {
+  const q = literal[0];
+  return literal.substring(1, literal.length - 1).split(q + q).join(q);
+}
+
 // Helper function to remove comments while preserving strings
 function removeCommentsPreservingStrings(line) {
   let result = '';
@@ -23697,7 +23772,7 @@ function parseStatement(tokens, startIndex) {
     
     // Check if it's a quoted string that might need interpolation
     if ((expression.startsWith('"') && expression.endsWith('"')) || (expression.startsWith("'") && expression.endsWith("'"))) {
-      const rawString = expression.substring(1, expression.length - 1);
+      const rawString = isSingleLiteral(expression) ? unquoteLiteral(expression) : expression.substring(1, expression.length - 1);
       
       // Check for interpolation markers {variableName} or empty {} - must match variable pattern or be empty
       if (rawString.match(/\{[a-zA-Z_][a-zA-Z0-9_.]*\}/) || rawString.includes('{}')) {
@@ -23979,7 +24054,8 @@ function parseStatement(tokens, startIndex) {
     return {
       command: {
         type: 'QUOTED_STRING',
-        value: quotedStringMatch[2]  // String content without quotes
+        // String content without quotes (a doubled quote made one)
+        value: isSingleLiteral(line) ? unquoteLiteral(line) : quotedStringMatch[2]
       },
       nextIndex: startIndex + 1
     };
@@ -23993,7 +24069,7 @@ function parseStatement(tokens, startIndex) {
     
     // Check if it's a quoted string
     if (expression.match(/^(['"`]).*\1$/)) {
-      const rawString = expression.substring(1, expression.length - 1);
+      const rawString = isSingleLiteral(expression) ? unquoteLiteral(expression) : expression.substring(1, expression.length - 1);
       return {
         command: addLineNumber({
           type: 'ASSIGNMENT',
@@ -25149,14 +25225,19 @@ function parseFactor(expr) {
     const quoteChar = expr[0];
     let endIndex = 1;
 
-    // Find the closing quote
-    while (endIndex < expr.length && expr[endIndex] !== quoteChar) {
+    // Find the closing quote; a doubled quote is one quote of the string's
+    let stringValue = '';
+    while (endIndex < expr.length) {
+      if (expr[endIndex] === quoteChar) {
+        if (expr[endIndex + 1] !== quoteChar) break;
+        endIndex++;
+      }
+      stringValue += expr[endIndex];
       endIndex++;
     }
 
     if (endIndex < expr.length && expr[endIndex] === quoteChar) {
       // Found closing quote
-      const stringValue = expr.substring(1, endIndex);
       return {
         expr: {
           type: 'LITERAL',
