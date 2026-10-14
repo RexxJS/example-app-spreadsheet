@@ -87,10 +87,13 @@ const script = async (text: string) => {
 };
 eq("cell.about and sheet.state, the getters' commands", [(await cmds.run("cell.comment cell=B2 text=hi")) && (await cmds.run("cell.about cell=B2")).output, (await cmds.run("sheet.state")).output],
   [{ cell: "B2", value: "", input: "", format: "", comment: "hi", wrap: 0, merged: "", validation: null, editor: null },
-    { name: "Sheet1", sheets: ["Sheet1"], hiddenRows: [], hiddenCols: [], frozenRows: 0, rowHeights: [], colWidths: [], filter: null, canUndo: 1, canRedo: 0, autoId: null }]);
+    { name: "Sheet1", sheets: ["Sheet1"], hiddenRows: [], hiddenCols: [], frozenRows: 0, rowHeights: [], colWidths: [], filter: null, canUndo: 1, canRedo: 0, autoId: null, language: "Excel" }]);
 eq("a script calls them by the app's names", [await script(`LET r = SETCELL("A1", 10); LET r = SETCELL("A2", 20); LET r = INSERTROW(2); LET r = HIDEROW(2)
 SAY GETCELL("A3") ISROWHIDDEN(2) ISROWHIDDEN(3); LET r = UNDO(); SAY CANUNDO() CANREDO(); LET n = GETSHEETNAMES(); SAY n.0 n.1`), said, wb.sheet.input("A3"), wb.hidden().rows],
   ["ran", ["20 1 0", "1 1", "1 Sheet1"], "20", []]);
+eq("the formula language, which the app had not (its sheets are RexxJS only)", [await script(`SAY GETFORMULALANGUAGE(); SAY SETFORMULALANGUAGE("rexxjs"); SAY GETFORMULALANGUAGE()`), [...said],
+  await script(`LET r = SETFORMULALANGUAGE("Lisp")`)], ["ran", ["Excel", "RexxJS", "RexxJS"], "Lisp is not a formula language (Excel, RexxJS)"]);
+await cmds.run("formulas.use language=Excel");
 eq("a function the script has not got stops it, saying so", (await script(`LET r = NOPE("x")`)).includes("NOPE"), true);
 eq("ADDRESS SPREADSHEET: each string REXX, RC and RESULT set; a failure RC 1", [await script(`ADDRESS SPREADSHEET
 'SETCELL("C1", "=A1*3")'
@@ -122,6 +125,7 @@ eq("its formats as the grid draws them", ["D1", "D2", "D3", "F1"].map((k) => dem
 // expect: ok LISTCOMMANDS: a stem of what a script may call, the app's list among them
 // expect: ok cell.about and sheet.state, the getters' commands
 // expect: ok a script calls them by the app's names
+// expect: ok the formula language, which the app had not (its sheets are RexxJS only)
 // expect: ok a function the script has not got stops it, saying so
 // expect: ok ADDRESS SPREADSHEET: each string REXX, RC and RESULT set; a failure RC 1
 // expect: ok the app's ARexx-style demonstration runs unchanged, every command RC 0

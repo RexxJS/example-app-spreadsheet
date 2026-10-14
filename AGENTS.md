@@ -6,7 +6,8 @@ the plan: what is done, what is next, and how the code is laid out.
 
 - **`app/` is where the work is.** `tauri/` is legacy and kept as it was;
   read it for what the original did, don't develop it. `rexx/` holds the
-  control-protocol scripts.
+  control-protocol scripts and their ADDRESS library (`ADDRESS
+  SPREADSHEET` runs sae's `sae-bus`); `spec_app_sheet_rexx` runs them.
 - **It runs on sae, beside this checkout** (`sae -> ../sae`). A feature
   that needs something new of sae (a page service, a grant, an aether-ui
   widget) is built in sae, with sae's own test of it, and used here after;

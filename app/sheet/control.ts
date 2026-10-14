@@ -41,6 +41,7 @@ interface State {
   readonly canUndo: number;
   readonly canRedo: number;
   readonly autoId: { readonly column: string; readonly next: string } | null;
+  readonly language: string;
 }
 
 // A command that must be done: a refusal is the function's error, as the
@@ -97,6 +98,10 @@ const VERSION = "sae demo 18";
 
 export const CONTROL: Readonly<Record<string, Control>> = {
   SPREADSHEET_VERSION: () => VERSION,
+  // Not the app's (its sheets are RexxJS formulas only): the formula
+  // language, "Excel" or "RexxJS", as the Formula language setting.
+  SETFORMULALANGUAGE: async (exec, l) => (await must(exec, "formulas.use", { language: text(l) }), (await state(exec)).language),
+  GETFORMULALANGUAGE: async (exec) => (await state(exec)).language,
   EXPORT: async (exec) => (await must(exec, "file.export")).output,
   IMPORT: async (exec, json) => (await must(exec, "file.import", { text: text(json) }), "OK"),
   EVALUATE: async (exec, formula) => (await must(exec, "formulas.calculate", { formula: text(formula) })).output,

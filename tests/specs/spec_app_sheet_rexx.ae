@@ -1,0 +1,75 @@
+// spec_app_sheet_rexx.ae — the REXX scripts in rexx/ drive the app over its
+// control bus, as a person would run them: RexxJS's own CLI, ADDRESS
+// SPREADSHEET (rexx/spreadsheet-address.js), and sae's sae-bus doing the
+// sealing. Each script must finish with its own "passed" line (RexxJS's CLI
+// exits 0 on EXIT 1, so the status alone is not enough), and what the
+// ARexx-style demonstration says it set must be on the grid.
+//   ./run-tests.sh spec_app_sheet_rexx
+// Needs node, a RexxJS checkout beside this repository (the RexxJS link)
+// and sae's target/sae-bus.
+import std.spec
+import std.string
+import std.list
+import std.os
+import std.os (os_getenv)
+import saedriver as b
+import griddriver as g
+import uidriver
+
+// A script's whole output (stdout and stderr) and its exit status. `env`
+// is prepended to the command ("" for none).
+rexx_(script: string, env: string) -> (string, int) {
+    root = os_getenv("SHEET_ROOT")
+    argv = list.new()
+    list.add(argv, "-c")
+    list.add(argv, "cd \"$0\" && ${env} RexxJS/core/rexx \"rexx/$1\" 2>&1")
+    list.add(argv, root)
+    list.add(argv, script)
+    out, status, _err = os.run_capture("sh", argv, null)
+    return out, status
+}
+
+ran_(script: string, last: string) {
+    out, status = rexx_(script, "")
+    spec.assert_eq(status, 0, "${script} exits 0")
+    spec.assert_contains(out, last, "${script} says so")
+    spec.assert_eq(string.contains(out, "Error executing script"), 0, "${script}: no error")
+}
+
+main() {
+    fw = spec.init()
+    uidriver.wait_server()
+    spec.describe(fw, "the REXX scripts, over the control bus") {
+        spec.it("test-connection: the app answers with its version") callback {
+            spec.assert_true(b.wait_for_console("sae: control bus: listening"), "listening")
+            ran_("test-connection.rexx", "✓ Connection successful: spreadsheet version sae demo 18")
+        }
+        spec.it("test-connection: with no app to ask, RC 2 and sae-bus's reason") callback {
+            out, _s = rexx_("test-connection.rexx", "SAE_APPDATA_DIR=/nonexistent")
+            spec.assert_contains(out, "ERROR: no answer, RC 2", "RC 2")
+            spec.assert_contains(out, "sae-bus: no courier file at /nonexistent/.control-bus", "and why")
+        }
+        spec.it("the ARexx-style demonstration: every command RC 0, and the grid shows them") callback {
+            out, status = rexx_("test-spreadsheet-address.rexx", "")
+            spec.assert_eq(status, 0, "exits 0")
+            spec.assert_eq(string.contains(out, "✗"), 0, "no command failed")
+            spec.assert_contains(out, "✓ Got A3 = 300", "A3 worked out")
+            spec.assert_contains(out, "✓ Got B3 = hello from rexx!", "a RexxJS pipe")
+            spec.assert_true(g.wait_cell("A", 3, "300"), "A3 on the grid")
+            spec.assert_true(g.wait_cell("B", 2, "HELLO FROM REXX!"), "B2 on the grid")
+            spec.assert_true(g.wait_cell("D", 2, "$1,234.56"), "D2 as currency")
+            spec.assert_true(g.wait_cell("D", 3, "12.5%"), "D3 as a percentage")
+        }
+        spec.it("the range functions, checked by RexxJS's expectations") callback {
+            ran_("spreadsheet-functions-test.rexx", "✅ All spreadsheet function tests passed!")
+        }
+        spec.it("the control-bus commands, checked by RexxJS's expectations") callback {
+            ran_("spreadsheet-control-bus-test.rexx", "✅ All control bus tests passed!")
+        }
+        spec.it("rows and columns inserted and deleted, and the bad ones refused") callback {
+            ran_("spreadsheet-row-column-ops.rexx", "✅ All row/column operation tests passed!")
+            spec.assert_true(g.wait_cell("C", 1, "20"), "the grid after the last insert")
+        }
+    }
+    return spec.run_summary(fw)
+}

@@ -7,7 +7,7 @@ parts:
 | Folder | What it is | License |
 |---|---|---|
 | [`app/`](app/) | **The spreadsheet, current.** A [sae](https://github.com/aether-lang-dev/sae-it-aint-so) app in sae's TypeScript dialect: it runs as a page in the sae browser or as an installed app, natively on aether-ui (GTK4, AppKit, Win32). | MIT |
-| [`rexx/`](rexx/) | REXX scripts that drive a running spreadsheet from outside, over its control bus. | MIT |
+| [`rexx/`](rexx/) | REXX scripts that drive the running sae app from outside, over its control bus (`ADDRESS SPREADSHEET`, through sae's `sae-bus`). | MIT |
 | [`tauri/`](tauri/) | **The original, legacy.** The React + Tauri app the sae one grew from. New features go into `app/`; this stays as it was, for reference. | AGPL (see [LICENSING.md](LICENSING.md)) |
 
 ## The sae app
@@ -30,12 +30,14 @@ tests/
   headless/         the model and commands, no window: sae's lowerer harness
                     on sae's QuickJS (sheet -> ../../app/sheet)
   specs/            the app driven in sae-driver: grid, keys, clipboard, files,
-                    the control bus
+                    the control bus, and rexx/'s scripts run against it
   lib/griddriver.ae reads and clicks the datagrid for the specs
 vendor/rexxjs/      RexxJS's interpreter and parser, vendored (MIT, its LICENSE)
 tools/              bundle-rexxjs.mjs: re-vendors RexxJS and writes app/sheet/rexxjs.js
 docs/               the plan, and notes for the Tauri app
+rexx/               REXX scripts that drive the app, and their ADDRESS library
 sae -> ../sae       the sae checkout it builds and tests against
+RexxJS -> ../RexxJS the RexxJS checkout the REXX scripts run on
 ```
 
 ### Running it
@@ -56,7 +58,8 @@ this machine can drive the sheet (sae's `docs/control-bus.md`).
 ./run-tests.sh
 ```
 
-That runs the headless tests and the three specs, one line of PASS or FAIL
+It needs `node`, and RexxJS checked out beside this repository, for the
+REXX scripts' spec. That runs the headless tests and the four specs, one line of PASS or FAIL
 each, with logs under `target/run-tests/`. `./run-tests.sh headless` runs
 only the headless tests; `./run-tests.sh spec_sheet` only that spec.
 `SAE_DIR=...` picks another sae checkout. On Linux with no display it runs
@@ -74,7 +77,14 @@ canonical source of the REXX language; changes to it go there first.
 
 ## REXX scripts
 
-See [rexx/README.md](rexx/README.md).
+With the app started with `--control-bus`, from the repository's root:
+
+```bash
+RexxJS/core/rexx rexx/test-spreadsheet-address.rexx
+```
+
+See [rexx/README.md](rexx/README.md): how a command reaches the app, and
+where the scripts differ from the Tauri app's.
 
 ## The Tauri app
 

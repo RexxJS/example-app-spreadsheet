@@ -1516,6 +1516,7 @@ const SPECS: readonly Spec[] = [
         filter: page.filter && { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion },
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
+        language: wb.sheet.language.name,
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

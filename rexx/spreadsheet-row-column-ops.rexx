@@ -1,59 +1,148 @@
-/*
- * Test spreadsheet row and column operations via control functions
- * Tests: INSERTROW, DELETEROW, INSERTCOLUMN, DELETECOLUMN
- */
+// Test suite for row and column operations through the control bus:
+// INSERTROW, DELETEROW, INSERTCOLUMN, DELETECOLUMN, on a running sheet.
+//
+// (The Tauri app's version of this only printed what each test should do;
+// these are the same cases, run.)
+//
+// Prerequisites:
+//   1. Start the spreadsheet (../app/) with its control bus on, from the
+//      repository's root:
+//      ../sae/target/build/bin/sae --app app --control-bus
+//
+//   2. In another terminal, from the repository's root:
+//      RexxJS/core/rexx rexx/spreadsheet-row-column-ops.rexx
 
-/* Create test spreadsheet model and adapter */
-SAY "Creating spreadsheet model..."
+/* @test-tags spreadsheet, control-bus, integration */
+/* @description Row and column insertion and deletion via ADDRESS SPREADSHEET */
 
-/* We need to use the actual spreadsheet model class */
-ADDRESS test EXPECT "Loading SpreadsheetModel class..."
-ADDRESS test EXPECT "Creating model instance..."
-ADDRESS test EXPECT "Creating adapter instance..."
+REQUIRE "./spreadsheet-address.js"
+REQUIRE "../RexxJS/core/src/expectations-address.js"
 
-/* Test INSERTROW function */
-ADDRESS test SECTION "Row operations"
+SAY "Testing row and column operations via the control bus"
+SAY ""
 
-ADDRESS test IT "should insert a row and shift cells down"
-SAY "Testing INSERTROW..."
-/* Simulate: model has A1='10', A2='20', A3='30' */
-/* After INSERTROW(2): A1='10', A2='', A3='20', A4='30' */
-ADDRESS test EXPECT "Row inserted successfully"
+ADDRESS SPREADSHEET
+'SPREADSHEET_VERSION()'
+IF RC \= 0 THEN DO
+  SAY "❌ Failed to connect to the spreadsheet's control bus:" ERRORTEXT
+  SAY "Start it first: ../sae/target/build/bin/sae --app app --control-bus"
+  EXIT 1
+END
 
-ADDRESS test IT "should delete a row and shift cells up"
-SAY "Testing DELETEROW..."
-/* Simulate: model has A1='10', A2='20', A3='30', A4='40' */
-/* After DELETEROW(2): A1='10', A2='30', A3='40' */
-ADDRESS test EXPECT "Row deleted successfully"
+CALL TestInsertRow
+CALL TestDeleteRow
+CALL TestInvalidRow
+CALL TestInsertColumn
+CALL TestDeleteColumn
+CALL TestColumnLetter
+CALL TestInvalidColumn
 
-ADDRESS test IT "should throw error for invalid row number"
-SAY "Testing INSERTROW with invalid row..."
-/* INSERTROW(0) should throw error */
-ADDRESS test EXPECT "Error: Invalid row number"
+SAY ""
+SAY "✅ All row/column operation tests passed!"
+EXIT 0
 
-/* Test INSERTCOLUMN function */
-ADDRESS test SECTION "Column operations"
+// ============= Test Subroutines =============
 
-ADDRESS test IT "should insert a column and shift cells right"
-SAY "Testing INSERTCOLUMN..."
-/* Simulate: model has A1='10', B1='20', C1='30' */
-/* After INSERTCOLUMN(2): A1='10', B1='', C1='20', D1='30' */
-ADDRESS test EXPECT "Column inserted successfully"
+// A1=10, A2=20, A3=30; INSERTROW(2) gives A1=10, A2 empty, A3=20, A4=30.
+TestInsertRow:
+  ADDRESS SPREADSHEET
+  'CLEAR()'
+  'SETCELLS("A1:A3", "[10, 20, 30]")'
+  'INSERTROW(2)'
+  'GETCELL("A2")'
+  LET a2 = RESULT
+  'GETCELL("A3")'
+  LET a3 = RESULT
+  'GETCELL("A4")'
+  LET a4 = RESULT
+  ADDRESS EXPECTATIONS
+  "{a2} should equal "
+  "{a3} should equal 20"
+  "{a4} should equal 30"
+  SAY "  ✓ INSERTROW inserts a row and shifts cells down"
+RETURN
 
-ADDRESS test IT "should delete a column and shift cells left"
-SAY "Testing DELETECOLUMN..."
-/* Simulate: model has A1='10', B1='20', C1='30', D1='40' */
-/* After DELETECOLUMN(2): A1='10', B1='30', C1='40' */
-ADDRESS test EXPECT "Column deleted successfully"
+// Then DELETEROW(2) takes it back: A1=10, A2=20, A3=30, A4 empty.
+TestDeleteRow:
+  ADDRESS SPREADSHEET
+  'DELETEROW(2)'
+  'GETCELL("A2")'
+  LET a2 = RESULT
+  'GETCELL("A3")'
+  LET a3 = RESULT
+  'GETCELL("A4")'
+  LET a4 = RESULT
+  ADDRESS EXPECTATIONS
+  "{a2} should equal 20"
+  "{a3} should equal 30"
+  "{a4} should equal "
+  SAY "  ✓ DELETEROW deletes a row and shifts cells up"
+RETURN
 
-ADDRESS test IT "should accept column letter"
-SAY "Testing INSERTCOLUMN with letter..."
-/* INSERTCOLUMN('B') should work */
-ADDRESS test EXPECT "Column inserted successfully"
+TestInvalidRow:
+  ADDRESS SPREADSHEET
+  'INSERTROW(0)'
+  LET rc = RC
+  LET why = ERRORTEXT
+  ADDRESS EXPECTATIONS
+  "{rc} should equal 1"
+  "{why} should contain 'INSERTROW needs a row number'"
+  SAY "  ✓ INSERTROW(0) is refused, saying why"
+RETURN
 
-ADDRESS test IT "should throw error for invalid column number"
-SAY "Testing INSERTCOLUMN with invalid column..."
-/* INSERTCOLUMN(0) should throw error */
-ADDRESS test EXPECT "Error: Invalid column number"
+// A1=10, B1=20, C1=30; INSERTCOLUMN(2) gives A1=10, B1 empty, C1=20, D1=30.
+TestInsertColumn:
+  ADDRESS SPREADSHEET
+  'CLEAR()'
+  'SETCELLS("A1:C1", "[10, 20, 30]")'
+  'INSERTCOLUMN(2)'
+  'GETCELL("B1")'
+  LET b1 = RESULT
+  'GETCELL("C1")'
+  LET c1 = RESULT
+  'GETCELL("D1")'
+  LET d1 = RESULT
+  ADDRESS EXPECTATIONS
+  "{b1} should equal "
+  "{c1} should equal 20"
+  "{d1} should equal 30"
+  SAY "  ✓ INSERTCOLUMN inserts a column and shifts cells right"
+RETURN
 
-SAY "All row/column operation tests completed"
+// Then DELETECOLUMN(2) takes it back: B1=20, C1=30, D1 empty.
+TestDeleteColumn:
+  ADDRESS SPREADSHEET
+  'DELETECOLUMN(2)'
+  'GETCELL("B1")'
+  LET b1 = RESULT
+  'GETCELL("C1")'
+  LET c1 = RESULT
+  'GETCELL("D1")'
+  LET d1 = RESULT
+  ADDRESS EXPECTATIONS
+  "{b1} should equal 20"
+  "{c1} should equal 30"
+  "{d1} should equal "
+  SAY "  ✓ DELETECOLUMN deletes a column and shifts cells left"
+RETURN
+
+TestColumnLetter:
+  ADDRESS SPREADSHEET
+  'INSERTCOLUMN("B")'
+  'GETCELL("C1")'
+  LET c1 = RESULT
+  ADDRESS EXPECTATIONS
+  "{c1} should equal 20"
+  SAY "  ✓ INSERTCOLUMN takes a column letter"
+RETURN
+
+TestInvalidColumn:
+  ADDRESS SPREADSHEET
+  'INSERTCOLUMN(0)'
+  LET rc = RC
+  LET why = ERRORTEXT
+  ADDRESS EXPECTATIONS
+  "{rc} should equal 1"
+  "{why} should contain 'INSERTCOLUMN needs a column'"
+  SAY "  ✓ INSERTCOLUMN(0) is refused, saying why"
+RETURN

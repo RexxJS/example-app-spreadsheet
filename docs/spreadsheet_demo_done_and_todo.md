@@ -929,9 +929,15 @@ on at launch, the sealed wire after aeo.
 Built (option (a)): run as an app with `--control-bus`, demo 18 answers
 another program's REXX strings (`SETCELL("A1", "100")`, `GETCELL`) over the
 control bus, each sealed with the launch's courier key
-(`tests/specs/spec_app_sheet_bus.ae`; `script.ts`'s `runSpreadsheet`). Still to
-come: how the Tauri app's RexxJS client scripts reach it, with no sae code
-in RexxJS; option (b), pages scripting each other.
+(`tests/specs/spec_app_sheet_bus.ae`; `script.ts`'s `runSpreadsheet`).
+
+The Tauri app's REXX client scripts reach it too (2026-10-14): they are in
+`rexx/`, with `ADDRESS SPREADSHEET` from `rexx/spreadsheet-address.js`,
+which runs sae's `sae-bus` for each command (no sae code in RexxJS).
+`tests/specs/spec_app_sheet_rexx.ae` runs all five against the app. The
+sae app gained `SETFORMULALANGUAGE` and `GETFORMULALANGUAGE` for them (the
+Tauri app was RexxJS formulas only); `rexx/README.md` lists what else
+differs. Still to come: option (b), pages scripting each other.
 
 ### 4. Undo for everything (done, 2026-10-13)
 

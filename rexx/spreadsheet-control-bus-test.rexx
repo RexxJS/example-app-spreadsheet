@@ -1,17 +1,17 @@
-#!/usr/bin/env ../../../core/rexxt
-
 // Test suite for spreadsheet control bus commands
 // Copyright (c) 2025 RexxJS Project
 // Comprehensive tests for all control bus functions
 //
 // Prerequisites:
-//   1. Start the spreadsheet with control bus enabled:
-//      cd examples/spreadsheet-poc
-//      ./rexxsheet-dev --control-bus
+//   1. Start the spreadsheet (../app/) with its control bus on, from the
+//      repository's root:
+//      ../sae/target/build/bin/sae --app app --control-bus
 //
-//   2. In another terminal, run this test:
-//      cd examples/spreadsheet-poc
-//      ./tests/spreadsheet-control-bus-test.rexx
+//   2. In another terminal, from the repository's root:
+//      RexxJS/core/rexx rexx/spreadsheet-control-bus-test.rexx
+//
+// ADDRESS SPREADSHEET is ./spreadsheet-address.js: each command goes to the
+// app sealed, through sae's sae-bus (see README.md).
 //
 // This is an integration test that validates all spreadsheet control bus
 // commands work correctly in the actual spreadsheet.
@@ -19,19 +19,17 @@
 /* @test-tags spreadsheet, control-bus, integration */
 /* @description Test all spreadsheet control bus commands */
 
-REQUIRE "../../../core/src/expectations-address.js"
+REQUIRE "./spreadsheet-address.js"
+REQUIRE "../RexxJS/core/src/expectations-address.js"
 
 SAY "🔌 Testing Spreadsheet Control Bus Commands"
 SAY "=============================================="
 SAY ""
 SAY "Prerequisites:"
 SAY "  1. Spreadsheet must be running with control bus enabled"
-SAY "  2. Run: ./rexxsheet-dev --control-bus"
-SAY "  3. Control bus should be at http://localhost:2410"
+SAY "  2. Run: ../sae/target/build/bin/sae --app app --control-bus"
+SAY "  3. sae-bus finds it through its courier file"
 SAY ""
-
-// Connect to the spreadsheet control bus
-ADDRESS "http://localhost:2410/api/spreadsheet" AUTH "dev-token-12345" AS SPREADSHEET
 
 // Verify connection
 SAY "Checking spreadsheet connection..."
@@ -42,14 +40,17 @@ IF RC \= 0 THEN DO
   SAY "❌ Failed to connect to spreadsheet control bus"
   SAY ""
   SAY "Please start the spreadsheet first:"
-  SAY "  cd examples/spreadsheet-poc"
-  SAY "  ./rexxsheet-dev --control-bus"
+  SAY "  ../sae/target/build/bin/sae --app app --control-bus"
+  SAY "  (" ERRORTEXT ")"
   SAY ""
   SAY "Then run this test again."
   SAY ""
   EXIT 1
 END
 SAY "✓ Connected to spreadsheet version:" RESULT
+// The Tauri app's sheets were RexxJS formulas only; the sae app's start as
+// Excel's, so ask for RexxJS's (SUM_RANGE, |> and the rest).
+'SETFORMULALANGUAGE("RexxJS")'
 SAY ""
 
 // Clear spreadsheet before tests
@@ -202,32 +203,32 @@ TestRangeOperations:
   ADDRESS EXPECTATIONS
   "{count} should equal 3"
 
-  // Check first cell value (cell values are strings)
+  // Check first cell value (the sae app gives a number as a number; the
+  // Tauri app gave every value as a string, which REXX does not tell apart)
   LET cell1_val = INTERPRET_JS("cells['1'].value")
   ADDRESS EXPECTATIONS
-  "{cell1_val} should be string 10"
+  "{cell1_val} should equal 10"
 
-  // Test SETCELLS with array parsed from JSON
-  LET values = JSON_PARSE text='["100", "200", "300"]'
-
+  // Test SETCELLS with the values as JSON. The command runs in the app,
+  // which cannot see this script's variables, so the values go in it.
   ADDRESS SPREADSHEET
-  'SETCELLS("E1:E3", values)'
+  'SETCELLS("E1:E3", "[100, 200, 300]")'
   'GETCELL("E1")'
   LET e1 = RESULT
   ADDRESS EXPECTATIONS
-  "{e1} should be string 100"
+  "{e1} should equal 100"
 
   ADDRESS SPREADSHEET
   'GETCELL("E2")'
   LET e2 = RESULT
   ADDRESS EXPECTATIONS
-  "{e2} should be string 200"
+  "{e2} should equal 200"
 
   ADDRESS SPREADSHEET
   'GETCELL("E3")'
   LET e3 = RESULT
   ADDRESS EXPECTATIONS
-  "{e3} should be string 300"
+  "{e3} should equal 300"
 
   SAY "  ✓ Range operations (GETCELLS, SETCELLS)"
 RETURN
@@ -323,9 +324,9 @@ TestUtilityCommands:
   LET commands = RESULT
   LET cmd_count = commands.0
 
-  // Should have 26 commands
+  // The Tauri app had 26 commands; the sae app has those and more
   ADDRESS EXPECTATIONS
-  "{cmd_count} should equal 26"
+  "{cmd_count} should be greater than 25"
 
   SAY "  - Found" cmd_count "available commands"
 

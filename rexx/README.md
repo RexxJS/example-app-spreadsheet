@@ -6,40 +6,93 @@ control protocol (MIT; see [../LICENSING.md](../LICENSING.md)).
 
 | Script | What it does |
 |---|---|
-| `test-spreadsheet-address.rexx` | The ARexx-style demonstration: sets cells and formulas, reads them back |
-| `test-connection.rexx` | Checks the spreadsheet answers |
-| `spreadsheet-control-bus-test.rexx` | Every control-bus command, as tests |
-| `spreadsheet-functions-test.rexx` | The range functions, over the bus |
-| `spreadsheet-row-column-ops.rexx` | Inserting, deleting and moving rows and columns |
+| `test-connection.rexx` | Checks the spreadsheet answers, and says what to do when it does not |
+| `test-spreadsheet-address.rexx` | The ARexx-style demonstration: sets cells, formulas and formats, reads them back |
+| `spreadsheet-functions-test.rexx` | The range functions (SUM_RANGE, MEDIAN_RANGE, SUMIF_RANGE ...), checked with RexxJS's expectations |
+| `spreadsheet-control-bus-test.rexx` | The control commands: cells, metadata, references, ranges, sheets, setup scripts, LISTCOMMANDS |
+| `spreadsheet-row-column-ops.rexx` | Rows and columns inserted and deleted, and bad ones refused |
+| `spreadsheet-address.js` | The ADDRESS library: `ADDRESS SPREADSHEET` for the sae app |
 
-## Which spreadsheet they reach
+## Running them
 
-They were written for the Tauri app (`../tauri/`), whose control bus is
-plain HTTP on a fixed port with a fixed token:
+From the repository's root, with sae built (including `target/sae-bus`)
+and RexxJS checked out beside this repository (the `RexxJS` link):
 
-```rexx
-ADDRESS "http://localhost:2410/api/spreadsheet" AUTH "dev-token-12345" AS SPREADSHEET
+```bash
+../sae/target/build/bin/sae --app app --control-bus
 ```
 
-and they run from inside the RexxJS repository (`../../core/rexx`), where
-the Tauri app used to live.
+then, in another terminal:
 
-The sae app (`../app/`) answers the same commands, as the same strings,
-but its control bus is sae's: switched on only at launch
-(`--control-bus`), on a port chosen at random, with a key that changes on
-every launch, written to a file only this user can read, and every
-request and answer sealed with it (sae's `docs/control-bus.md`). A script
-cannot name the port or key in its source, and RexxJS's `ADDRESS ... AUTH`
-sends the token in the clear, which sae refuses.
+```bash
+RexxJS/core/rexx rexx/test-spreadsheet-address.rexx
+```
 
-So these scripts do not reach the sae app yet. What would make them:
+`./run-tests.sh spec_app_sheet_rexx` runs all five against the app and
+checks what they say and what the grid then shows.
 
-- **A client that does the sealing.** For example a small `sae-bus`
-  command in sae that reads the courier file, seals a command, and prints
-  the answer, and an ADDRESS environment that runs it; or RexxJS learning
-  to seal (Ascon-AEAD128, as sae's `services/secure_channel` does).
-- **Then the scripts here changed** from the fixed URL and token to
-  `ADDRESS SPREADSHEET` by name, with that client finding the rest.
+## How a command reaches the app
 
-`tests/specs/spec_app_sheet_bus.ae` is what drives the sae app over its bus
-today: an Aether program doing what such a client would.
+```rexx
+REQUIRE "./spreadsheet-address.js"
+ADDRESS SPREADSHEET
+'SETCELL("A1", "100")'
+'GETCELL("A1")'
+SAY RC RESULT
+```
+
+The app's control bus is sae's (`../sae/docs/control-bus.md`): off unless
+the app is started with `--control-bus`; a port chosen at random; a key
+fresh for every launch, in a courier file only this user can read; every
+request and answer sealed with it. A script cannot know the port or key
+in advance, and an unsealed request is refused.
+
+So `spreadsheet-address.js` does none of that itself. For each command it
+runs sae's `sae-bus Spreadsheet <command>`, which finds the courier file,
+seals the command, sends it, and prints the opened answer. RC is 0 and
+RESULT what the command came to when it worked. Otherwise RC is 1 and
+ERRORTEXT says why. RC is 2 when there was no app to ask (not running, or
+the bus off), and ERRORTEXT then has sae-bus's reason. `SAE_BUS`,
+`SPREADSHEET_APP` and `SAE_APPDATA_DIR` point it elsewhere (the library's
+header says how).
+
+## Where they differ from the Tauri app's
+
+These scripts were written for the Tauri app (`../tauri/`), whose bus
+was plain HTTP at `http://localhost:2410` with a fixed token. What changed
+to drive the sae app:
+
+- **Connecting.** `ADDRESS "http://localhost:2410/api/spreadsheet" AUTH
+  "dev-token-12345" AS SPREADSHEET` became `REQUIRE
+  "./spreadsheet-address.js"` and `ADDRESS SPREADSHEET`.
+  `test-connection.rexx` used to POST JSON itself with `HTTP_POST`; it now
+  asks `SPREADSHEET_VERSION()` the same way.
+- **Formula language.** The Tauri app's sheets were RexxJS formulas only.
+  The sae app also has Excel's, and starts with it. So each script first
+  sends `SETFORMULALANGUAGE("RexxJS")`, a control function the sae app adds
+  (with `GETFORMULALANGUAGE()`).
+- **Values in the command.** A command runs in the app, which cannot see
+  the script's variables. `'SETCELLS("E1:E3", values)'` became
+  `'SETCELLS("E1:E3", "[100, 200, 300]")'`.
+- **Numbers.** The Tauri app gave every value as a string; the sae app
+  gives a number as a number. REXX makes no difference between them, but
+  RexxJS's `should be string` does, so those checks became `should equal`.
+- **LISTCOMMANDS** lists 130 names, not the Tauri app's 26 (all 26 among
+  them).
+- **`spreadsheet-row-column-ops.rexx`** only printed what each test should
+  do; it now runs those cases against the sheet.
+- The Tauri app's `TestImportExport` subroutine was never called, and
+  still is not: it hands the app a variable of the script's
+  (`IMPORT(exported)`).
+
+## RexxJS quirks met on the way
+
+These are RexxJS's, not the scripts'. RexxJS is canonical for REXX, so
+they would be fixed there:
+
+- `rexx` (the CLI) exits 0 after `EXIT 1`. A failed expectation or an
+  error does exit 1. So `spec_app_sheet_rexx` also checks for each script's
+  own "passed" line.
+- In a single-quoted string, `''` stays as two quotes; classic REXX reads
+  it as one quote.
+- `SAY "(RC" RC || ")"` prints its source text instead of the values.

@@ -1,12 +1,15 @@
 -- test-spreadsheet-address.rexx
 -- ARexx-style spreadsheet control demonstration
 --
--- Usage:
---   1. Start spreadsheet with control bus:
---      ./rexxsheet-dev --control-bus
+-- Usage, from the repository's root:
+--   1. Start the spreadsheet (../app/) with its control bus on:
+--      ../sae/target/build/bin/sae --app app --control-bus
 --
 --   2. Run this script in another terminal:
---      ../../core/rexx test-spreadsheet-address.rexx
+--      RexxJS/core/rexx rexx/test-spreadsheet-address.rexx
+--
+-- ADDRESS SPREADSHEET is ./spreadsheet-address.js: each command goes to the
+-- app sealed, through sae's sae-bus (see README.md).
 --
 -- This demonstrates classic ARexx-style IPC
 
@@ -15,7 +18,12 @@ SAY "==============================================="
 SAY ""
 
 /* Register and target the spreadsheet port */
-ADDRESS "http://localhost:2410/api/spreadsheet" AUTH "dev-token-12345" AS SPREADSHEET
+REQUIRE "./spreadsheet-address.js"
+ADDRESS SPREADSHEET
+
+-- The Tauri app's sheets were RexxJS formulas only; the sae app's start as
+-- Excel's, so ask for RexxJS's (SUM_RANGE, |> and the rest).
+'SETFORMULALANGUAGE("RexxJS")'
 
 /* Check spreadsheet version */
 SAY "Checking spreadsheet version..."

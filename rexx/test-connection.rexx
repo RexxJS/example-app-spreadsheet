@@ -1,46 +1,39 @@
 -- test-connection.rexx
--- Simple connection test for the Control Bus
+-- Is the spreadsheet there? One command to its control bus, and what to do
+-- when nothing answers.
+--
+-- The Tauri app's version of this POSTed JSON itself, with HTTP_POST and a
+-- fixed token. The sae app's bus takes only sealed requests, with a key
+-- fresh for every launch, so the check goes through ADDRESS SPREADSHEET
+-- (./spreadsheet-address.js), which runs sae's sae-bus.
+--
+-- Usage, from the repository's root:
+--   1. Start the spreadsheet (../app/) with its control bus on:
+--      ../sae/target/build/bin/sae --app app --control-bus
+--
+--   2. Run this script in another terminal:
+--      RexxJS/core/rexx rexx/test-connection.rexx
 
-SAY "Testing connection to Control Bus..."
+REQUIRE "./spreadsheet-address.js"
+
+SAY "Testing connection to the spreadsheet's control bus..."
 SAY ""
 
-LET API_URL = "http://localhost:8083/api/spreadsheet"
-LET AUTH_TOKEN = "dev-token-12345"
+ADDRESS SPREADSHEET
+'SPREADSHEET_VERSION()'
 
--- Build simple request
-LET request_body = '{"command": "setCell", "params": {"ref": "A1", "content": "100"}}'
+IF RC = 0 THEN DO
+  SAY "✓ Connection successful: spreadsheet version" RESULT
+  EXIT 0
+END
 
--- Create headers as REXX compound variable
-LET headers.0 = 2
-LET headers.1.key = "Authorization"
-LET headers.1.value = "Bearer " || AUTH_TOKEN
-LET headers.2.key = "Content-Type"
-LET headers.2.value = "application/json"
-
-SAY "Sending POST request to: " || API_URL
-SAY "Body: " || request_body
+SAY "ERROR: no answer, RC" RC
+SAY "  " ERRORTEXT
 SAY ""
-
--- Send request
-LET response = HTTP_POST(API_URL, request_body, headers)
-
-SAY "Response status: " || response.status
-SAY "Response body: " || response.body
-
-IF response.status = 0 THEN DO
-  SAY ""
-  SAY "ERROR: Connection failed!"
-  SAY ""
-  SAY "Troubleshooting:"
-  SAY "1. Is the spreadsheet running? Check Terminal 1"
-  SAY "2. Did you start it with: ./rexxsheet-dev --control-bus"
-  SAY "3. Check if port 8083 is listening: lsof -i :8083"
-END
-ELSE IF response.status = 200 THEN DO
-  SAY ""
-  SAY "✓ Connection successful!"
-END
-ELSE DO
-  SAY ""
-  SAY "Unexpected status code!"
-END
+SAY "Troubleshooting:"
+SAY "1. Is the spreadsheet running? Start it with:"
+SAY "     ../sae/target/build/bin/sae --app app --control-bus"
+SAY "2. Without --control-bus the app does not listen at all."
+SAY "3. Started with SAE_APPDATA_DIR? Set the same here, so sae-bus finds"
+SAY "   the courier file."
+EXIT 1

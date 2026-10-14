@@ -1,17 +1,17 @@
-#!/usr/bin/env ../../core/rexxt
-
 // Test suite for spreadsheet-poc functions via ADDRESS
 // Copyright (c) 2025 RexxJS Project
 // Tests spreadsheet functions running in the browser via control bus
 //
 // Prerequisites:
-//   1. Start the spreadsheet with control bus enabled:
-//      cd examples/spreadsheet-poc
-//      ./rexxsheet-dev --control-bus
+//   1. Start the spreadsheet (../app/) with its control bus on, from the
+//      repository's root:
+//      ../sae/target/build/bin/sae --app app --control-bus
 //
-//   2. In another terminal, run this test:
-//      cd examples/spreadsheet-poc
-//      ./tests/spreadsheet-functions-test.rexx
+//   2. In another terminal, from the repository's root:
+//      RexxJS/core/rexx rexx/spreadsheet-functions-test.rexx
+//
+// ADDRESS SPREADSHEET is ./spreadsheet-address.js: each command goes to the
+// app sealed, through sae's sae-bus (see README.md).
 //
 // This is an integration test that validates spreadsheet range functions
 // (SUM_RANGE, AVERAGE_RANGE, MIN_RANGE, MAX_RANGE, MEDIAN_RANGE,
@@ -20,19 +20,17 @@
 /* @test-tags spreadsheet, functions, statistical, address, integration */
 /* @description Test spreadsheet range functions via ADDRESS control bus */
 
-REQUIRE "../../../core/src/expectations-address.js"
+REQUIRE "./spreadsheet-address.js"
+REQUIRE "../RexxJS/core/src/expectations-address.js"
 
 SAY "📊 Testing Spreadsheet Range Functions via ADDRESS Control Bus"
 SAY "================================================================"
 SAY ""
 SAY "Prerequisites:"
 SAY "  1. Spreadsheet must be running with control bus enabled"
-SAY "  2. Run: ./rexxsheet-dev --control-bus"
-SAY "  3. Control bus should be at http://localhost:2410"
+SAY "  2. Run: ../sae/target/build/bin/sae --app app --control-bus"
+SAY "  3. sae-bus finds it through its courier file"
 SAY ""
-
-// Connect to the spreadsheet control bus
-ADDRESS "http://localhost:2410/api/spreadsheet" AUTH "dev-token-12345" AS SPREADSHEET
 
 // Verify connection
 SAY "Checking spreadsheet connection..."
@@ -43,14 +41,17 @@ IF RC \= 0 THEN DO
   SAY "❌ Failed to connect to spreadsheet control bus"
   SAY ""
   SAY "Please start the spreadsheet first:"
-  SAY "  cd examples/spreadsheet-poc"
-  SAY "  ./rexxsheet-dev --control-bus"
+  SAY "  ../sae/target/build/bin/sae --app app --control-bus"
+  SAY "  (" ERRORTEXT ")"
   SAY ""
   SAY "Then run this test again."
   SAY ""
   EXIT 1
 END
 SAY "✓ Connected to spreadsheet version:" RESULT
+// The Tauri app's sheets were RexxJS formulas only; the sae app's start as
+// Excel's, so ask for RexxJS's (SUM_RANGE, |> and the rest).
+'SETFORMULALANGUAGE("RexxJS")'
 SAY ""
 
 // Test basic statistical functions
