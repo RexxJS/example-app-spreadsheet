@@ -1733,21 +1733,52 @@ export class Commands {
   // request that fails part way (SETCELL("A1", "x"); BOGUS()) is taken back,
   // so the program that sent it, told it failed, finds the sheet as it was.
   async spreadsheet(code: string, say: (line: string) => void): Promise<{ ok: boolean; message: string; output?: unknown }> {
+    // One the bus gave up on, still open: ended, not taken back, as what the
+    // person did since may be in it.
+    if (this.#request) {
+      this.#wb.endStoppedGroup();
+      this.#request = null;
+    }
+    const request = { cancelled: false };
+    this.#request = request;
     this.#wb.beginGroup();
     let o: { ok: boolean; message: string; output?: unknown } = { ok: false, message: "the request did not finish" };
     let stepped = false;
     try {
-      o = await runSpreadsheet(code, this.#scriptHost(), say);
+      o = await runSpreadsheet(code, this.#scriptHost(request), say);
     } finally {
+      if (request.cancelled) o = { ok: false, message: "the request was stopped" };
       // Folded whole when it failed, to be taken back as one.
-      stepped = this.#wb.endGroup(!o.ok);
+      if (this.#request === request) {
+        stepped = this.#wb.endGroup(!o.ok);
+        this.#request = null;
+      }
     }
-    if (!o.ok && stepped) {
-      await this.execute("edit.undo", {});
-      this.#wb.forgetRedo();
-      return { ...o, message: `${o.message} (nothing it did was kept)` };
-    }
+    if (!o.ok && stepped) return { ...o, message: `${o.message}${await this.#takeBack()}` };
     return o;
+  }
+
+  // The request in flight, which sae's control bus answered without it
+  // (bus.serve's stopped): "interrupted", the page's time limit stopped it
+  // and it will not come back, so it is taken back now; "deadline", it was
+  // still running at the bus's 10 s, so it is cancelled: its next command
+  // fails, and it is taken back as any failed request is.
+  async stopped(reason: string): Promise<string> {
+    const request = this.#request;
+    if (!request) return "";
+    request.cancelled = true;
+    if (reason !== "interrupted") return "cancelled";
+    this.#request = null;
+    return this.#wb.endStoppedGroup(true) ? `taken back${await this.#takeBack()}` : "nothing to take back";
+  }
+
+  #request: { cancelled: boolean } | null = null;
+
+  // The step a failed request folded into, undone, with nothing to redo.
+  async #takeBack(): Promise<string> {
+    await this.execute("edit.undo", {});
+    this.#wb.forgetRedo();
+    return " (nothing it did was kept)";
   }
 
   async #grouped<T>(work: () => Promise<T>): Promise<T> {
@@ -1759,12 +1790,17 @@ export class Commands {
     }
   }
 
-  #scriptHost() {
+  // What a script reaches the sheet by; for a control-bus request, each
+  // command refused once the bus has stopped it.
+  #scriptHost(request?: { cancelled: boolean }) {
+    const live = () => {
+      if (request?.cancelled) throw new Error("the request was stopped");
+    };
     return {
-      run: (line: string) => this.run(line),
-      execute: (id: string, params: Record<string, string>) => this.execute(id, params),
-      set: (cell: string, input: string) => this.execute("cell.set", { cell, input }),
-      get: (cell: string) => scripted(this.#wb.sheet.value(cell)),
+      run: (line: string) => (live(), this.run(line)),
+      execute: (id: string, params: Record<string, string>) => (live(), this.execute(id, params)),
+      set: (cell: string, input: string) => (live(), this.execute("cell.set", { cell, input })),
+      get: (cell: string) => (live(), scripted(this.#wb.sheet.value(cell))),
     };
   }
 }

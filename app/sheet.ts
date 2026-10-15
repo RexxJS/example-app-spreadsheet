@@ -64,11 +64,17 @@ sheet.refresh();
 // The control bus (an installed app started with --control-bus): another
 // program drives the sheet as the Tauri app's clients do, each request a
 // string of REXX (SETCELL("A1", "100")), answered with what it came to.
+// A request sae stopped (past the page's time limit, or unanswered at the
+// bus's deadline) is told to the commands, which put back what it did.
 if (typeof bus !== "undefined") {
   bus.serve(async (code: string) => {
     const o = await sheet.cmds.spreadsheet(code, (line) => print(`sheet: ${line}`));
     sheet.refresh();
     if (!o.ok) throw new Error(o.message);
     return o.output ?? null;
+  }, async (reason: string) => {
+    const what = await sheet.cmds.stopped(reason);
+    sheet.refresh();
+    print(`sheet: a control-bus request ${reason === "interrupted" ? "was stopped" : "ran past the deadline"}: ${what}`);
   });
 }

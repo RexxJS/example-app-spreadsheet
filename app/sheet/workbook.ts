@@ -387,12 +387,12 @@ export class Workbook {
   // folded: those stand as the steps they took, Redo with them, so UNDO()
   // sent twice goes back two steps rather than back and forth. `whole`
   // folds whatever it did, to be taken back as one (a failed request).
-  endGroup(whole = false): boolean {
+  endGroup(whole = false, always = false): boolean {
     const g = this.#group;
     if (!g || --g.depth > 0) return false;
     this.#group = null;
-    if (!g.labels.length && !g.undone) return false;
-    if (!g.labels.length && !whole) return false;
+    if (!always && !g.labels.length && !g.undone) return false;
+    if (!always && !g.labels.length && !whole) return false;
     this.#undo.length = Math.min(g.low, this.#undo.length);
     this.#undo.push({ ...g.before, label: g.labels.length === 1 && !g.undone ? g.labels[0] : "Script" });
     if (this.#undo.length > HISTORY) this.#undo.shift();
@@ -403,6 +403,17 @@ export class Workbook {
   // The newest step of Redo let go of: what an Undo that only took back a
   // failed request leaves there, which is nothing to do again.
   forgetRedo(): void { this.#redo.pop(); }
+
+  // A group whose runner was stopped before it could end it (sae's time
+  // limit interrupts a page's work, and no finally runs): ended now, however
+  // deep. `whole`: folded into one step back to the workbook before it
+  // whatever it recorded, as a command can be stopped between changing a
+  // cell and recording the step.
+  endStoppedGroup(whole = false): boolean {
+    if (!this.#group) return false;
+    this.#group.depth = 1;
+    return this.endGroup(whole, whole);
+  }
 
   get canUndo(): boolean { return this.#undo.length > 0; }
   get canRedo(): boolean { return this.#redo.length > 0; }

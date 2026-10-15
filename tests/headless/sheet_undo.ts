@@ -118,6 +118,39 @@ const carried = await cmds.spreadsheet(`BATCH_EXECUTE('[{"command": "SETCELLS", 
 eq("without it, as the app's: each said, the rest done, one step", [carried.ok, JSON.parse(String(carried.output)).map((r: any) => r.success), value("F2"), wb.undoLabel],
   [true, [true, false], "2", "Script"]);
 await undo();
+// sae's bus gave up on a request (bus.serve's stopped): "deadline" while it
+// still runs, so its next command fails and it is taken back as a failed
+// one is; "interrupted" when it will never come back, so it is taken back
+// at once, to the workbook as it was before it (a command can be stopped
+// between changing a cell and recording its step). On a workbook of their
+// own: here the stopped request is not killed as an interrupt kills it, so
+// the command it was in finishes, and its step would join this file's count.
+{
+  const wb2 = new Workbook();
+  const cmds2 = new Commands(wb2);
+  const v2 = (k: string) => show(wb2.sheet.value(k));
+  const changed = async (k: string) => {
+    for (let i = 0; i < 10000 && v2(k) === ""; i++) await Promise.resolve();
+    return v2(k);
+  };
+  await cmds2.run("cell.set cell=A1 input=kept");
+  const late = cmds2.spreadsheet(`SETCELL("H1", "x"); SETCELL("H2", "y")`, () => {});
+  const lateFirst = await changed("H1");
+  const lateWhat = await cmds2.stopped("deadline");
+  const lateDone = await late;
+  eq("a request past the bus's deadline: cancelled, its next command refused, all of it taken back",
+    [lateFirst, lateWhat, lateDone.ok, lateDone.message, v2("H1"), v2("H2"), v2("A1"), wb2.canRedo],
+    ["x", "cancelled", false, "the request was stopped (nothing it did was kept)", "", "", "kept", false]);
+  const dead = cmds2.spreadsheet(`SETCELL("H3", "x"); SETCELL("H4", "y")`, () => {});
+  const deadFirst = await changed("H3");
+  const deadWhat = await cmds2.stopped("interrupted");
+  eq("one the page's time limit stopped: taken back there and then, to the sheet before it",
+    [deadFirst, deadWhat, v2("H3"), v2("H4"), v2("A1"), wb2.canRedo], ["x", "taken back (nothing it did was kept)", "", "", "kept", false]);
+  await dead;
+  await cmds2.spreadsheet(`SETCELL("H5", "1"); SETCELL("H6", "2")`, () => {});
+  eq("and the next request is one step again", [(await cmds2.run("edit.undo")).message, v2("H5"), v2("H6")], ["undid Script: 2 changed", "", ""]);
+  eq("stopped with no request in flight does nothing", await cmds2.stopped("interrupted"), "");
+}
 await cmds.spreadsheet(`SETCELL("E1", 1)`, (l) => said.push(l));
 await cmds.spreadsheet(`SETCELL("E2", 2)`, (l) => said.push(l));
 await cmds.spreadsheet(`UNDO()`, (l) => said.push(l));
@@ -159,6 +192,10 @@ eq("so is a new one", wb.canUndo, false);
 // expect: ok one that fails having changed nothing takes nothing back
 // expect: ok BATCH_EXECUTE(json, 1): the first failure is the request's, and the request is taken back whole
 // expect: ok without it, as the app's: each said, the rest done, one step
+// expect: ok a request past the bus's deadline: cancelled, its next command refused, all of it taken back
+// expect: ok one the page's time limit stopped: taken back there and then, to the sheet before it
+// expect: ok and the next request is one step again
+// expect: ok stopped with no request in flight does nothing
 // expect: ok UNDO() sent twice goes back two steps, not back and forth
 // expect: ok and REDO() sent does the first again
 // expect: ok the steps: A1's, the first script's, B1's

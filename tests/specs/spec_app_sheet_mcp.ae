@@ -146,6 +146,24 @@ main() {
             spec.assert_true(g.wait_cell("F", 1, ""), "and F1 with it, in the same step")
             spec.assert_true(g.wait_cell("C", 5, "75.5"), "the expenses still there")
         }
+        spec.it("a program past the app's time limit: stopped within seconds, all of it taken back") callback {
+            t0 = os.now_monotonic_ms()
+            out, status = mcp_env_("SPREADSHEET_MCP_TOOLS=all", "spreadsheet_run", "@tests/mcp/args/past-the-limit.json")
+            took = os.now_monotonic_ms() - t0
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "\"isError\":true", "a tool error")
+            spec.assert_contains(out, "stopped: it ran past the app's limit of 5 s for one piece of work", "saying why")
+            spec.assert_true(took < 9500, "answered when stopped (${took} ms), not at the bus's 10 s deadline")
+            spec.assert_true(g.wait_cell("J", 1, ""), "its first command taken back")
+            spec.assert_true(b.wait_for_console("sheet: a control-bus request was stopped: taken back"), "the app says so")
+        }
+        spec.it("and after it, a request is one step of undo as before") callback {
+            run_("@tests/mcp/args/two-after.json", "two cells")
+            spec.assert_true(g.wait_cell("J", 3, "2"), "set")
+            run_("{\"command\": \"UNDO()\"}", "one undo")
+            spec.assert_true(g.wait_cell("J", 3, ""), "J3 undone")
+            spec.assert_true(g.wait_cell("J", 2, ""), "and J2 with it")
+        }
         spec.it("a command that fails part way is a tool error with the app's reason, and keeps nothing") callback {
             out, status = mcp_env_("SPREADSHEET_MCP_TOOLS=all", "spreadsheet_run", "{\"command\": \"SETCELL(\\\"D1\\\", \\\"x\\\"); BOGUS()\"}")
             spec.assert_eq(status, 0, "the client exits 0")
