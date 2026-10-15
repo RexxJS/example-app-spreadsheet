@@ -1729,9 +1729,25 @@ export class Commands {
   }
 
   // One control-bus string, as the Tauri app's (script.ts's runSpreadsheet).
-  // One step of undo, however many commands it runs.
-  spreadsheet(code: string, say: (line: string) => void): Promise<{ ok: boolean; message: string; output?: unknown }> {
-    return this.#grouped(() => runSpreadsheet(code, this.#scriptHost(), say));
+  // One step of undo, however many commands it runs; and all or nothing: a
+  // request that fails part way (SETCELL("A1", "x"); BOGUS()) is taken back,
+  // so the program that sent it, told it failed, finds the sheet as it was.
+  async spreadsheet(code: string, say: (line: string) => void): Promise<{ ok: boolean; message: string; output?: unknown }> {
+    this.#wb.beginGroup();
+    let o: { ok: boolean; message: string; output?: unknown } = { ok: false, message: "the request did not finish" };
+    let stepped = false;
+    try {
+      o = await runSpreadsheet(code, this.#scriptHost(), say);
+    } finally {
+      // Folded whole when it failed, to be taken back as one.
+      stepped = this.#wb.endGroup(!o.ok);
+    }
+    if (!o.ok && stepped) {
+      await this.execute("edit.undo", {});
+      this.#wb.forgetRedo();
+      return { ...o, message: `${o.message} (nothing it did was kept)` };
+    }
+    return o;
   }
 
   async #grouped<T>(work: () => Promise<T>): Promise<T> {

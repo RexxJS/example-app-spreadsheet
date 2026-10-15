@@ -9,6 +9,7 @@ import { COLS, ROWS, addrOf, colName, keyOf, parseRange, range } from "./address
 import { check } from "./validation.ts";
 import type { Rule } from "./validation.ts";
 import type { Addr } from "./address.ts";
+import { DESCRIBED, signature } from "./described.ts";
 
 export interface Done {
   readonly ok: boolean;
@@ -395,21 +396,35 @@ export function controlFunctions(exec: Exec, others: Readonly<Record<string, Fn>
   for (const [name, fn] of Object.entries(CONTROL)) fns[name] = (...args: any[]) => fn(exec, ...args);
   const listed = [...new Set([...Object.keys(others), ...Object.keys(CONTROL), "LISTCOMMANDS", "BATCH_EXECUTE"])];
   // LISTCOMMANDS() as the app's: a stem of the names a script may call.
-  fns.LISTCOMMANDS = () => stem(listed);
+  // LISTCOMMANDS(1): each described (described.ts), {name, signature,
+  // params (a stem of {name, type, optional, variadic, about}), does, gives}.
+  fns.LISTCOMMANDS = (described?: unknown) => {
+    if (!yes(described)) return stem(listed);
+    return stem(listed.map((name) => {
+      const d = DESCRIBED[name] ?? { params: [], does: "", gives: "" };
+      const params = d.params.map((x) => ({ name: x.name, type: x.type, optional: x.optional ? 1 : 0, variadic: x.variadic ? 1 : 0, about: x.about ?? "" }));
+      return { name, signature: signature(name, d), params: stem(params), does: d.does, gives: d.gives };
+    }));
+  };
   // [{command, args}, ...]: each run in turn, by any of these names; what
-  // each gave or why it failed, as the app's.
-  fns.BATCH_EXECUTE = async (commands: unknown) => {
+  // each gave or why it failed, as the app's. `stop` (not the app's): the
+  // first that fails is the whole call's error, so a control-bus request
+  // made of it is taken back whole (commands.ts's spreadsheet).
+  fns.BATCH_EXECUTE = async (commands: unknown, stop?: unknown) => {
     const results: Record<string, unknown>[] = [];
+    const halt = yes(stop);
     for (const [index, c] of (unstem(commands) as { command?: unknown; args?: unknown }[]).entries()) {
       const command = text(c.command).toUpperCase();
       const fn = fns[command] ?? others[command];
       if (!fn || command === "BATCH_EXECUTE") {
+        if (halt) throw new Error(`command ${index + 1}: Unknown command: ${command}`);
         results.push({ index, command, success: false, error: `Unknown command: ${command}` });
         continue;
       }
       try {
         results.push({ index, command, success: true, result: await fn(...(Array.isArray(c.args) ? c.args : [])) });
       } catch (e) {
+        if (halt) throw new Error(`command ${index + 1} (${command}): ${(e as Error).message}`);
         results.push({ index, command, success: false, error: (e as Error).message });
       }
     }

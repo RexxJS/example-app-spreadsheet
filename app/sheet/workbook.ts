@@ -382,16 +382,27 @@ export class Workbook {
     else this.#group = { depth: 1, before: this.saved(), low: this.#undo.length, labels: [], undone: 0 };
   }
 
-  endGroup(): void {
+  // True when the outermost group ended folded into one step: it is the
+  // newest step of undo now. A group that only undid and redid is not
+  // folded: those stand as the steps they took, Redo with them, so UNDO()
+  // sent twice goes back two steps rather than back and forth. `whole`
+  // folds whatever it did, to be taken back as one (a failed request).
+  endGroup(whole = false): boolean {
     const g = this.#group;
-    if (!g || --g.depth > 0) return;
+    if (!g || --g.depth > 0) return false;
     this.#group = null;
-    if (!g.labels.length && !g.undone) return;
+    if (!g.labels.length && !g.undone) return false;
+    if (!g.labels.length && !whole) return false;
     this.#undo.length = Math.min(g.low, this.#undo.length);
     this.#undo.push({ ...g.before, label: g.labels.length === 1 && !g.undone ? g.labels[0] : "Script" });
     if (this.#undo.length > HISTORY) this.#undo.shift();
     this.#redo.length = 0;
+    return true;
   }
+
+  // The newest step of Redo let go of: what an Undo that only took back a
+  // failed request leaves there, which is nothing to do again.
+  forgetRedo(): void { this.#redo.pop(); }
 
   get canUndo(): boolean { return this.#undo.length > 0; }
   get canRedo(): boolean { return this.#redo.length > 0; }

@@ -105,6 +105,27 @@ eq("an UNDO in a script takes back its last command; the script is still one ste
   [" 7", "Script", "undid Script: 1 changed", ""]);
 await cmds.spreadsheet(`SETCELL("D1", 1) + SETCELL("D2", 2)`, (l) => said.push(l));
 eq("a control-bus command is one step too", [value("D2"), wb.undoLabel, await undo(), value("D1")], ["2", "Script", "undid Script: 2 changed", ""]);
+const half = await cmds.spreadsheet(`SETCELL("D1", 1); SETCELL("D2", 2); BOGUS()`, (l) => said.push(l));
+eq("one that fails part way is taken back whole, and leaves nothing to redo", [half.ok, value("D1"), value("D2"), wb.undoLabel, wb.canRedo, half.message.endsWith("(nothing it did was kept)")],
+  [false, "", "", "Set a cell", false, true]);
+const read = await cmds.spreadsheet(`GETCELL("B1"); BOGUS()`, (l) => said.push(l));
+eq("one that fails having changed nothing takes nothing back", [read.ok, wb.undoLabel, value("B1"), read.message.includes("kept")], [false, "Set a cell", "5", false]);
+const stopped = await cmds.spreadsheet(`BATCH_EXECUTE('[{"command": "SETCELLS", "args": ["F1:F2", [1, 2]]}, {"command": "SORTRANGE", "args": ["F1:F2", "?"]}]', 1)`, (l) => said.push(l));
+eq("BATCH_EXECUTE(json, 1): the first failure is the request's, and the request is taken back whole",
+  [stopped.ok, stopped.message.startsWith("command 2 (SORTRANGE): "), stopped.message.endsWith("(nothing it did was kept)"), value("F1"), wb.undoLabel],
+  [false, true, true, "", "Set a cell"]);
+const carried = await cmds.spreadsheet(`BATCH_EXECUTE('[{"command": "SETCELLS", "args": ["F1:F2", [1, 2]]}, {"command": "SORTRANGE", "args": ["F1:F2", "?"]}]')`, (l) => said.push(l));
+eq("without it, as the app's: each said, the rest done, one step", [carried.ok, JSON.parse(String(carried.output)).map((r: any) => r.success), value("F2"), wb.undoLabel],
+  [true, [true, false], "2", "Script"]);
+await undo();
+await cmds.spreadsheet(`SETCELL("E1", 1)`, (l) => said.push(l));
+await cmds.spreadsheet(`SETCELL("E2", 2)`, (l) => said.push(l));
+await cmds.spreadsheet(`UNDO()`, (l) => said.push(l));
+await cmds.spreadsheet(`UNDO()`, (l) => said.push(l));
+eq("UNDO() sent twice goes back two steps, not back and forth", [value("E1"), value("E2"), wb.undoLabel, wb.canRedo], ["", "", "Set a cell", true]);
+await cmds.spreadsheet(`REDO()`, (l) => said.push(l));
+eq("and REDO() sent does the first again", [value("E1"), value("E2")], ["1", ""]);
+await undo();
 eq("the steps: A1's, the first script's, B1's", await depth(), 3);
 eq("and nothing then", [await undo(), wb.undoLabel], ["nothing to undo", null]);
 
@@ -134,6 +155,12 @@ eq("so is a new one", wb.canUndo, false);
 // expect: ok a script that only reads is no step
 // expect: ok an UNDO in a script takes back its last command; the script is still one step
 // expect: ok a control-bus command is one step too
+// expect: ok one that fails part way is taken back whole, and leaves nothing to redo
+// expect: ok one that fails having changed nothing takes nothing back
+// expect: ok BATCH_EXECUTE(json, 1): the first failure is the request's, and the request is taken back whole
+// expect: ok without it, as the app's: each said, the rest done, one step
+// expect: ok UNDO() sent twice goes back two steps, not back and forth
+// expect: ok and REDO() sent does the first again
 // expect: ok the steps: A1's, the first script's, B1's
 // expect: ok and nothing then
 // expect: ok a file opened is where undo stops
