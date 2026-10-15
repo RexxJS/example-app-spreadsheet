@@ -9,8 +9,12 @@
 // that comes to a LAMBDA is #CALC!), and MAP, REDUCE, SCAN, BYROW, BYCOL and
 // MAKEARRAY call one: they are special forms here, as IF is. So are ROW
 // and COLUMN, which read a reference rather than its values, and with no
-// reference the cell the formula is in (`at`).
-import { cellAddr, keyOf, range, span } from "./address.ts";
+// reference the cell the formula is in (`at`); and OFFSET and INDIRECT,
+// which make a reference at run time (a Reference below), and tell the Env
+// the cells it comes to (`read`), since the formula's static reads cannot
+// name them.
+import { COLS, ROWS, addrOf, cellAddr, keyOf, range, span, splitKey } from "./address.ts";
+import type { Addr } from "./address.ts";
 import { resolve } from "./structured.ts";
 import type { Expr } from "./parser.ts";
 import { call, single } from "./functions.ts";
@@ -26,6 +30,52 @@ export interface Env {
   get(key: string): Value;
   // What a cell spills (A1#), or null when it spills nothing.
   spill?(key: string): ArrayValue | null;
+  // Told each cell a reference made at run time (OFFSET, INDIRECT) read.
+  read?(key: string): void;
+}
+
+// The forms that make a reference at run time: a formula calling one is
+// volatile (worked out again on every change).
+export const VOLATILE_FORMS: ReadonlySet<string> = new Set(["OFFSET", "INDIRECT"]);
+
+// A reference as an expression comes to it: a rectangle of cells, on this
+// sheet (null) or another (its name in upper case, as keys have it).
+interface Reference {
+  readonly sheet: string | null;
+  readonly a: Addr;
+  readonly b: Addr;
+}
+
+const qualify = (sheet: string | null, key: string): string => (sheet === null ? key : `${sheet}!${key}`);
+
+// "B2", "$B$2", "Costs!B2", "'My Costs'!B2:C4": the cell or range the text
+// names (A1 style), as INDIRECT reads it; or in R1C1 style, "R2C3",
+// "R[1]C[-1]" (relative to `at`), "RC2". Null when it names none;
+// off-sheet is #REF!.
+function referenceOf(text: string, a1: boolean, at: Addr | null): Reference | null {
+  const m = /^\s*(?:(?:([A-Za-z_]\w*)|'([^']+)')!)?([^!]+?)\s*$/.exec(text);
+  if (!m) return null;
+  const sheet = (m[1] ?? m[2])?.toUpperCase() ?? null;
+  const parts = m[3].split(":");
+  if (parts.length > 2) return null;
+  const corner = (s: string): Addr | null => {
+    if (a1) {
+      const c = /^\$?([A-Za-z]{1,3})\$?([0-9]+)$/.exec(s);
+      if (!c) return null;
+      return addrOf(c[1] + c[2]) ?? fail("#REF!", `${s.toUpperCase()} is not on the sheet`);
+    }
+    const c = /^R(?:([0-9]+)|\[(-?[0-9]+)\])?C(?:([0-9]+)|\[(-?[0-9]+)\])?$/i.exec(s);
+    if (!c) return null;
+    const part = (abs: string | undefined, rel: string | undefined, here: number | null): number => {
+      if (abs !== undefined) return Number(abs) - 1;
+      if (here === null) return fail("#REF!", `${s} is relative, and the formula is in no cell`);
+      return here + (rel === undefined ? 0 : Number(rel));
+    };
+    const row = part(c[1], c[2], at?.row ?? null), col = part(c[3], c[4], at?.col ?? null);
+    return row >= 0 && row < ROWS && col >= 0 && col < COLS ? { row, col } : fail("#REF!", `${s} is not on the sheet`);
+  };
+  const a = corner(parts[0]), b = parts.length === 2 ? corner(parts[1]) : a;
+  return a && b ? { sheet, a, b } : null;
 }
 
 interface Closure {
@@ -256,20 +306,21 @@ class Evaluator {
           const here = this.#at ? cellAddr(this.#at) : null;
           return here ? here[which] + 1 : fail("#REF!", `${e.name}() is in no cell`);
         }
-        const a = args[0];
-        if (a.kind === "ref" || a.kind === "spill") {
-          const c = cellAddr(a.name);
-          return c ? c[which] + 1 : fail("#REF!", `${a.name} is not on the sheet`);
-        }
-        if (a.kind === "range") {
-          const from = cellAddr(a.from), to = cellAddr(a.to);
-          if (!from || !to) return fail("#REF!", `${from ? a.to : a.from} is not on the sheet`);
-          const lo = Math.min(from[which], to[which]), hi = Math.max(from[which], to[which]);
-          const ns = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i + 1);
-          return ns.length === 1 ? ns[0] : which === "row" ? array(ns.length, 1, ns) : array(1, ns.length, ns);
-        }
-        return fail("#VALUE!", `${e.name} takes a reference`);
+        const r = this.#reference(args[0]);
+        if (!r) return fail("#VALUE!", `${e.name} takes a reference`);
+        const lo = Math.min(r.a[which], r.b[which]), hi = Math.max(r.a[which], r.b[which]);
+        const ns = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i + 1);
+        return ns.length === 1 ? ns[0] : which === "row" ? array(ns.length, 1, ns) : array(1, ns.length, ns);
       }
+      // OFFSET(reference, rows, cols, [height], [width]): the cells that
+      // many rows down and columns across from the reference's top left
+      // corner, as high and wide as given (else as the reference is).
+      // INDIRECT(text, [a1]): the cells the text names. Both are made at
+      // run time, so what they read is told the Env, and the formula is
+      // volatile (excel.ts).
+      case "OFFSET":
+      case "INDIRECT":
+        return this.#values(this.#reference(e)!, true);
       case "IF": {
         // Only the branch taken is worked out: IF(B1=0, 0, A1/B1) is safe;
         // over an array, cell by cell.
@@ -324,6 +375,61 @@ class Evaluator {
   #scalar(e: Expr): Value {
     const r = collapsed(this.result(e));
     return isArray(r) ? fail("#VALUE!", "an array where one value goes") : r;
+  }
+
+  // The reference an expression is: a cell, a range, what a cell spills
+  // (its cell), or one OFFSET or INDIRECT makes; null when it is none
+  // (a number, text, a call of anything else). One off the sheet is #REF!.
+  #reference(e: Expr): Reference | null {
+    switch (e.kind) {
+      case "ref":
+      case "spill": {
+        const { sheet, cell } = splitKey(e.name);
+        const a = addrOf(cell);
+        return a ? { sheet, a, b: a } : fail("#REF!", `${e.name} is not on the sheet`);
+      }
+      case "range": {
+        const a = cellAddr(e.from), b = cellAddr(e.to);
+        if (!a || !b) return fail("#REF!", `${a ? e.to : e.from} is not on the sheet`);
+        return { sheet: splitKey(e.from).sheet, a, b };
+      }
+      case "call":
+        return e.name === "OFFSET" ? this.#offset(e.args) : e.name === "INDIRECT" ? this.#indirect(e.args) : null;
+      default:
+        return null;
+    }
+  }
+
+  // A reference's cells: one value, or an array; each told the Env when
+  // the reference was made at run time.
+  #values(r: Reference, dynamic: boolean): Result {
+    const keys = [...range(r.a, r.b)].map((k) => qualify(r.sheet, k));
+    if (dynamic) for (const k of keys) this.#env.read?.(k);
+    const values = keys.map((k) => this.#env.get(k));
+    return keys.length === 1 ? values[0] : array(Math.abs(r.a.row - r.b.row) + 1, Math.abs(r.a.col - r.b.col) + 1, values);
+  }
+
+  #offset(args: readonly Expr[]): Reference {
+    if (args.length < 3 || args.length > 5) return fail("#VALUE!", "OFFSET takes 3 to 5 values");
+    const base = this.#reference(args[0]);
+    if (!base) return fail("#VALUE!", "OFFSET takes a reference first");
+    const given = (i: number) => i < args.length && args[i].kind !== "missing";
+    const n = (i: number) => Math.trunc(toNumber(this.#scalar(args[i])));
+    const top = Math.min(base.a.row, base.b.row) + n(1), left = Math.min(base.a.col, base.b.col) + n(2);
+    const height = given(3) ? n(3) : Math.abs(base.a.row - base.b.row) + 1;
+    const width = given(4) ? n(4) : Math.abs(base.a.col - base.b.col) + 1;
+    if (height < 1 || width < 1) return fail("#REF!", `OFFSET of ${height} rows by ${width} columns is no reference`);
+    const a = { row: top, col: left }, b = { row: top + height - 1, col: left + width - 1 };
+    if (top < 0 || left < 0 || b.row >= ROWS || b.col >= COLS) return fail("#REF!", `OFFSET to row ${top + 1}, column ${left + 1}, ${height} by ${width}, is off the sheet`);
+    return { sheet: base.sheet, a, b };
+  }
+
+  #indirect(args: readonly Expr[]): Reference {
+    if (args.length < 1 || args.length > 2) return fail("#VALUE!", "INDIRECT takes 1 or 2 values");
+    const text = toText(this.#scalar(args[0]));
+    const a1 = args.length === 2 && args[1].kind !== "missing" ? truth(this.#scalar(args[1])) : true;
+    const r = referenceOf(text, a1, this.#at ? cellAddr(this.#at) : null);
+    return r ?? fail("#REF!", `INDIRECT of '${text}': not a reference`);
   }
 }
 

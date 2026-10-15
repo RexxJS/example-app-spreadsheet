@@ -15,6 +15,11 @@
 // each reads, for ordering, the formula it shows. A cell with an input in
 // the area, or the sheet's edge, makes the formula #SPILL!; setting any cell
 // of an area works its formula out again, so clearing the way spills it.
+//
+// A volatile formula (its language says: one calling OFFSET or INDIRECT)
+// is worked out again on every change, and the cells its run-time
+// references came to are linked as its reads after each run, so what it
+// read orders it next time (and the auditor sees it).
 import { COLS, ROWS, addrOf, cellAddr, keyOf, order, splitKey } from "./address.ts";
 import { CellError, isArray } from "./values.ts";
 import type { ArrayValue, Result, Value } from "./values.ts";
@@ -114,6 +119,7 @@ export class Sheet {
   readonly #values = new Map<string, Value>();
   readonly #reads = new Map<string, Set<string>>();     // a cell -> the cells it reads
   readonly #readBy = new Map<string, Set<string>>();    // a cell -> the cells that read it
+  readonly #volatile = new Set<string>();               // the cells whose formula is volatile
   readonly #listener: SheetListener | undefined;
   #language: Language;
   readonly #context: Context;
@@ -350,6 +356,7 @@ export class Sheet {
   #compile(key: string): void {
     const c = compile(this.input(key), this.#language, this.#named, (n) => this.#tables.get(n.toUpperCase()) ?? null, this.#formula, key);
     this.#compiled.set(key, c);
+    if (c.kind === "formula" && c.volatile) this.#volatile.add(key); else this.#volatile.delete(key);
     this.#link(key, new Set(c.kind === "formula" ? c.reads.map((k) => this.#local(k) ?? k) : []));
   }
 
@@ -374,9 +381,10 @@ export class Sheet {
     return [...(this.#readBy.get(k) ?? []), ...(this.#spills.has(k) ? this.#areas.get(k) ?? [] : [])];
   }
 
-  // What formulas see: the cells, and what a cell spills (A1#).
-  #env() {
-    return { get: (k: string) => this.value(k), spill: (k: string) => this.#spills.get(this.#local(k) ?? "") ?? null };
+  // What formulas see: the cells, and what a cell spills (A1#); `read`
+  // hears the cells a run-time reference came to.
+  #env(read?: (k: string) => void) {
+    return { get: (k: string) => this.value(k), spill: (k: string) => this.#spills.get(this.#local(k) ?? "") ?? null, read };
   }
 
   // The set cells and everything downstream of them.
@@ -435,12 +443,12 @@ export class Sheet {
 
   // The set cells (and cells on other sheets, which are not worked out
   // here) and what reads them, worked out in order; a formula whose area a
-  // set cell is in, too. When spills moved, what reads the cells they left
-  // or took is worked out again.
+  // set cell is in, and every volatile formula, too. When spills moved,
+  // what reads the cells they left or took is worked out again.
   async #recompute(set: readonly string[], depth = 0): Promise<string[]> {
     const before = new Map<string, string>();
     const anchors = [...this.#areas].filter(([, area]) => area.some((k) => set.includes(k))).map(([a]) => a);
-    const affected = this.#downstream([...set, ...anchors]);
+    const affected = this.#downstream([...set, ...anchors, ...this.#volatile]);
     this.#spillChanged = new Set();
     const mine = [...affected].filter((k) => !k.includes("!"));
     for (const k of mine) before.set(k, show(this.value(k)));
@@ -510,8 +518,11 @@ export class Sheet {
     }
     const c = this.#compiled.get(key);
     let r: Result = null;
-    if (c?.kind === "formula") r = (await c.run(this.#env())) ?? 0;
-    else if (c?.kind === "broken") r = c.error;
+    if (c?.kind === "formula") {
+      const dynamic = new Set<string>();
+      r = (await c.run(this.#env((k) => dynamic.add(this.#local(k) ?? k)))) ?? 0;
+      if (c.volatile || dynamic.size) this.#link(key, new Set([...c.reads.map((k) => this.#local(k) ?? k), ...dynamic]));
+    } else if (c?.kind === "broken") r = c.error;
     else if (c?.kind === "constant") r = c.value;
     const area = this.#areas.get(key) ?? [];
     const was = area.map((k) => show(this.value(k)));

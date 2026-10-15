@@ -7,7 +7,7 @@ import { cellAddr, colName, range, sheetPrefix, span, splitKey } from "./address
 import type { Addr } from "./address.ts";
 import { movedBy } from "./shift.ts";
 import type { Edit, Fixed } from "./shift.ts";
-import { SPECIAL_FORMS, evaluate } from "./evaluate.ts";
+import { SPECIAL_FORMS, VOLATILE_FORMS, evaluate } from "./evaluate.ts";
 import { names } from "./functions.ts";
 import type { Language, Offset } from "./language.ts";
 import { FormulaError, tokens } from "./lexer.ts";
@@ -55,6 +55,24 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
       return yield* refsOf(e.expr(), seen);
     default:
       return;
+  }
+}
+
+// Whether an expression calls any of `forms` (a named formula's own
+// expression looked into once).
+function calls(e: Expr, forms: ReadonlySet<string>, seen: Set<string> = new Set()): boolean {
+  switch (e.kind) {
+    case "call": return forms.has(e.name) || e.args.some((a) => calls(a, forms, seen));
+    case "neg": return calls(e.arg, forms, seen);
+    case "binary": return calls(e.left, forms, seen) || calls(e.right, forms, seen);
+    case "let": return e.bindings.some(([, v]) => calls(v, forms, seen)) || calls(e.body, forms, seen);
+    case "lambda": return calls(e.body, forms, seen);
+    case "apply": return calls(e.fn, forms, seen) || e.args.some((a) => calls(a, forms, seen));
+    case "named":
+      if (seen.has(e.name)) return false;
+      seen.add(e.name);
+      return calls(e.expr(), forms, seen);
+    default: return false;
   }
 }
 
@@ -160,7 +178,9 @@ export const EXCEL: Language = {
   compile(formula, names, tables, formulas, at) {
     try {
       const expr = parse(formula, names ?? (() => null), formulas, tables, at ? cellAddr(at)?.row ?? null : null);
-      return { kind: "formula", reads: [...refsOf(expr)], run: (env) => evaluate(expr, env, at ?? null) };
+      // One calling OFFSET or INDIRECT makes references at run time: it
+      // is worked out again on every change.
+      return { kind: "formula", reads: [...refsOf(expr)], volatile: calls(expr, VOLATILE_FORMS), run: (env) => evaluate(expr, env, at ?? null) };
     } catch (e) {
       if (!(e instanceof FormulaError)) throw e;
       return { kind: "broken", error: new CellError("#ERROR!", `parse error at ${e.at}: ${e.message}`) };

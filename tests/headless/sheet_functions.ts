@@ -21,6 +21,8 @@ const cells = new Map<string, Value>([
   ["F3", 2], ["G3", "pear"], ["H3", 0.75],
   ["F4", 3], ["G4", "plum"], ["H4", 1.2],
   ["I1", 40], ["I2", 30], ["I3", 20], ["I4", 10],
+  // A cell of another sheet, as the sheet's Env would answer it.
+  ["COSTS!B2", 7],
 ]);
 const env = { get: (k: string): Value => cells.get(k) ?? null };
 const ev = (...srcs: string[]): string[] => srcs.map((src) => show(evaluate(parse(src), env)));
@@ -32,9 +34,9 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
 eq("the library", names().join(" "), [
   "ABS ADDRESS AND AVERAGE AVERAGEIF AVERAGEIFS CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS CONCAT COUNT COUNTA",
   "COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FV",
-  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INT IRR ISBLANK ISERROR ISNUMBER ISTEXT LARGE LEFT LEN LOOKUP",
-  "LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OR PERCENTILE",
-  "PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE",
+  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INT IRR ISBLANK ISERROR ISNUMBER ISTEXT LARGE LEFT LEN",
+  "LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OFFSET",
+  "OR PERCENTILE PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE",
   "SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT",
   "TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM UNIQUE UPPER VALUE VAR VARP",
   "VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
@@ -111,6 +113,33 @@ eq("ADDRESS's errors", why("ADDRESS(0, 1)", "ADDRESS(1, 1, 5)"), ["#VALUE! ADDRE
 eq("LOOKUP along an ascending vector: the last not past the value, from the result vector or itself", ev("LOOKUP(25, E1:E5, A1:A5)", "LOOKUP(50, E1:E5)", "LOOKUP(999, E1:E5, A1:A5)"), ["1", "50", "5"]);
 eq("LOOKUP in an array: down the first column when tall, along the first row when wide", ev("LOOKUP(2, F2:H4)", "LOOKUP(2.5, F2:H4)", `LOOKUP(25, {10,20,30;"a","b","c"})`), ["0.75", "0.75", "b"]);
 eq("LOOKUP's errors", why("LOOKUP(5, E1:E5)", "LOOKUP(25, E1:E5, A1:A1)"), ["#N/A 5 is not there", "#N/A LOOKUP's result vector is shorter than its lookup vector"]);
+// References made at run time.
+eq("OFFSET: the cell that many rows down and columns across", ev("OFFSET(A1, 2, 0)", "OFFSET(A1, 0, 2)", "OFFSET(C3, -2, -2)", "ROW(OFFSET(A1, 4, 0))"), ["4", "10", "3", "5"]);
+eq("over a range, as high and wide as it is, or as told", grid("OFFSET(A1:A2, 1, 0)", "OFFSET(A1, 0, 0, 3, 1)", "OFFSET(F1, 1, 1, 2, 2)", "OFFSET(A1:B2, 1, 0, , 1)", "SUM(OFFSET(A1, 0, 0, 3, 1))"),
+  ["2x1:1,4", "3x1:3,1,4", "2x2:apple,0.5,pear,0.75", "2x1:1,4", "8"]);
+eq("OFFSET's errors", why("OFFSET(A1, -1, 0)", "OFFSET(Z1, 0, 1)", "OFFSET(A1, 0, 0, 0, 1)", "OFFSET(1, 0, 0)", "OFFSET(A1, 1)"), [
+  "#REF! OFFSET to row 0, column 1, 1 by 1, is off the sheet", "#REF! OFFSET to row 1, column 27, 1 by 1, is off the sheet",
+  "#REF! OFFSET of 0 rows by 1 columns is no reference", "#VALUE! OFFSET takes a reference first", "#VALUE! OFFSET takes 3 to 5 values",
+]);
+eq("INDIRECT: the cell or range the text names", ev(`INDIRECT("A3")`, `INDIRECT("$c$2")`, `INDIRECT("A" & 1 + 4)`, `SUM(INDIRECT("C1:C3"))`, `COLUMN(INDIRECT("F1"))`), ["4", "20", "5", "60", "6"]);
+eq("in R1C1 style, relative to the formula's cell", [
+  ...ev(`INDIRECT("R3C1", FALSE)`),
+  show(evaluate(parse(`INDIRECT("R[1]C[-1]", FALSE)`), env, "B2")), show(evaluate(parse(`INDIRECT("RC[1]", FALSE)`), env, "B2")), show(evaluate(parse(`INDIRECT("r2c", FALSE)`), env, "C5")),
+], ["4", "4", "20", "20"]);
+eq("on another sheet, quoted or not", ev(`INDIRECT("Costs!B2")`, `INDIRECT("'Costs'!B2")`), ["7", "7"]);
+eq("INDIRECT's errors", why(`INDIRECT("hello")`, `INDIRECT("A101")`, `INDIRECT("R[1]C", FALSE)`, `INDIRECT("A1:B2:C3")`, `INDIRECT(D2)`), [
+  "#REF! INDIRECT of 'hello': not a reference", "#REF! A101 is not on the sheet", "#REF! R[1]C is relative, and the formula is in no cell",
+  "#REF! INDIRECT of 'A1:B2:C3': not a reference", "#DIV/0! divide by zero",
+]);
+{
+  // The Env hears each cell a run-time reference came to (the sheet links
+  // them as the formula's reads); a reference written in the formula is
+  // its static read, not told.
+  const heard: string[] = [];
+  const hearing = { get: env.get, read: (k: string) => heard.push(k) };
+  const values = [`SUM(OFFSET(A1, 1, 0, 2, 1))`, `INDIRECT("C1") + A1`, `ROW(OFFSET(A1, 3, 0))`].map((src) => show(evaluate(parse(src), hearing)));
+  eq("the Env hears the cells a run-time reference reads", [values, heard], [["5", "13", "4"], ["A2", "A3", "C1"]]);
+}
 eq("INDEX by row and column, or along a list", ev("INDEX(F1:H4, 3, 2)", "INDEX(A1:A6, 6)", "INDEX(F1:H1, 3)"), ["pear", "9", "price"]);
 eq("INDEX outside", why("INDEX(F1:H4, 5, 1)"), ["#REF! INDEX 5, 1 is outside 4 x 3"]);
 eq("MATCH exact, ignoring case", ev(`MATCH("PEAR", G1:G4, 0)`, "MATCH(3, F1:F4, 0)"), ["3", "4"]);
@@ -170,6 +199,14 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok LOOKUP along an ascending vector: the last not past the value, from the result vector or itself
 // expect: ok LOOKUP in an array: down the first column when tall, along the first row when wide
 // expect: ok LOOKUP's errors
+// expect: ok OFFSET: the cell that many rows down and columns across
+// expect: ok over a range, as high and wide as it is, or as told
+// expect: ok OFFSET's errors
+// expect: ok INDIRECT: the cell or range the text names
+// expect: ok in R1C1 style, relative to the formula's cell
+// expect: ok on another sheet, quoted or not
+// expect: ok INDIRECT's errors
+// expect: ok the Env hears the cells a run-time reference reads
 // expect: ok INDEX by row and column, or along a list
 // expect: ok INDEX outside
 // expect: ok MATCH exact, ignoring case

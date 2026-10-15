@@ -52,6 +52,9 @@ export interface Env {
   get(key: string): Value;
   // What a cell spills (A1#), or null.
   spill?(key: string): ArrayValue | null;
+  // Told a cell a formula read that its `reads` do not name: one a
+  // reference made at run time (OFFSET, INDIRECT) came to.
+  read?(key: string): void;
 }
 
 export interface Offset {
@@ -59,8 +62,10 @@ export interface Offset {
   readonly rows: number;
 }
 
+// A volatile formula (one calling OFFSET, INDIRECT ...) is worked out again
+// on every change, as Excel's are, whatever its `reads`.
 export type Formula =
-  | { readonly kind: "formula"; readonly reads: readonly string[]; run(env: Env): Result | Promise<Result> }
+  | { readonly kind: "formula"; readonly reads: readonly string[]; readonly volatile?: boolean; run(env: Env): Result | Promise<Result> }
   | { readonly kind: "broken"; readonly error: CellError };
 
 export interface Language {

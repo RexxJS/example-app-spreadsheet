@@ -77,6 +77,21 @@ await cmds.run('cell.set cell=E1 input="=TWICE(QTY)"');
 eq("and opened", [await message("names.list"), on("Costs", "A1"), on("Costs", "E1"), on("Costs", "E2")], ["QTY Data!B1:B2, TWICE =LAMBDA(x, x * 2), X Data!B1", "35", "30", "40"]);
 eq("sheets in the order they were in", wb.sheetNames(), ["Data", "Prices", "Costs"]);
 
+// References made at run time reach another sheet, and follow it.
+await cmds.run("sheet.activate name=Data");
+await cmds.run('cell.set cell=F1 input="=INDIRECT(""Costs!E1"")"');
+await cmds.run("cell.set cell=H1 input=0");
+await cmds.run('cell.set cell=G1 input="=OFFSET(B1, H1, 0)"');
+eq("INDIRECT of another sheet's cell reads it, and is linked to it", [on("Data", "F1"), wb.page("Data")!.sheet.reads("F1")], ["30", ["COSTS!E1"]]);
+await cmds.run("sheet.activate name=Costs");
+await cmds.run("cell.set cell=E1 input=99");
+eq("a change at the pointed-at cell shows", on("Data", "F1"), "99");
+await cmds.run("sheet.activate name=Data");
+eq("OFFSET by a cell's value: linked to where it came to", [on("Data", "G1"), wb.page("Data")!.sheet.reads("G1")], ["15", ["B1", "H1"]]);
+await cmds.run("cell.set cell=H1 input=1");
+await cmds.run("cell.set cell=B2 input=21");
+eq("moved, it follows the cell it now comes to", [on("Data", "G1"), wb.page("Data")!.sheet.reads("G1")], ["21", ["B1", "H1", "B2"]]);
+
 // expect: ok sheet.move to a place, or a way
 // expect: ok the active sheet stays active
 // expect: ok refusals: past either end, neither or both, no such sheet
@@ -96,3 +111,7 @@ eq("sheets in the order they were in", wb.sheetNames(), ["Data", "Prices", "Cost
 // expect: ok undone, read again
 // expect: ok and opened
 // expect: ok sheets in the order they were in
+// expect: ok INDIRECT of another sheet's cell reads it, and is linked to it
+// expect: ok a change at the pointed-at cell shows
+// expect: ok OFFSET by a cell's value: linked to where it came to
+// expect: ok moved, it follows the cell it now comes to

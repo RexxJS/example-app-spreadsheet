@@ -2,7 +2,7 @@
 // dependency order, a paste recomputes each cell once, cycles are found and
 // mended, and old dependencies are forgotten.
 import { Sheet, compile } from "./sheet/sheet.ts";
-import { refsOf } from "./sheet/excel.ts";
+import { EXCEL, refsOf } from "./sheet/excel.ts";
 import type { Language } from "./sheet/language.ts";
 import type { SheetListener } from "./sheet/sheet.ts";
 import { parse } from "./sheet/parser.ts";
@@ -151,6 +151,38 @@ const stub = (name: "Excel" | "RexxJS", log: string[]): Language => ({
   eq("a name goes with it", [s.names(), s.keys()], [[], ["A1", "B1"]]);
 }
 
+{
+  // A volatile formula (OFFSET, INDIRECT) is worked out again on every
+  // change, whatever it reads; the cells its run-time reference came to
+  // are its reads after the run, so a change there orders it right.
+  let runs = 0;
+  const counting: Language = {
+    ...EXCEL,
+    compile: (...a) => {
+      const f = EXCEL.compile(...a);
+      return f.kind === "formula" ? { ...f, run: (env) => (runs++, f.run(env)) } : f;
+    },
+  };
+  const s = new Sheet(undefined, counting);
+  await s.set("A1", "1");
+  await s.set("A2", "2");
+  await s.set("A3", "3");
+  await s.set("B1", "2");
+  await s.set("C1", "=INDIRECT(\"A\" & B1)");
+  await s.set("D1", "=A1*10");
+  eq("INDIRECT reads the cell its text names, and is linked to it", [shown(s, "C1"), s.reads("C1"), s.readBy("A2")], [["2"], ["B1", "A2"], ["C1"]]);
+  runs = 0;
+  eq("a change at that cell shows", [await s.set("A2", "20"), shown(s, "C1")], [["C1", "A2"], ["20"]]);
+  eq("the text changed, the formula follows it, and the old link goes", [await s.set("B1", "3"), shown(s, "C1"), s.reads("C1"), s.readBy("A2")], [["B1", "C1"], ["3"], ["B1", "A3"], []]);
+  runs = 0;
+  await s.set("E9", "hello");
+  eq("volatile: worked out again on a change it does not read (D1 is not)", runs, 1);
+  await s.set("C1", "=A1");
+  runs = 0;
+  await s.set("E9", "bye");
+  eq("no longer volatile once its formula is not", runs, 0);
+}
+
 // expect: ok constants: numbers, text, nothing
 // expect: ok a formula
 // expect: ok a parse error becomes #ERROR!, with where
@@ -185,3 +217,8 @@ const stub = (name: "Excel" | "RexxJS", log: string[]): Language => ({
 // expect: ok restore puts back what changed since, and works the sheet out
 // expect: ok restoring what is there changes nothing
 // expect: ok a name goes with it
+// expect: ok INDIRECT reads the cell its text names, and is linked to it
+// expect: ok a change at that cell shows
+// expect: ok the text changed, the formula follows it, and the old link goes
+// expect: ok volatile: worked out again on a change it does not read (D1 is not)
+// expect: ok no longer volatile once its formula is not
