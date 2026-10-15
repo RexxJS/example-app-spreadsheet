@@ -23,8 +23,9 @@ the plan: what is done, what is next, and how the code is laid out.
   tested headless (`tests/headless/`, one file per area, `// expect:` lines
   as verdicts); what only the ui shows is tested in `tests/specs/`.
 - **GridCraft is the yardstick, not a source.** The spreadsheet is
-  tracked toward GridCraft's feature set (`docs/gridcraft_parity.md`, in
-  small tested steps, each reachable from REXX, which GridCraft lacks)
+  tracked toward GridCraft's feature set (`TODO.md`: the steps;
+  `docs/gridcraft_parity.md`: where it stands; small tested steps, each
+  reachable from REXX, which GridCraft lacks)
   using only `docs/gridcraft_feature_reference.md`, a feature summary
   taken on trust. GridCraft's repository has a different licence (MIT OR
   Apache-2.0): do not open, read, grep or compare against its source,

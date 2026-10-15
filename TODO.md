@@ -1,0 +1,154 @@
+# To do
+
+The things to do, one list: the steps toward GridCraft's feature set
+(`docs/gridcraft_parity.md` says where the spreadsheet stands and the
+rules each step follows; `docs/gridcraft_feature_reference.md` is the
+yardstick, taken on trust, GridCraft's source never read) and the look
+above the grid. In the reference's own kickoff order (its section 14);
+each step is one commit with its headless test and spec `it`, and each
+adds its control function (described in `app/sheet/described.ts`) so
+scripts, the bus and the MCP server reach it: REXX is what this app has
+and GridCraft does not. A step done is struck through, with its date.
+What came before (demo 18's To do 1 to 15) is in
+`docs/spreadsheet_demo_done_and_todo.md`.
+
+
+### Stage 1: core workbook
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 1.1 | Whole row and column selection (click a header), and select all | spec: a header click selects the column, Delete clears it, undo | `SELECTRANGE("B:B")` |
+| 1.2 | Multi-area selection (Ctrl/Cmd+click, Ctrl+drag), commands over every area | headless: `range.clear` over two areas is one step; spec | `SELECTRANGE("A1:B2,D4:D9")` |
+| 1.3 | Go To Special: formulas, constants, blanks, errors, comments, validation, conditional formats | headless: each category's cells, on a sample sheet | `GOTOSPECIAL("blanks")` gives the stem of cells |
+| 1.4 | A bigger sheet: sparse cells up to 16,384 x 1,048,576 as an address space (storage already sparse? check `sheet.ts`), the grid virtual over it (aether-ui datagrid: an ask if it pages) | headless: `XFD1048576` sets and reads; spec: scroll far, type, formula back | `SETCELL("ZZ100000", 1)` |
+| 1.5 | Sheet tab colour and hiding, move/copy sheet (copy a sheet with its cells and looks) | headless: `sheet.copy`, undo restores; spec: the tab | `SETSHEETCOLOR`, `HIDESHEET`, `COPYSHEET` |
+| 1.6 | 1904 date system as a workbook setting, honoured by the serial conversions | headless: the same serial, two dates | `SETDATESYSTEM(1904)` |
+
+### Stage 2: calculation
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 2.1a | ~~`ROW`, `COLUMN` (of a reference, over a range, or of the formula's own cell), `ADDRESS` (all four mixes, R1C1, a sheet), `LOOKUP` (vector and array forms)~~ (done 2026-10-15: `ROW`/`COLUMN` are evaluator forms, the formula's cell passed to `evaluate`; a reference past the 26 x 100 sheet is `#REF!` as everywhere, until 1.4) | `sheet_functions`: 11 checks | in formulas, `EVALUATE()`, and `GETROW`/`GETCOL` already |
+| 2.1b | `OFFSET`, `INDIRECT`: references made at run time, so the formula is recalculated on every change (volatile, as Excel's are) | `sheet_functions`; `sheet_book`: a change at the pointed-at cell shows | in formulas and `EVALUATE()` |
+| 2.1c | `FORMULATEXT`, `ISFORMULA`, `ISREF`, `SHEET`, `SHEETS` (the evaluator told a cell's input and the workbook's sheets) | `sheet_functions`, `sheet_book` | |
+| 2.2 | Math batch: `CEILING`/`FLOOR` (+ `.MATH`, `.PRECISE`), `TRUNC`, `MROUND`, `EVEN`, `ODD`, `EXP`, `LN`, `LOG`, `LOG10`, `QUOTIENT`, `GCD`, `LCM`, `FACT`, `COMBIN`, `PERMUT`, `SUMSQ`, `RAND`, `RANDBETWEEN`, `RANDARRAY`, trig and hyperbolic | headless, with volatile `RAND*` recalculating on `formulas.recalculate` | `RECALCULATE()` already |
+| 2.3 | Information and logic: `ISERR`, `ISNA`, `ISEVEN`, `ISODD`, `ISLOGICAL`, `ISNONTEXT`, `N`, `T`, `TYPE`, `ERROR.TYPE`, `XOR`, `TRUE`, `FALSE`, `INFO` (what applies) | headless | |
+| 2.4 | Text batch: `CODE`, `CHAR`, `UNICODE`, `UNICHAR`, `CLEAN`, `FIXED`, `DOLLAR`, `SEARCH`, `REPLACE`, `CONCATENATE`, `NUMBERVALUE`, `ARRAYTOTEXT`, `VALUETOTEXT`, `REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE` | headless, regex on QuickJS's engine | REXX's own string functions already cover much; the Excel ones for formulas |
+| 2.5 | Dates batch: `WEEKNUM`, `ISOWEEKNUM`, `YEARFRAC`, `DAYS360`, `TIMEVALUE`, `NETWORKDAYS.INTL`, `WORKDAY.INTL` | headless: against documented examples | |
+| 2.6 | Aggregates: `SUBTOTAL` (with hidden-row skipping), `AGGREGATE`, `MAXA`/`MINA`/`AVERAGEA`, `COUNTA` over mixed, `GROUPBY`, `PIVOTBY` | headless; `SUBTOTAL` with `rows.hide` | |
+| 2.7 | Statistics batch 1 (descriptive): `AVEDEV`, `DEVSQ`, `GEOMEAN`, `HARMEAN`, `TRIMMEAN`, `KURT`, `SKEW`, `STDEV.S/.P`, `VAR.S/.P`, `CORREL`, `PEARSON`, `COVARIANCE.*`, `RSQ`, `SLOPE`, `INTERCEPT`, `STEYX`, `FORECAST.LINEAR`, `TREND`, `GROWTH`, `LINEST`, `FREQUENCY`, `RANK.EQ/.AVG`, `PERCENTILE.INC/.EXC`, `QUARTILE.INC/.EXC`, `PERCENTRANK.*`, `MODE.SNGL/.MULT`, `STANDARDIZE` | headless; numbers against a worked oracle in the test | |
+| 2.8 | Statistics batch 2 (distributions): `NORM.*`, `T.*`, `CHISQ.*`, `F.*`, `BINOM.*`, `POISSON.DIST`, `EXPON.DIST`, `GAMMA*`, `BETA.*`, `LOGNORM.*`, `WEIBULL.DIST`, `HYPGEOM.DIST`, `NEGBINOM.DIST`, `CONFIDENCE.*`, `Z.TEST`, `T.TEST`, `F.TEST`, `CHISQ.TEST`, `FISHER*`, `GAUSS`, `PHI`, `PROB`, and the compatibility aliases | headless against published values (tolerances stated) | |
+| 2.9 | Financial batch: `IPMT`, `PPMT`, `CUMIPMT`, `CUMPRINC`, `XNPV`, `XIRR`, `MIRR`, `SLN`, `SYD`, `DB`, `DDB`, `VDB`, `EFFECT`, `NOMINAL`, `RRI`, `PDURATION`, `FVSCHEDULE`, `ISPMT`, `DOLLARDE/FR`; then bonds and bills (`PRICE`, `YIELD`, `DURATION`, `COUP*`, `TBILL*`, `ACCRINT*`, `ODD*`) | headless; the iterative ones converge on documented examples | `finance.ts` is where the TVM ones are |
+| 2.10 | Engineering: base conversion (`DEC2BIN` ...), bits (`BITAND` ...), `CONVERT`, `DELTA`, `GESTEP`, `ERF*`, complex numbers (`COMPLEX`, `IM*`), Bessel | headless | |
+| 2.11 | Database functions `D*` over a criteria range | headless on a sample table | |
+| 2.12 | `ISOMITTED`, named lambdas (a name whose value is a `LAMBDA`: check `sheet_let`), `TRIMRANGE` and trim refs, implicit intersection `@` (the array helpers are there already) | headless `sheet_arrays` | a REXX `LAMBDA`-free equivalent: `RUN_PROGRAM` loops |
+| 2.13 | 3-D references `Sheet1:Sheet3!A1` in `SUM` and friends | headless `sheet_book` | |
+| 2.14 | R1C1 as a display and entry mode (stored A1) | headless: the same formula shown both ways; spec: the toggle | `SETREFERENCESTYLE("R1C1")` |
+| 2.15 | Manual calculation mode and calculate sheet/all; iterative circular calculation (max iterations, max change) as workbook settings | headless: a cycle converges under iteration, is `#CYCLE!` without | `SETCALCULATION("manual")`, `SETITERATION(100, 0.001)` |
+| 2.16 | Error Checking: a pane listing cells with errors, inconsistent formulas in a row/column, numbers stored as text | headless: the list for a sample sheet | `ERRORCHECK()` gives a stem |
+
+### Stage 3: desktop workflow
+
+#### 3.0 The look above the grid: a menu bar, a toolbar, panels on demand
+
+What is there now (2026-10-15): a title, six rows of buttons and fields
+above the grid (language, formula bar, notes, looks, view, names, a
+status line), the grid, its sheet tabs, then ten more rows (edit, find,
+audit, rules, validation, editors, data, file, the command bar, the
+lists, the chart panel), all always shown, no menus: a long form, not a
+spreadsheet's chrome. Paul prefers old Excel's toolbar to a ribbon, and
+aether-ui makes that the easy one: it has a native menu bar
+(`menu_bar`, `menu`, `menu_item`), buttons, icon buttons, dropdowns and
+separators for a toolbar row (its `barfill_demo` is one: a pinned row,
+the body taking the slack), `tabs` for a tabbed panel, and no ribbon
+widget. Every button already runs a command, so each piece is a layout
+change the specs check through the driver, and REXX loses nothing.
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 3.0.1 | A menu bar: File, Edit, View, Insert, Format, Data, Formulas, Review, Script, each item one of the commands the panels run (the labels `commands.ts` has), with the keyboard shortcuts shown | spec: a menu item runs its command (the driver opens menus); every panel button has a menu item (a headless check over the command list) | `LISTMENUS()` for a script to find commands by menu path |
+| 3.0.2 | One toolbar row under the menus: undo, redo; cut, copy, paste; bold, italic, underline; align left/centre/right; number, currency, percent; borders; fill colour, text colour; sort, filter; insert chart; with tooltips | spec: each button's command, through the driver's geometry | |
+| 3.0.3 | The Name Box and the formula bar as one row under the toolbar, as old Excel had, with the function-name autocomplete of 3.3 later | spec: the row's widgets by id | |
+| 3.0.4 | The fifteen bars become panels on demand: a tabbed panel under the grid (Looks, Names, Rules, Validation, Editors, Data, Find, Audit, Chart, File, Script, Lists), one tab open at a time, opened by its menu item or toolbar button, the grid taking the height back; `AETHER_UI_HEADLESS` specs keep working (a panel opened by command before its widgets are read) | spec: a panel opens from its menu item, its widgets are there, the grid is taller when none is open | `SHOWPANEL("rules")` |
+| 3.0.5 | A status line: the selection's sum, average, count, min, max; the sheet's cell count; the control bus marker | spec: select a range, read the line | `SELECTIONSTATS()` |
+| 3.0.6 | Looks: the window's own padding, separators between bar groups, a consistent icon set (aether-ui's icon font or vg-drawn glyphs), dark mode checked | spec: screenshot compared to a checked-in one at a fixed size (sae-driver's screenshot) | |
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 3.1 | Paste Special: values, formulas, formats, comments, transpose, operations (add, multiply), skip blanks | headless `sheet_copy`; spec | `PASTESPECIAL("B1", "values")` |
+| 3.2 | Format Painter (copy a cell's look to a range) | headless; spec | `COPYFORMAT("A1", "B1:B9")` |
+| 3.3 | F4 cycling of a reference while editing; autocomplete of function names and argument hints in the formula bar | spec | |
+| 3.4 | Flash Fill: pattern inference from an example column (split, join, case) | headless: the examples the reference names (split names, case) | `FLASHFILL("B1:B9")` |
+| 3.5 | AutoFit column width and row height to content | spec (geometry through the driver) | `AUTOFIT("B")` |
+| 3.6 | Keyboard map: Excel's navigation (Ctrl+arrows to the edge, Ctrl+Home/End, Page Up/Down, Shift+Space, Ctrl+Space), editing (F2, Ctrl+Enter, Alt+Enter), formatting (Ctrl+B/I/U, Ctrl+Shift+$,%), Ctrl+Z/Y, Ctrl+F/H, Ctrl+S | spec: each key's effect | |
+| 3.7 | Status bar: sum, average, count, min, max of the selection; zoom | spec | `SELECTIONSTATS()` |
+| 3.8 | Split views and frozen columns (aether-ui asks as needed) | spec | `FREEZEPANES(rows, cols)` for real |
+| 3.9 | Selection glide (the outline animates to the new selection; a setting turns it off) | spec: the setting; the glide itself is a `vg`/aether-ui matter | `SETANIMATIONS(0)` |
+| 3.10 | Several workbooks open at once (windows), as sae apps allow | spec | `OPENWORKBOOK`, `LISTWORKBOOKS` |
+
+### Stage 4: presentation
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 4.1 | Number formats: General with Excel's rules, accounting, fractions, scientific, elapsed time `[h]:mm`, custom codes with sections (`;`), conditions, colours and literals; `TEXT()` on the same formatter | headless `sheet_numfmt`: a table of codes and values | `SETFORMAT` already; `FORMATVALUE(v, code)` |
+| 4.2 | Fonts: family, double underline, super/subscript; alignment: vertical, indent, rotation | headless `sheet_look`; spec: drawn | `SETFONT("A1", "family=Georgia;size=14")` |
+| 4.3 | Borders: per-side styles and colours, draw-border, clear | headless; spec | `SETBORDER("A1:C3", "outline", "thin")` |
+| 4.4 | Conditional rules: formula rules, begins/ends with, blanks/nonblanks, errors/nonerrors, date periods (today, last 7 days, this month ...), top/bottom percent; rule order and stop-if-true | headless `sheet_notes`/rules | `ADDRULE("A1:A9", "formula", "=A1>B1", "bold;color:red")` |
+| 4.5 | Data bar and icon set options: gradient/solid, show value or not, thresholds, reversal | headless; spec: drawn | `ADDRULE(..., "databar", ...)` |
+| 4.6 | Cell styles (a named look applied to cells, edited in one place) and table styles with banding and header/total emphasis | headless; spec | `DEFINESTYLE`, `APPLYSTYLE`, `SETTABLESTYLE` |
+| 4.7 | Themes: colour and font roles the looks refer to | headless: a theme change re-colours | `SETTHEME` |
+| 4.8 | Win/loss sparklines; sparkline options (markers, axis) | headless `sheet_charts`; spec | `INSERTSPARKLINE(..., "winloss")` |
+| 4.9 | Table totals row with its aggregate per column, calculated columns (a formula filled to the column), banded rows, convert to range | headless `sheet_structured`; spec | `SETTABLETOTALS`, `TABLETORANGE` |
+| 4.10 | Multilevel sort (several keys, each a direction; by colour) and Advanced Filter (a criteria range) | headless `sheet_sortfind` | `SORTRANGE` with a stem of keys; `ADVANCEDFILTER` |
+| 4.11 | Validation: date, time, custom formula, pattern; input prompts and error styles | headless `sheet_validation` | `SETCELLVALIDATION` extended |
+| 4.12 | Slicers for a table column | spec | `ADDSLICER("Sales", "region")`, `SLICE("Sales", "region", "north")` |
+| 4.13 | Outlines: group rows/columns, show/hide detail, `data.subtotal` | headless; spec | `GROUPROWS(2, 9)`, `SUBTOTALS(...)` |
+| 4.14 | Consolidation across ranges/sheets | headless | `CONSOLIDATE` |
+
+### Stage 5: files
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 5.1 | TSV and delimiter detection, BOM and encodings on CSV import; CSV export of displayed values keeping the separator | headless `sheet_csv` | `IMPORTCSV`, `EXPORTCSV` already? extend |
+| 5.2 | JSON (rows of objects) and HTML table import; HTML export | headless | `IMPORTJSON`, `EXPORTHTML` |
+| 5.3 | XLSX read: cells, formulas (stored text), number formats, merges, names, sheets (a zip + XML reader in the app or an aether `contrib`) | headless on fixture files made by hand (not GridCraft's) | `OPENFILE("x.xlsx")` through documents |
+| 5.4 | XLSX write of the same, and round-trip tests | headless: write, read, equal | `SAVEAS("x.xlsx")` |
+| 5.5 | XLSX: styles, conditional formatting, validation, comments, tables, sparklines, charts (what we draw), pivots; preservation of parts we do not model (pass-through), with a report of what was dropped | headless per part | `FILEREPORT()` |
+| 5.6 | XLS (BIFF8) import of values and formulas; ODS import of cached values | headless on hand-made fixtures | |
+| 5.7 | Encrypted XLSX opening (Agile/Standard AES), with sae's password prompt | spec | |
+| 5.8 | PDF export and printing through sae/aether-ui (an ask: a print capability) | spec: a file appears | `EXPORTPDF()` |
+
+### Stage 6: analysis and graphics
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 6.1 | Chart kinds: column/bar clustered, stacked, 100%; line with markers, stacked line; area, stacked area; doughnut; scatter, scatter with lines, bubble | headless `sheet_charts` (the model); spec: drawn, pixels sampled | `INSERTCHART(range, kind)` already? extend |
+| 6.2 | Chart titles, axis titles, legend position, data labels, gridlines, switch row/column, Select Data | headless; spec | `SETCHARTOPTION(id, "title", ...)` |
+| 6.3 | Trendlines: linear, exponential, logarithmic, polynomial, power, moving average; equation and R² | headless (the fit against known data); spec: drawn | `ADDTRENDLINE(id, series, "linear")` |
+| 6.4 | Radar, histogram, waterfall, funnel, treemap, sunburst, box-and-whisker, stock, combo (secondary axis) | per kind, a step each | |
+| 6.5 | Pivots: compact/outline/tabular layouts, subtotals and grand totals, sorting and filtering, date grouping, show-values-as, calculated fields, collapse/expand | headless `sheet_pivot` | `PIVOTCONFIG` extended |
+| 6.6 | PivotCharts bound to a pivot | headless; spec | |
+| 6.7 | Scenario Manager (named sets of input values, a summary) | headless | `ADDSCENARIO`, `SHOWSCENARIO`, `SCENARIOSUMMARY` |
+| 6.8 | Solver: simplex LP first (objective, changing cells, constraints, Answer report); nonlinear and evolutionary later | headless on textbook problems | `SOLVE(...)` from a REXX program: the natural way to describe a model |
+| 6.9 | Data Analysis tools, one or two a step: descriptive statistics, correlation, covariance, histogram, moving average, exponential smoothing, rank and percentile, regression, t-tests, F-test, ANOVA | headless, each writing values | `ANALYZE("regression", ...)` |
+| 6.10 | Forecast Sheet (`FORECAST.ETS` family, then the sheet and chart) | headless | |
+| 6.11 | Pictures: floating and in cells (aether-ui image widgets), hyperlinks, text boxes, basic shapes | spec | `INSERTPICTURE`, `SETHYPERLINK` |
+| 6.12 | Threaded comments: replies, resolve, a comments pane; notes converted to comments | headless `sheet_notes`; spec | `ADDCOMMENT`, `REPLYCOMMENT`, `RESOLVECOMMENT` |
+| 6.13 | Protection: locked cells, sheet and workbook protection, Allow Edit Ranges (a password hash kept, as a file setting) | headless: a locked cell refuses `cell.set` with protection on | `PROTECTSHEET`, `LOCKCELLS` |
+| 6.14 | Views: gridlines, headings, formula bar toggles; zoom; Page Layout and page breaks (with 5.8) | spec | `SETVIEW("gridlines", 0)` |
+
+### Stage 7: automation and hardening
+
+| # | Step | Tests prove | REXX |
+|---|---|---|---|
+| 7.1 | **Record a session as a REXX script** (GridCraft's Automate, in REXX): every command run from the ui becomes a line of a script (its control function with its arguments), editable, replayable, savable with the workbook | headless: a journal of commands renders to REXX that, run, reproduces the workbook; spec: Record, act, Stop, Replay | this is the edge: the recording IS a REXX program |
+| 7.2 | Replay with parameters (a recorded script with `ARG`), and scheduled/triggered scripts (on open, on change of a range) | headless; spec | `ONCHANGE("A1:A9", script)` |
+| 7.3 | A `sae-bus` CLI that covers what GridCraft's CLI does: evaluate a formula, inspect a workbook, convert files, run a command, list commands and functions | a shell test per subcommand | |
+| 7.4 | MCP parity: every command reachable (`spreadsheet_call` already), plus workbook inspection tools (sheets, names, tables, charts), and a headless mode (the server starts the app itself, no window) | `mcp` tests | |
+| 7.5 | A UI-driving channel: keys, pointer, screenshots over the bus (sae-driver's for tests, opened to the bus with a grant) | spec | |
+| 7.6 | Malformed-input tests: every command with missing, wrong-typed and huge parameters refuses cleanly; a fuzz of random command sequences leaves the workbook consistent (undo all the way back equals the start) | headless `sheet_fuzz`, seeded | `RUN_PROGRAM` of a random script |
+| 7.7 | Headless-vs-interactive: the same workload through the bus and through the ui compared workbook to workbook | spec | |
+| 7.8 | Large-file limits: a sheet of 100,000 cells opens, recalculates and scrolls within stated times; limits refused with a message | headless timings asserted | |
+| 7.9 | Localization: interface strings in a table; Spanish formula aliases, decimal comma and `;` arguments in the editor (stored canonical) | headless `sheet_language`; spec | `SETLOCALE("es")` |
+| 7.10 | Accessibility: the grid and panels readable by a screen reader (aether-ui asks); keyboard-only operation of every panel | spec via the driver | |
+

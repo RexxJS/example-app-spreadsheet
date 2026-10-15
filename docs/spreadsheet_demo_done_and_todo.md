@@ -1225,12 +1225,13 @@ Started 2026-10-15 (Paul: "track spraedsheet toward goals of gridcraft in
 many baby steps with tests: REXX of as much as possible too cos we do
 that and gridcraft does not"). The yardstick is
 `docs/gridcraft_feature_reference.md`, a summary taken on trust (never
-GridCraft's repository: a different licence; `AGENTS.md`). The tracker is
-`docs/gridcraft_parity.md`: where this app stands against each section of
-the reference, and about ninety steps in the reference's own kickoff
-order, each one commit with its headless test and spec `it`, each adding
-its control function so scripts, the bus and the MCP server reach it.
-Steps land there; this list stays the record of what came before.
+GridCraft's repository: a different licence; `AGENTS.md`). `docs/gridcraft_parity.md` says where this app stands against each
+section of the reference; `TODO.md` at the root lists the steps, about
+ninety in the reference's own kickoff order plus the look above the grid
+(a menu bar, a toolbar, panels on demand), each one commit with its
+headless test and spec `it`, each adding its control function so
+scripts, the bus and the MCP server reach it. Steps land there; this
+list stays the record of what came before.
 
 The lists below are where these came from, with what has landed struck
 through.
