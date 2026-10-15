@@ -17,13 +17,13 @@ Start the app with its control bus on:
 Then add the server to the client. For Claude Code:
 
 ```bash
-claude mcp add spreadsheet -- node /path/to/example-app-spreadsheet/mcp/spreadsheet-mcp.js
+claude mcp add spreadsheet -- node /path/to/spraedsheet/mcp/spreadsheet-mcp.js
 ```
 
 Or in a client's JSON configuration:
 
 ```json
-{ "mcpServers": { "spreadsheet": { "command": "node", "args": ["/path/to/example-app-spreadsheet/mcp/spreadsheet-mcp.js"] } } }
+{ "mcpServers": { "spreadsheet": { "command": "node", "args": ["/path/to/spraedsheet/mcp/spreadsheet-mcp.js"] } } }
 ```
 
 `SAE_BUS` names another `sae-bus` (the default is `../sae/target/sae-bus`),
