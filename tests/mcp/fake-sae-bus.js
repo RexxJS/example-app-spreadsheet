@@ -47,12 +47,27 @@ function batch(json) {
 }
 
 const BATCH = /^BATCH_EXECUTE\(BASE64_DECODE\('([A-Za-z0-9+/=]*)'\), 1\)$/;
+const PROGRAM = /^RUN_PROGRAM\(BASE64_DECODE\('([A-Za-z0-9+/=]*)'\), "json"\)$/;
+
+// RUN_PROGRAM(BASE64_DECODE('<json string, base64>'), "json"): the program's
+// lines counted, its SAY lines said back, RESULT from a `LET RESULT =` line;
+// a program with BOOM in it fails, as one calling an unknown routine does.
+function program(json) {
+  const text = JSON.parse(json);
+  if (text.includes('BOOM')) return refuse("Subroutine 'BOOM' not found (nothing it did was kept)");
+  const lines = text.split('\n').filter((l) => l.trim() !== '');
+  const said = lines.filter((l) => l.trim().startsWith('SAY ')).map((l) => l.trim().slice(4).replace(/^"|"$/g, ''));
+  const m = /LET RESULT = (.*)/.exec(text);
+  answer({ said: stem(said), result: m ? m[1].trim() : '' });
+}
 
 if (process.env.FAKE_BUS_NO_APP) {
   process.stderr.write('sae-bus: no courier file at /nonexistent/.control-bus\n');
   process.exit(1);
 } else if (process.env.FAKE_BUS_GARBLED) {
   process.stdout.write('not json\n');
+} else if (PROGRAM.test(command)) {
+  program(Buffer.from(PROGRAM.exec(command)[1], 'base64').toString('latin1'));
 } else if (BATCH.test(command)) {
   // As the app's BASE64_DECODE (atob): the bytes as Latin-1.
   batch(Buffer.from(BATCH.exec(command)[1], 'base64').toString('latin1'));

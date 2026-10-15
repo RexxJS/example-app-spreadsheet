@@ -62,35 +62,67 @@ test('a protocol version it does not know is answered with the newest it does', 
 
 const names = (r) => r.result.tools.map((t) => t.name);
 
-test('json, the default: the four tools that take JSON, and no REXX to write', async () => {
+test('json, the default: the four tools that take JSON, a whole program, and no REXX command to escape', async () => {
   const { replies } = await talk([INIT, LIST]);
-  assert.deepEqual(names(replies[1]), ['spreadsheet_write_cells', 'spreadsheet_call', 'spreadsheet_read_range', 'spreadsheet_list_commands']);
+  assert.deepEqual(names(replies[1]), ['spreadsheet_write_cells', 'spreadsheet_call', 'spreadsheet_run_program', 'spreadsheet_read_range', 'spreadsheet_list_commands']);
   for (const t of replies[1].result.tools) {
     assert.equal(t.inputSchema.type, 'object', t.name);
     assert.match(t.description, /one step of its undo/, t.name);
     assert.match(t.description, /not told when the person edits/, t.name);
   }
-  assert.match(replies[1].result.tools[3].description, /Every function spreadsheet_call may call/);
+  assert.match(replies[1].result.tools[4].description, /Every function spreadsheet_call or a program may call/);
 });
 
 test('--tools=rexx: spreadsheet_run, with REXX\'s escaping said, and the two that read', async () => {
   const { replies } = await talk([INIT, LIST], {}, REXX);
-  assert.deepEqual(names(replies[1]), ['spreadsheet_run', 'spreadsheet_read_range', 'spreadsheet_list_commands']);
+  assert.deepEqual(names(replies[1]), ['spreadsheet_run', 'spreadsheet_run_program', 'spreadsheet_read_range', 'spreadsheet_list_commands']);
   assert.match(replies[1].result.tools[0].description, /a quote inside one is written twice/);
-  assert.match(replies[1].result.tools[2].description, /Every function spreadsheet_run may call/);
+  assert.match(replies[1].result.tools[3].description, /Every function spreadsheet_run or a program may call/);
 });
 
-test('--tools=all, or SPREADSHEET_MCP_TOOLS=all: all five', async () => {
+test('--tools=all, or SPREADSHEET_MCP_TOOLS=all: all six', async () => {
   const flag = await talk([INIT, LIST], {}, ['--tools=all']);
   const env = await talk([INIT, LIST], { SPREADSHEET_MCP_TOOLS: 'ALL' });
   for (const { replies } of [flag, env]) {
-    assert.deepEqual(names(replies[1]), ['spreadsheet_write_cells', 'spreadsheet_call', 'spreadsheet_read_range', 'spreadsheet_list_commands', 'spreadsheet_run']);
+    assert.deepEqual(names(replies[1]), ['spreadsheet_write_cells', 'spreadsheet_call', 'spreadsheet_run_program', 'spreadsheet_read_range', 'spreadsheet_list_commands', 'spreadsheet_run']);
   }
 });
 
 test('the flag wins over the environment', async () => {
   const { replies } = await talk([INIT, LIST], { SPREADSHEET_MCP_TOOLS: 'all' }, REXX);
-  assert.equal(names(replies[1]).length, 3);
+  assert.equal(names(replies[1]).length, 4);
+});
+
+// ---- spreadsheet_run_program
+
+const carriedProgram = (command) => JSON.parse(Buffer.from(/^RUN_PROGRAM\(BASE64_DECODE\('([A-Za-z0-9+/=]*)'\), "json"\)$/.exec(command)[1], 'base64').toString('latin1'));
+
+test('spreadsheet_run_program: the program carried whole as base64 JSON to RUN_PROGRAM; its SAY lines and RESULT back', async () => {
+  const program = 'DO i = 1 TO 3\n  LET r = SETCELL("A" || i, i)\nEND\nSAY "done"\nSAY "path C:\\temp ""q"" ünï 😀"\nLET RESULT = 6';
+  const { replies, calls } = await talk([INIT, call(2, 'spreadsheet_run_program', { program })]);
+  assert.equal(calls.length, 1);
+  assert.equal(carriedProgram(calls[0][1]), program, 'as it was, backslashes, quotes and all');
+  assert.equal(replies[1].result.isError, false);
+  assert.deepEqual(replies[1].result.structuredContent, { said: ['done', 'path C:\\temp ""q"" ünï 😀'], result: '6' });
+  assert.equal(replies[1].result.content[0].text, 'done\npath C:\\temp ""q"" ünï 😀\nRESULT: 6');
+});
+
+test('spreadsheet_run_program: one that says nothing and sets no RESULT says so', async () => {
+  const { replies } = await talk([INIT, call(2, 'spreadsheet_run_program', { program: 'LET r = SETCELL("A1", 1)' })]);
+  assert.equal(replies[1].result.content[0].text, '(ran; said nothing, no RESULT)');
+  assert.deepEqual(replies[1].result.structuredContent, { said: [], result: '' });
+});
+
+test('spreadsheet_run_program: a failing program is a tool error with the app\'s reason', async () => {
+  const { replies } = await talk([INIT, call(2, 'spreadsheet_run_program', { program: 'LET r = SETCELL("A1", 1)\nCALL BOOM' })]);
+  assert.equal(replies[1].result.isError, true);
+  assert.equal(replies[1].result.content[0].text, "Subroutine 'BOOM' not found (nothing it did was kept)");
+});
+
+test('spreadsheet_run_program: an empty program is refused before the bus', async () => {
+  const { replies, calls } = await talk([INIT, call(2, 'spreadsheet_run_program', { program: '  \n ' })]);
+  assert.equal(replies[1].result.isError, true);
+  assert.deepEqual(calls, []);
 });
 
 test('a setting it does not know: said on stderr, exit 2, before any client is answered', () => {

@@ -55,6 +55,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SETCELLS: fn([RANGE, p("values", "stem")], "Sets a range's cells, row by row, from a stem of values", "\"OK\""),
   BATCH_SET_CELLS: fn([p("updates", "stem", "of {address, value}")], "Sets each cell it can; one that fails does not stop the rest", "JSON {total, success, errors, errorDetails}"),
   CELL: fn([p("ref", "cell", "\"A1\" or \"Costs!A1\"")], "Reads a cell, on another sheet too", "its value"),
+  RUN_PROGRAM: fn([p("program", "text", "a whole REXX program: lines, loops, routines"), opt("encoding", "text", "\"json\": the program is a JSON string")],
+    "Runs a whole program with these same functions, as one step of undo, taken back whole if it fails", "{said: a stem of its SAY lines, result: its RESULT}"),
   CLEAR: fn([], "Empties the active sheet", "\"OK\""),
   // ---- looks, comments, editors
   SETFORMAT: fn([CELL, p("format", "text", "e.g. \"currency:USD\", \"percent:0.0%\", \"number:0.00\", \"bold;color:red;align:center\"")],

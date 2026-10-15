@@ -34,6 +34,7 @@ takes.LISTCOMMANDS = own.LISTCOMMANDS.length;
 takes.BATCH_EXECUTE = own.BATCH_EXECUTE.length;
 takes.SETCELL = 2;   // script.ts's (cell, input)
 takes.GETCELL = 1;
+takes.RUN_PROGRAM = 2;   // script.ts's (source, encoding)
 eq("each one's parameters are as many as it takes", Object.keys(takes).filter((n) => DESCRIBED[n] && fixed(n) !== takes[n]).map((n) => `${n}: ${fixed(n)} described, takes ${takes[n]}`), []);
 eq("only SETCELLVALIDATION takes the rest of its arguments", Object.keys(DESCRIBED).filter((n) => DESCRIBED[n].params.some((x) => x.variadic)), ["SETCELLVALIDATION"]);
 const TYPES = ["cell", "range", "row", "column", "text", "number", "flag", "json", "stem", "query"];

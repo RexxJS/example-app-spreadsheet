@@ -94,6 +94,22 @@ main() {
             spec.assert_true(g.wait_cell("B", 2, "Lunch \"client\" meeting"), "the row gone with its title")
             spec.assert_true(g.wait_cell("C", 5, "75.5"), "and the total back in its place")
         }
+        spec.it("runs a whole REXX program next to the data: a loop over the expenses, its SAY lines and RESULT back") callback {
+            out = ok_("spreadsheet_run_program", "@tests/mcp/args/program.json", "program")
+            spec.assert_contains(out, "\"said\":[\"total 75.5 over 20: 2\"]", "what it said")
+            spec.assert_contains(out, "\"result\":75.5", "its RESULT")
+            spec.assert_true(g.wait_cell("D", 2, "53.0%"), "a share worked out and formatted, from the program")
+            spec.assert_true(g.wait_cell("D", 4, "15.9%"), "the last share")
+            ok_("spreadsheet_call", "{\"function\": \"UNDO\"}", "undo")
+            spec.assert_true(g.wait_cell("D", 2, ""), "one Undo takes the whole program back")
+        }
+        spec.it("a program that fails: a tool error with the app's reason, and nothing kept") callback {
+            out, status = mcp_("spreadsheet_run_program", "@tests/mcp/args/program-fails.json")
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "\"isError\":true", "a tool error")
+            spec.assert_contains(out, "Subroutine 'NO_SUCH_ROUTINE' not found (nothing it did was kept)", "the reason, and that it was taken back")
+            spec.assert_true(g.wait_cell("E", 1, ""), "E1 as it was")
+        }
         spec.it("calls that fail part way: a tool error saying which, and nothing kept") callback {
             out, status = mcp_("spreadsheet_call", "@tests/mcp/args/half-fails.json")
             spec.assert_eq(status, 0, "the client exits 0")

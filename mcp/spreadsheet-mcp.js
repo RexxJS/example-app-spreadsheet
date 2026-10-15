@@ -146,6 +146,27 @@ const RUN = {
   },
 };
 
+const RUN_PROGRAM = {
+  name: 'spreadsheet_run_program',
+  title: 'Run a REXX program',
+  description:
+    'Run a whole REXX program in the spreadsheet, as one step of undo, all or nothing: lines, DO i = 1 TO n and DO WHILE cond loops ' +
+    '(no DO FOREVER or LEAVE: end a loop by its condition), IF/THEN/ELSE, SELECT, your own routines (CALL name / name: ... RETURN), and SAY. It calls the ' +
+    'same functions as spreadsheet_call, called as functions (not with CALL): LET r = SETCELL("A" || i, i * 10), v = GETCELL("A1"), ' +
+    'LET r = SORTRANGE("A1:C9", "C", 0); spreadsheet_list_commands lists them. Cell names read the sheet (A1 + B1). Set RESULT to give a ' +
+    'value back; what it SAYs comes back too. The program is sent as it is, so nothing in it needs escaping on the way; inside it, REXX rules ' +
+    'hold: a quote in a string is written twice, and \\n, \\t and \\r in a string are a new line, a tab and a return (so put text such as ' +
+    'C:\\temp into cells with spreadsheet_write_cells, not in a program). It runs in the app, next to the data: loop over hundreds of cells in one call ' +
+    'rather than one call a cell. It is stopped if one stretch of work runs past 5 s, or the whole past 10 s, and then taken back whole. ' +
+    LIMITS,
+  inputSchema: {
+    type: 'object',
+    properties: { program: { type: 'string', description: 'The REXX program, lines separated by new lines' } },
+    required: ['program'],
+    additionalProperties: false,
+  },
+};
+
 const READ_RANGE = {
   name: 'spreadsheet_read_range',
   title: 'Read a range',
@@ -175,9 +196,9 @@ const listCommands = (via) => ({
 });
 
 function toolsFor(surface) {
-  if (surface === 'rexx') return [RUN, READ_RANGE, listCommands('spreadsheet_run')];
-  if (surface === 'all') return [WRITE_CELLS, CALL, READ_RANGE, listCommands('spreadsheet_call (or spreadsheet_run)'), RUN];
-  return [WRITE_CELLS, CALL, READ_RANGE, listCommands('spreadsheet_call')];
+  if (surface === 'rexx') return [RUN, RUN_PROGRAM, READ_RANGE, listCommands('spreadsheet_run or a program')];
+  if (surface === 'all') return [WRITE_CELLS, CALL, RUN_PROGRAM, READ_RANGE, listCommands('spreadsheet_call, a program, or spreadsheet_run'), RUN];
+  return [WRITE_CELLS, CALL, RUN_PROGRAM, READ_RANGE, listCommands('spreadsheet_call or a program')];
 }
 
 // --tools=X, or SPREADSHEET_MCP_TOOLS; json when neither.
@@ -388,8 +409,18 @@ async function batch(calls) {
 // the JSON is first made ASCII (\uXXXX for the rest, which JSON.parse in
 // the app turns back).
 function batchCommand(calls) {
-  const ascii = JSON.stringify(calls).replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
-  return "BATCH_EXECUTE(BASE64_DECODE('" + Buffer.from(ascii, 'ascii').toString('base64') + "'), 1)";
+  return "BATCH_EXECUTE(" + carried(calls) + ", 1)";
+}
+
+// A whole program, the same way: RUN_PROGRAM(<its JSON in base64>, "json").
+function programCommand(text) {
+  return 'RUN_PROGRAM(' + carried(text) + ', "json")';
+}
+
+// A value as the app's BASE64_DECODE gives it back: ASCII JSON, in base64.
+function carried(value) {
+  const ascii = JSON.stringify(value).replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+  return "BASE64_DECODE('" + Buffer.from(ascii, 'ascii').toString('base64') + "')";
 }
 
 // ---- answers ---------------------------------------------------------------
@@ -439,6 +470,17 @@ async function callTool(name, args, surface = 'all') {
       return ok(result === null || result === '' ? '(done; no result)' : result, { result });
     }
     return ok(b.results, { results: b.results });
+  }
+  if (name === 'spreadsheet_run_program') {
+    if (typeof args.program !== 'string' || args.program.trim() === '') return failed('spreadsheet_run_program needs a program: lines of REXX');
+    const a = await bus(programCommand(args.program));
+    if (!a.ok) return failed(a.error);
+    const got = plain(a.result) || {};
+    const said = Array.isArray(got.said) ? got.said.map(String) : [];
+    const result = got.result === undefined || got.result === null ? '' : got.result;
+    const lines = said.slice();
+    if (result !== '') lines.push('RESULT: ' + text(result));
+    return ok(lines.length ? lines.join('\n') : '(ran; said nothing, no RESULT)', { said, result });
   }
   if (name === 'spreadsheet_write_cells') {
     const m = REF.exec(String(args.cell || '').trim());
@@ -568,4 +610,4 @@ if (require.main === module) {
   lines.on('close', () => queue.then(() => process.exit(0)));
 }
 
-module.exports = { toolsFor, surfaceOf, rexxString, batchCommand, unstem, plain, parseRange, asRows, checked, callTool, handle };
+module.exports = { toolsFor, surfaceOf, rexxString, batchCommand, programCommand, unstem, plain, parseRange, asRows, checked, callTool, handle };

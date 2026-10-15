@@ -64,10 +64,30 @@ function interpreterFor(host: ScriptHost, say: (line: string) => void): () => an
       return String(input ?? "");   // the app's: what was set
     },
     GETCELL: (cell: string) => host.get(String(cell).toUpperCase()),
+    // A whole program (lines, loops, routines), run on an interpreter of its
+    // own with these same functions: what it SAYs, and its RESULT. Inside a
+    // control-bus request it is the request, so one step of undo, and taken
+    // back whole if it fails or sae stops it. `encoding` "json": `source` is
+    // a JSON string, as the MCP server sends a program (so nothing in it is
+    // read as REXX on the way in).
+    RUN_PROGRAM: async (source: unknown, encoding?: unknown) => {
+      const text = String(encoding ?? "").toLowerCase() === "json" ? JSON.parse(String(source)) : String(source ?? "");
+      if (typeof text !== "string") throw new Error("RUN_PROGRAM: the program must be text");
+      const said: string[] = [];
+      const one = interpreter((line) => {
+        said.push(line);
+        say(line);
+      });
+      await one.run(parse(text));
+      const result = one.getVariable("RESULT");
+      return { said: Object.fromEntries([[0, said.length], ...said.map((l, i) => [i + 1, l])]), result: result ?? "" };
+    },
   };
   const functions = { ...sheetFunctions, ...controlFunctions((id, params) => host.execute(id, params), sheetFunctions) };
-  const interpreter = () => {
-    const it = new RexxInterpreter(null, { output: (line: unknown) => say(String(line)) });
+  // `out`: where its SAY lines go (the script's own `say`, unless a
+  // program run with RUN_PROGRAM collects them).
+  const interpreter = (out: (line: string) => void = say) => {
+    const it = new RexxInterpreter(null, { output: (line: unknown) => out(String(line)) });
     it.variableResolver = (name: string) => (addrOf(name) ? host.get(keyOf(addrOf(name)!)) : undefined);
     it.addressTargets.set("sheet", {
       handler: async (line: string) => {

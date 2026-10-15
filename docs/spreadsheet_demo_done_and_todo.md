@@ -1188,13 +1188,34 @@ What it needs:
    values (quotes, backslashes, new lines, emoji) round-trip whole through
    the app.
 
+4. **A whole program** (done, 2026-10-15). `RUN_PROGRAM(program,
+   [encoding])` in `script.ts` runs a whole REXX program (lines, loops,
+   conditions, the program's own routines, SAY) on an interpreter of its
+   own with the same functions, and gives `{said, result}`; inside a
+   control-bus request it is the request, so one step of undo and taken
+   back whole when it fails. `spreadsheet_run_program` offers it on every
+   `--tools` setting, the program carried as base64 JSON like the calls.
+   This is what makes REXX worth having beside the JSON tools: a loop
+   over hundreds of cells is one call, next to the data, in the page's
+   sandbox (the app's functions and nothing else; no files, shell,
+   network or REQUIRE: probed). sae now answers a request its 5 s limit
+   stops and tells the page (sae 38c444e, `bus.serve(fn, stopped)`), and
+   the app takes such a request back whole (`Commands.stopped`), so undo
+   stays one step a request after it; before, the undo group stayed open
+   for good. Found on the way, RexxJS's `TODO.md`: `CALL` cannot reach a
+   host function, `DO FOREVER` and `LEAVE` are missing, and a backslash
+   before `n`, `t` or `r` in a string cannot be written.
+
 Limits to say in the tools' descriptions, not to fix for this:
 
 - Request and reply only: the AI is not told when the person edits the
   sheet. Messages pushed to a client are sae's option (b), later
   (sae's `docs/control-bus.md`).
-- One command at a time, each with a 10 s deadline: a long script needs
-  care, or a job of its own.
+- One command at a time: sae stops one stretch of work past 5 s, the bus
+  answers for a request still running at 10 s, and the app takes either
+  back whole. A program that awaits the app between short stretches can
+  run to the 10 s; one long stretch cannot. A total budget per request
+  of the app's own is not built.
 - One machine: the bus beyond the local machine is designed in sae's
   `docs/control-bus.md`, not built.
 
