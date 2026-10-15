@@ -96,7 +96,7 @@ function lifted(fn: Fn, args: readonly Arg[], over: ReadonlySet<number>): Result
 
 // The evaluator's own forms count too (IF; ROW and COLUMN read references;
 // OFFSET and INDIRECT make them).
-export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS"].sort();
+export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS", "INFO"].sort();
 
 // --- reading arguments ---
 
@@ -388,6 +388,10 @@ const truths = (name: string, args: readonly Arg[]): boolean[] => {
 };
 def("AND", 1, Infinity, (args) => truths("AND", args).every(Boolean));
 def("OR", 1, Infinity, (args) => truths("OR", args).some(Boolean));
+// XOR: TRUE when an odd number of its operands are.
+def("XOR", 1, Infinity, (args) => truths("XOR", args).filter(Boolean).length % 2 === 1);
+def("TRUE", 0, 0, () => true);
+def("FALSE", 0, 0, () => false);
 def("NOT", 1, 1, (args) => {
   const v = scalar(val(args, 0)), t = typeof v === "string" ? truthText(v) : null;
   return t !== null ? !t : num(args, 0) === 0;
@@ -400,6 +404,39 @@ def("ISERROR", 1, 1, (args) => val(args, 0) instanceof CellError);
 def("ISNUMBER", 1, 1, (args) => typeof val(args, 0) === "number");
 def("ISTEXT", 1, 1, (args) => typeof val(args, 0) === "string");
 def("ISBLANK", 1, 1, (args) => val(args, 0) === null);
+// The rest of the IS family: an error other than #N/A (ISERR), #N/A
+// (ISNA), TRUE or FALSE (ISLOGICAL), anything but text (ISNONTEXT: an
+// empty cell is not text); ISEVEN and ISODD of the whole part of a number.
+def("ISERR", 1, 1, (args) => { const v = val(args, 0); return v instanceof CellError && v.code !== "#N/A"; });
+def("ISNA", 1, 1, (args) => { const v = val(args, 0); return v instanceof CellError && v.code === "#N/A"; });
+def("ISLOGICAL", 1, 1, (args) => typeof val(args, 0) === "boolean");
+def("ISNONTEXT", 1, 1, (args) => typeof val(args, 0) !== "string");
+def("ISEVEN", 1, 1, (args) => Math.trunc(num(args, 0)) % 2 === 0);
+def("ISODD", 1, 1, (args) => Math.trunc(num(args, 0)) % 2 !== 0);
+// N(x): a number as itself, TRUE 1, FALSE and text 0, an error itself;
+// T(x): text as itself, anything else "".
+def("N", 1, 1, (args) => {
+  const v = scalar(val(args, 0));
+  return typeof v === "number" ? v : v === true ? 1 : 0;
+});
+def("T", 1, 1, (args) => { const v = scalar(val(args, 0)); return typeof v === "string" ? v : ""; });
+// TYPE(x): 1 a number, 2 text, 4 TRUE or FALSE, 16 an error, 64 an array;
+// an empty cell counts as a number.
+def("TYPE", 1, 1, (args) => {
+  if (args[0].values.length > 1) return 64;
+  const v = val(args, 0);
+  return v instanceof CellError ? 16 : typeof v === "string" ? 2 : typeof v === "boolean" ? 4 : 1;
+});
+// ERROR.TYPE(x): Excel's number for the error, #N/A for a value that is
+// not one. #CYCLE! and #ERROR! (a formula that does not parse) are this
+// app's: numbered past Excel's.
+const ERROR_TYPES: Readonly<Record<string, number>> = {
+  "#DIV/0!": 2, "#VALUE!": 3, "#REF!": 4, "#NAME?": 5, "#NUM!": 6, "#N/A": 7, "#SPILL!": 9, "#CALC!": 14, "#CYCLE!": 101, "#ERROR!": 102,
+};
+def("ERROR.TYPE", 1, 1, (args) => {
+  const v = val(args, 0);
+  return v instanceof CellError ? ERROR_TYPES[v.code] ?? fail("#N/A", `${v.code} has no number`) : fail("#N/A", "ERROR.TYPE of a value that is not an error");
+});
 def("CHOOSE", 2, Infinity, (args) => {
   const i = Math.trunc(num(args, 0));
   return i >= 1 && i < args.length ? val(args, i) : fail("#VALUE!", `CHOOSE has no choice ${i}`);

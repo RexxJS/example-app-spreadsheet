@@ -105,6 +105,9 @@ eq("a sheet moved, the numbers follow", ["I1", "I2", "I3"].map((k) => on("Data",
 await cmds.run("sheet.activate name=Costs");
 await cmds.run('cell.set cell=A1 input="=SUM(QTY)*2"');
 eq("the formula retyped, FORMULATEXT follows", on("Data", "I5"), "=SUM(QTY)*2");
+await cmds.run("sheet.activate name=Data");
+await cmds.run('cell.set cell=I7 input="=INFO(""numfile"")"');
+eq("INFO(numfile) counts the workbook's sheets", on("Data", "I7"), "3");
 
 // expect: ok sheet.move to a place, or a way
 // expect: ok the active sheet stays active
@@ -132,3 +135,4 @@ eq("the formula retyped, FORMULATEXT follows", on("Data", "I5"), "=SUM(QTY)*2");
 // expect: ok SHEET, SHEETS and FORMULATEXT across the workbook
 // expect: ok a sheet moved, the numbers follow
 // expect: ok the formula retyped, FORMULATEXT follows
+// expect: ok INFO(numfile) counts the workbook's sheets

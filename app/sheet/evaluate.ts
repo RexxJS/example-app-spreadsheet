@@ -368,6 +368,15 @@ class Evaluator {
         if (args.length === 0) return this.#book().sheets.length;
         return this.#reference(args[0]) ? 1 : fail("#VALUE!", "SHEETS takes a reference");
       }
+      // INFO(type), what applies here: "numfile" is the sheets the workbook
+      // has, "recalc" how it calculates (always "Automatic", until 2.15).
+      case "INFO": {
+        takes(1);
+        const type = toText(this.#scalar(args[0])).trim().toLowerCase();
+        if (type === "numfile") return this.#book().sheets.length;
+        if (type === "recalc") return "Automatic";
+        return fail("#VALUE!", `INFO of '${type}': only numfile and recalc apply here`);
+      }
       case "IF": {
         // Only the branch taken is worked out: IF(B1=0, 0, A1/B1) is safe;
         // over an array, cell by cell.

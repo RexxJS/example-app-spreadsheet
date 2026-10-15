@@ -34,15 +34,16 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
 eq("the library", names().join(" "), [
   "ABS ACOS ACOSH ADDRESS AND ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEIF AVERAGEIFS CEILING CEILING.MATH",
   "CEILING.PRECISE CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS COMBIN CONCAT COS COSH COUNT COUNTA COUNTBLANK",
-  "COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DEGREES DROP EDATE EOMONTH EVEN EXACT EXP EXPAND FACT FILTER",
-  "FIND FLOOR FLOOR.MATH FLOOR.PRECISE FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT",
-  "INT IRR ISBLANK ISERROR ISFORMULA ISNUMBER ISREF ISTEXT LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX",
-  "MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH MROUND NA NETWORKDAYS NOT NOW NPER NPV ODD OFFSET OR",
-  "PERCENTILE PERMUT PI PMT POWER PRODUCT PROPER PV QUARTILE QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE",
-  "REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY",
-  "SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH TAKE TAN TANH TEXT TEXTAFTER",
-  "TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM TRUNC UNIQUE UPPER VALUE VAR VARP VLOOKUP",
-  "VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
+  "COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DEGREES DROP EDATE EOMONTH ERROR.TYPE EVEN EXACT EXP EXPAND",
+  "FACT FALSE FILTER FIND FLOOR FLOOR.MATH FLOOR.PRECISE FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS",
+  "INDEX INDIRECT INFO INT IRR ISBLANK ISERR ISERROR ISEVEN ISFORMULA ISLOGICAL ISNA ISNONTEXT ISNUMBER ISODD ISREF",
+  "ISTEXT LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH",
+  "MROUND N NA NETWORKDAYS NOT NOW NPER NPV ODD OFFSET OR PERCENTILE PERMUT PI PMT POWER PRODUCT PROPER PV QUARTILE",
+  "QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND",
+  "SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS",
+  "SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW",
+  "TRANSPOSE TRIM TRUE TRUNC TYPE UNIQUE UPPER VALUE VAR VARP VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS",
+  "XLOOKUP XMATCH XOR YEAR",
 ].join(" "));
 
 // Maths and statistics.
@@ -77,6 +78,18 @@ eq("IFERROR catches, and passes the rest", ev(`IFERROR(1/0, "none")`, `IFERROR(D
 eq("IS functions", ev("ISERROR(D2)", "ISERROR(A1)", "ISNUMBER(A1)", "ISNUMBER(D5)", "ISTEXT(B1)", "ISBLANK(B5)", "ISBLANK(B4)"), [
   "TRUE", "FALSE", "TRUE", "FALSE", "TRUE", "TRUE", "FALSE",
 ]);
+eq("the rest of the family: ISERR, ISNA, ISLOGICAL, ISNONTEXT, ISEVEN, ISODD", ev("ISERR(D2)", "ISERR(NA())", "ISERR(A1)", "ISNA(NA())", "ISNA(D2)", "ISLOGICAL(D1)", "ISLOGICAL(1)", "ISNONTEXT(A1)", "ISNONTEXT(B1)", "ISNONTEXT(B5)", "ISNONTEXT(D2)", "ISEVEN(A3)", "ISEVEN(-2.5)", "ISEVEN(0)", "ISODD(A1)", "ISODD(2.9)", "ISODD(-3)"), [
+  "TRUE", "FALSE", "FALSE", "TRUE", "FALSE", "TRUE", "FALSE", "TRUE", "FALSE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "TRUE", "FALSE", "TRUE",
+]);
+eq("ISEVEN of words", why("ISEVEN(B1)", "ISODD(D2)"), ["#VALUE! 'apples' is not a number", "#DIV/0! divide by zero"]);
+eq("N and T: a number's number, a text's text, else 0 or nothing", ev("N(A1)", "N(D1)", "N(FALSE)", "N(B1)", "N(B5)", "N(D5)", "T(B1)", "T(A1)", "T(D1)", "T(D5)", `LEN(T(B5))`), ["3", "1", "0", "0", "0", "0", "apples", "", "", "5", "0"]);
+eq("N of an error is the error", why("N(D2)", "T(D2)"), ["#DIV/0! divide by zero", "#DIV/0! divide by zero"]);
+eq("TYPE: number 1, text 2, logical 4, error 16, array 64", ev("TYPE(A1)", "TYPE(B1)", "TYPE(D1)", "TYPE(D2)", "TYPE(A1:A3)", "TYPE({1,2})", "TYPE(B5)", `TYPE("x")`), ["1", "2", "4", "16", "64", "64", "1", "2"]);
+eq("ERROR.TYPE: Excel's numbers, the app's own past them", ev("ERROR.TYPE(D2)", "ERROR.TYPE(NA())", "ERROR.TYPE(1/0)", "ERROR.TYPE(#REF!)", "ERROR.TYPE(#VALUE!)", "ERROR.TYPE(#NAME?)", "ERROR.TYPE(#NUM!)", "ERROR.TYPE(#CALC!)"), ["2", "7", "2", "4", "3", "5", "6", "14"]);
+eq("ERROR.TYPE of a value is #N/A", why("ERROR.TYPE(A1)", "ERROR.TYPE(B5)"), ["#N/A ERROR.TYPE of a value that is not an error", "#N/A ERROR.TYPE of a value that is not an error"]);
+eq("XOR: an odd number TRUE; TRUE() and FALSE() as calls", ev("XOR(TRUE, FALSE)", "XOR(TRUE, TRUE)", "XOR(1, 1, 1)", "XOR(0, 0)", "XOR(A1:A6)", "XOR(D1, 0)", "TRUE()", "FALSE()", "IF(TRUE(), 1, 2)", "NOT(FALSE())"), ["TRUE", "FALSE", "TRUE", "FALSE", "FALSE", "TRUE", "TRUE", "FALSE", "1", "TRUE"]);
+eq("XOR of no truths", why("XOR(B1:B2)", "XOR(D2)"), ["#VALUE! XOR found no TRUE or FALSE", "#DIV/0! divide by zero"]);
+eq("INFO, what applies: numfile and recalc", [...ev(`INFO("numfile")`, `INFO("recalc")`, `INFO("NumFile")`), ...why(`INFO("osversion")`, `INFO(1, 2)`)], ["1", "Automatic", "1", "#VALUE! INFO of 'osversion': only numfile and recalc apply here", "#VALUE! INFO takes 1 values"]);
 eq("CHOOSE", ev(`CHOOSE(2, "a", "b", "c")`, "CHOOSE(A2, C1, C2)"), ["b", "10"]);
 eq("CHOOSE out of range", why(`CHOOSE(4, "a", "b")`), ["#VALUE! CHOOSE has no choice 4"]);
 
@@ -242,6 +255,16 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok AND with nothing true or false to look at
 // expect: ok IFERROR catches, and passes the rest
 // expect: ok IS functions
+// expect: ok the rest of the family: ISERR, ISNA, ISLOGICAL, ISNONTEXT, ISEVEN, ISODD
+// expect: ok ISEVEN of words
+// expect: ok N and T: a number's number, a text's text, else 0 or nothing
+// expect: ok N of an error is the error
+// expect: ok TYPE: number 1, text 2, logical 4, error 16, array 64
+// expect: ok ERROR.TYPE: Excel's numbers, the app's own past them
+// expect: ok ERROR.TYPE of a value is #N/A
+// expect: ok XOR: an odd number TRUE; TRUE() and FALSE() as calls
+// expect: ok XOR of no truths
+// expect: ok INFO, what applies: numfile and recalc
 // expect: ok CHOOSE
 // expect: ok CHOOSE out of range
 // expect: ok case
