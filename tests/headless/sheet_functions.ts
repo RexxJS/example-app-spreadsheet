@@ -33,11 +33,11 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
 
 eq("the library", names().join(" "), [
   "ABS ADDRESS AND AVERAGE AVERAGEIF AVERAGEIFS CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS CONCAT COUNT COUNTA",
-  "COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FV",
-  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INT IRR ISBLANK ISERROR ISNUMBER ISTEXT LARGE LEFT LEN",
+  "COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FORMULATEXT FV",
+  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INT IRR ISBLANK ISERROR ISFORMULA ISNUMBER ISREF ISTEXT LARGE LEFT LEN",
   "LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OFFSET",
   "OR PERCENTILE PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE",
-  "SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT",
+  "SHEET SHEETS SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT",
   "TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM UNIQUE UPPER VALUE VAR VARP",
   "VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
 ].join(" "));
@@ -140,6 +140,28 @@ eq("INDIRECT's errors", why(`INDIRECT("hello")`, `INDIRECT("A101")`, `INDIRECT("
   const values = [`SUM(OFFSET(A1, 1, 0, 2, 1))`, `INDIRECT("C1") + A1`, `ROW(OFFSET(A1, 3, 0))`].map((src) => show(evaluate(parse(src), hearing)));
   eq("the Env hears the cells a run-time reference reads", [values, heard], [["5", "13", "4"], ["A2", "A3", "C1"]]);
 }
+{
+  // Asking about a reference: its cell's input and the workbook come from
+  // the Env (a sheet's: sheet.ts); without them a formula is in a book of
+  // one sheet, and no cell holds a formula.
+  const inputs = new Map([["A1", "3"], ["C1", "=A1+7"], ["COSTS!B2", "=SUM(A1:A3)"]]);
+  const told = { get: env.get, input: (k: string) => inputs.get(k) ?? "", book: () => ({ sheets: ["Data", "Prices", "Costs"], here: 1 }) };
+  const at = (src: string, cell: string | null = null) => {
+    const v = evaluate(parse(src), told, cell);
+    return v instanceof CellError ? `${v.code} ${v.why}` : show(v);
+  };
+  eq("FORMULATEXT and ISFORMULA: the cell's input, when it is a formula", [at("FORMULATEXT(C1)"), at("FORMULATEXT(C1:D2)"), at("FORMULATEXT(Costs!B2)"), at("ISFORMULA(C1)"), at("ISFORMULA(A1)"), at("ISFORMULA(Z9)")],
+    ["=A1+7", "=A1+7", "=SUM(A1:A3)", "TRUE", "FALSE", "FALSE"]);
+  eq("their errors", [at("FORMULATEXT(A1)"), at("FORMULATEXT(B9)"), at("FORMULATEXT(1)"), at("ISFORMULA(\"C1\")"), at("FORMULATEXT(A101)")],
+    ["#N/A A1 holds no formula", "#N/A B9 holds no formula", "#VALUE! FORMULATEXT takes a reference", "#VALUE! ISFORMULA takes a reference", "#REF! A101 is not on the sheet"]);
+  eq("ISREF: a reference, however made; not a value, nor what is off the sheet", [at("ISREF(A1)"), at("ISREF(A1:B2)"), at("ISREF(OFFSET(A1, 1, 0))"), at("ISREF(INDIRECT(\"B\" & 2))"), at("ISREF(1)"), at("ISREF(\"A1\")"), at("ISREF(SUM(A1))"), at("ISREF(A101)")],
+    ["TRUE", "TRUE", "TRUE", "TRUE", "FALSE", "FALSE", "FALSE", "FALSE"]);
+  eq("SHEET: this one, a reference's, or by name; SHEETS: how many", [at("SHEET()"), at("SHEET(A1)"), at("SHEET(Costs!B2)"), at("SHEET(\"costs\")"), at("SHEET(\"Data\")"), at("SHEETS()"), at("SHEETS(Costs!A1:B2)")],
+    ["2", "2", "3", "3", "1", "3", "1"]);
+  eq("SHEET's and SHEETS's errors", [at("SHEET(\"Nope\")"), at("SHEET(7)"), at("SHEETS(7)"), at("SHEET(A1, B1)")],
+    ["#N/A no sheet Nope", "#N/A 7 is not a sheet", "#VALUE! SHEETS takes a reference", "#VALUE! SHEET takes a reference, a name, or nothing"]);
+  eq("a formula on its own is in a book of one sheet, where no cell holds a formula", ev("SHEET()", "SHEETS()", "ISFORMULA(A1)", "SHEET(A1)"), ["1", "1", "FALSE", "1"]);
+}
 eq("INDEX by row and column, or along a list", ev("INDEX(F1:H4, 3, 2)", "INDEX(A1:A6, 6)", "INDEX(F1:H1, 3)"), ["pear", "9", "price"]);
 eq("INDEX outside", why("INDEX(F1:H4, 5, 1)"), ["#REF! INDEX 5, 1 is outside 4 x 3"]);
 eq("MATCH exact, ignoring case", ev(`MATCH("PEAR", G1:G4, 0)`, "MATCH(3, F1:F4, 0)"), ["3", "4"]);
@@ -207,6 +229,12 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok on another sheet, quoted or not
 // expect: ok INDIRECT's errors
 // expect: ok the Env hears the cells a run-time reference reads
+// expect: ok FORMULATEXT and ISFORMULA: the cell's input, when it is a formula
+// expect: ok their errors
+// expect: ok ISREF: a reference, however made; not a value, nor what is off the sheet
+// expect: ok SHEET: this one, a reference's, or by name; SHEETS: how many
+// expect: ok SHEET's and SHEETS's errors
+// expect: ok a formula on its own is in a book of one sheet, where no cell holds a formula
 // expect: ok INDEX by row and column, or along a list
 // expect: ok INDEX outside
 // expect: ok MATCH exact, ignoring case

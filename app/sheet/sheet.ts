@@ -105,6 +105,10 @@ export interface Context {
   // The workbook's names, for a name the sheet has none of its own for.
   named?(name: string): Named | null;
   formula?(name: string): string | null;
+  // Another sheet's cell's input ("" for none), and the workbook's sheet
+  // names as given, in tab order (a sheet alone is its own book).
+  input?(key: string): string;
+  sheets?(): readonly string[];
 }
 
 // A sheet on its own: no other sheet to read.
@@ -382,9 +386,19 @@ export class Sheet {
   }
 
   // What formulas see: the cells, and what a cell spills (A1#); `read`
-  // hears the cells a run-time reference came to.
+  // hears the cells a run-time reference came to; a cell's input and the
+  // workbook's sheets (FORMULATEXT, SHEET).
   #env(read?: (k: string) => void) {
-    return { get: (k: string) => this.value(k), spill: (k: string) => this.#spills.get(this.#local(k) ?? "") ?? null, read };
+    return {
+      get: (k: string) => this.value(k),
+      spill: (k: string) => this.#spills.get(this.#local(k) ?? "") ?? null,
+      read,
+      input: (k: string) => { const local = this.#local(k); return local === null ? this.#context.input?.(k) ?? "" : this.input(local); },
+      book: () => {
+        const sheets = this.#context.sheets?.() ?? [this.#context.name];
+        return { sheets, here: Math.max(0, sheets.findIndex((s) => s.toUpperCase() === this.#context.name)) };
+      },
+    };
   }
 
   // The set cells and everything downstream of them.

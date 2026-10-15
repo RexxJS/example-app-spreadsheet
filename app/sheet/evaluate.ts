@@ -12,7 +12,9 @@
 // reference the cell the formula is in (`at`); and OFFSET and INDIRECT,
 // which make a reference at run time (a Reference below), and tell the Env
 // the cells it comes to (`read`), since the formula's static reads cannot
-// name them.
+// name them; and FORMULATEXT, ISFORMULA, ISREF, SHEET and SHEETS, which
+// ask about a reference (its cell's input, the Env's `input`) or the
+// workbook (`book`).
 import { COLS, ROWS, addrOf, cellAddr, keyOf, range, span, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
 import { resolve } from "./structured.ts";
@@ -32,6 +34,10 @@ export interface Env {
   spill?(key: string): ArrayValue | null;
   // Told each cell a reference made at run time (OFFSET, INDIRECT) read.
   read?(key: string): void;
+  // A cell's input as typed ("" for none); the workbook's sheets, in tab
+  // order, and which this one is.
+  input?(key: string): string;
+  book?(): { readonly sheets: readonly string[]; readonly here: number };
 }
 
 // The forms that make a reference at run time: a formula calling one is
@@ -321,6 +327,46 @@ class Evaluator {
       case "OFFSET":
       case "INDIRECT":
         return this.#values(this.#reference(e)!, true);
+      // FORMULATEXT(ref): the formula in the reference's (first) cell as
+      // typed, #N/A when it holds none; ISFORMULA(ref): whether it holds
+      // one; ISREF(x): whether x is a reference at all.
+      case "FORMULATEXT":
+      case "ISFORMULA": {
+        takes(1);
+        const r = this.#reference(args[0]);
+        if (!r) return fail("#VALUE!", `${e.name} takes a reference`);
+        const input = this.#env.input?.(qualify(r.sheet, keyOf({ row: Math.min(r.a.row, r.b.row), col: Math.min(r.a.col, r.b.col) }))) ?? "";
+        const formula = input.startsWith("=");
+        if (e.name === "ISFORMULA") return formula;
+        return formula ? input : fail("#N/A", `${keyOf(r.a)} holds no formula`);
+      }
+      case "ISREF": {
+        takes(1);
+        try {
+          return this.#reference(args[0]) !== null;
+        } catch (err) {
+          if (err instanceof CellError) return false;
+          throw err;
+        }
+      }
+      // SHEET([x]): the number (from 1, in tab order) of the sheet the
+      // formula is on, or of the reference's sheet, or of the sheet named
+      // by the text; SHEETS([ref]): how many sheets the workbook has (a
+      // reference spans one).
+      case "SHEET": {
+        if (args.length > 1) return fail("#VALUE!", "SHEET takes a reference, a name, or nothing");
+        const book = this.#book();
+        if (args.length === 0) return book.here + 1;
+        const r = this.#reference(args[0]);
+        if (r) return r.sheet === null ? book.here + 1 : this.#sheetNumber(book.sheets, r.sheet);
+        const name = this.#scalar(args[0]);
+        return typeof name === "string" ? this.#sheetNumber(book.sheets, name) : fail("#N/A", `${toText(name)} is not a sheet`);
+      }
+      case "SHEETS": {
+        if (args.length > 1) return fail("#VALUE!", "SHEETS takes a reference, or nothing");
+        if (args.length === 0) return this.#book().sheets.length;
+        return this.#reference(args[0]) ? 1 : fail("#VALUE!", "SHEETS takes a reference");
+      }
       case "IF": {
         // Only the branch taken is worked out: IF(B1=0, 0, A1/B1) is safe;
         // over an array, cell by cell.
@@ -375,6 +421,17 @@ class Evaluator {
   #scalar(e: Expr): Value {
     const r = collapsed(this.result(e));
     return isArray(r) ? fail("#VALUE!", "an array where one value goes") : r;
+  }
+
+  // The workbook as the Env tells it: a sheet alone is a book of one.
+  #book(): { readonly sheets: readonly string[]; readonly here: number } {
+    return this.#env.book?.() ?? { sheets: [""], here: 0 };
+  }
+
+  // A sheet's number, from 1, by its name (any case); #N/A for none.
+  #sheetNumber(sheets: readonly string[], name: string): number {
+    const i = sheets.findIndex((s) => s.toUpperCase() === name.toUpperCase());
+    return i < 0 ? fail("#N/A", `no sheet ${name}`) : i + 1;
   }
 
   // The reference an expression is: a cell, a range, what a cell spills

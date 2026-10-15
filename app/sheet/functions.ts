@@ -96,7 +96,7 @@ function lifted(fn: Fn, args: readonly Arg[], over: ReadonlySet<number>): Result
 
 // The evaluator's own forms count too (IF; ROW and COLUMN read references;
 // OFFSET and INDIRECT make them).
-export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT"].sort();
+export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS"].sort();
 
 // --- reading arguments ---
 

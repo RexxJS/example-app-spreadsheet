@@ -255,6 +255,11 @@ export class Workbook {
         const b = this.#names.get(n);
         return b && "formula" in b ? b.formula : null;
       },
+      input: (key) => {
+        const { sheet, cell } = splitKey(key);
+        return this.page(sheet ?? "")?.sheet.input(cell) ?? "";
+      },
+      sheets: () => this.sheetNames(),
     };
     const changed = (key: string) => {
       let keys = this.#pending.get(upper());
@@ -337,12 +342,15 @@ export class Workbook {
     await this.#recalculate();
   }
 
-  // A sheet moved to `at` (0-based) among the others; what is active stays.
-  move(name: string, at: number): void {
+  // A sheet moved to `at` (0-based) among the others; what is active
+  // stays. Every sheet worked out again: a formula may ask a sheet's
+  // number (SHEET).
+  async move(name: string, at: number): Promise<void> {
     const from = this.#pages.findIndex((p) => p.name.toUpperCase() === name.toUpperCase());
     if (from < 0) return;
     const [page] = this.#pages.splice(from, 1);
     this.#pages.splice(Math.max(0, Math.min(at, this.#pages.length)), 0, page);
+    await this.#recalculate();
   }
 
   // One empty sheet, as a file opened starts; where undo stops.

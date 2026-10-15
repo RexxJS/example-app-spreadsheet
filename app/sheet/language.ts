@@ -55,6 +55,16 @@ export interface Env {
   // Told a cell a formula read that its `reads` do not name: one a
   // reference made at run time (OFFSET, INDIRECT) came to.
   read?(key: string): void;
+  // A cell's input as typed ("=A1+1", "42", "" for none), for FORMULATEXT
+  // and ISFORMULA; and the workbook's sheets, in tab order, with which
+  // this one is, for SHEET and SHEETS.
+  input?(key: string): string;
+  book?(): Book;
+}
+
+export interface Book {
+  readonly sheets: readonly string[];
+  readonly here: number;
 }
 
 export interface Offset {

@@ -92,6 +92,20 @@ await cmds.run("cell.set cell=H1 input=1");
 await cmds.run("cell.set cell=B2 input=21");
 eq("moved, it follows the cell it now comes to", [on("Data", "G1"), wb.page("Data")!.sheet.reads("G1")], ["21", ["B1", "H1", "B2"]]);
 
+// Asking about the workbook: sheets by number, a cell's formula as typed.
+await cmds.run('cell.set cell=I1 input="=SHEET()"');
+await cmds.run('cell.set cell=I2 input="=SHEET(Costs!A1)"');
+await cmds.run('cell.set cell=I3 input="=SHEET(""prices"")"');
+await cmds.run('cell.set cell=I4 input="=SHEETS()"');
+await cmds.run('cell.set cell=I5 input="=FORMULATEXT(Costs!A1)"');
+await cmds.run('cell.set cell=I6 input="=ISFORMULA(Costs!A1) & ISFORMULA(B1)"');
+eq("SHEET, SHEETS and FORMULATEXT across the workbook", ["I1", "I2", "I3", "I4", "I5", "I6"].map((k) => on("Data", k)), ["1", "3", "2", "3", "=SUM(QTY)", "TRUEFALSE"]);
+await cmds.run("sheet.move name=Costs to=1");
+eq("a sheet moved, the numbers follow", ["I1", "I2", "I3"].map((k) => on("Data", k)), ["2", "1", "3"]);
+await cmds.run("sheet.activate name=Costs");
+await cmds.run('cell.set cell=A1 input="=SUM(QTY)*2"');
+eq("the formula retyped, FORMULATEXT follows", on("Data", "I5"), "=SUM(QTY)*2");
+
 // expect: ok sheet.move to a place, or a way
 // expect: ok the active sheet stays active
 // expect: ok refusals: past either end, neither or both, no such sheet
@@ -115,3 +129,6 @@ eq("moved, it follows the cell it now comes to", [on("Data", "G1"), wb.page("Dat
 // expect: ok a change at the pointed-at cell shows
 // expect: ok OFFSET by a cell's value: linked to where it came to
 // expect: ok moved, it follows the cell it now comes to
+// expect: ok SHEET, SHEETS and FORMULATEXT across the workbook
+// expect: ok a sheet moved, the numbers follow
+// expect: ok the formula retyped, FORMULATEXT follows

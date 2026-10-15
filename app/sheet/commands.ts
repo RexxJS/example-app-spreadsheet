@@ -1558,7 +1558,7 @@ const SPECS: readonly Spec[] = [
       const at = p.to !== undefined ? countOf(p.to) - 1
         : /^left$/i.test(p.way!) ? from - 1 : /^right$/i.test(p.way!) ? from + 1 : refuse(`${p.way} is not left or right`);
       if (at < 0 || at > last) refuse(`${page.name} cannot move ${p.to !== undefined ? `to ${p.to}` : p.way}: there are ${last + 1} sheets`);
-      wb.move(page.name, at);
+      await wb.move(page.name, at);
       return changedBy(wb, [], `${page.name} is sheet ${at + 1} of ${last + 1}`);
     },
   },
