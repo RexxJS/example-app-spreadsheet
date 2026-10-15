@@ -216,6 +216,150 @@ def("SQRT", 1, 1, (args) => {
 });
 def("PI", 0, 0, () => Math.PI);
 
+// A result that must be a real number: NaN or infinite is #NUM!.
+const real = (n: number, what: string): number => (Number.isFinite(n) ? n : fail("#NUM!", what));
+// x / sig as a count of multiples, settled to 15 digits so 2.675 / 0.01 is
+// 267.5 and 0.3 / 0.1 is 3.
+const multiples = (x: number, sig: number): number => Number((x / sig).toPrecision(15));
+// Rounding to a multiple of `sig`, by `how` over the count of multiples.
+const toMultiple = (x: number, sig: number, how: (n: number) => number): number => (sig === 0 ? 0 : how(multiples(x, sig)) * sig);
+
+// CEILING(x, sig) and FLOOR(x, sig), the old ones: to a multiple of sig,
+// away from zero (CEILING) or toward it (FLOOR); x and sig of different
+// signs is #NUM!; FLOOR by 0 is #DIV/0!, CEILING by 0 is 0.
+def("CEILING", 2, 2, (args) => {
+  const x = num(args, 0), sig = num(args, 1);
+  if (x * sig < 0) return fail("#NUM!", "CEILING's number and significance differ in sign");
+  return toMultiple(x, sig, Math.ceil);
+});
+def("FLOOR", 2, 2, (args) => {
+  const x = num(args, 0), sig = num(args, 1);
+  if (sig === 0) return fail("#DIV/0!", "FLOOR by a significance of 0");
+  if (x * sig < 0) return fail("#NUM!", "FLOOR's number and significance differ in sign");
+  return toMultiple(x, sig, Math.floor);
+});
+// CEILING.MATH(x, [sig], [mode]) rounds up (toward +infinity); a negative
+// x with a mode other than 0 rounds away from zero instead. FLOOR.MATH
+// rounds down (toward -infinity); a negative x with a mode rounds toward
+// zero. The significance's sign does not matter. The .PRECISE pair are the
+// same with no mode.
+const ceilingMath = (args: readonly Arg[], mode: boolean): number => {
+  const x = num(args, 0), sig = Math.abs(num(args, 1, 1)), away = mode && num(args, 2, 0) !== 0;
+  return toMultiple(x, sig, (n) => (x < 0 && away ? Math.floor(n) : Math.ceil(n)));
+};
+const floorMath = (args: readonly Arg[], mode: boolean): number => {
+  const x = num(args, 0), sig = Math.abs(num(args, 1, 1)), toward = mode && num(args, 2, 0) !== 0;
+  return toMultiple(x, sig, (n) => (x < 0 && toward ? Math.ceil(n) : Math.floor(n)));
+};
+def("CEILING.MATH", 1, 3, (args) => ceilingMath(args, true));
+def("CEILING.PRECISE", 1, 2, (args) => ceilingMath(args, false));
+def("FLOOR.MATH", 1, 3, (args) => floorMath(args, true));
+def("FLOOR.PRECISE", 1, 2, (args) => floorMath(args, false));
+// TRUNC(x, [digits]): the digits kept, the rest cut off (toward zero).
+def("TRUNC", 1, 2, (args) => {
+  const x = num(args, 0), f = 10 ** Math.trunc(num(args, 1, 0));
+  return Math.trunc(Number((x * f).toPrecision(15))) / f;
+});
+// MROUND(x, m): to the nearest multiple of m, halves away from zero.
+def("MROUND", 2, 2, (args) => {
+  const x = num(args, 0), m = num(args, 1);
+  if (x * m < 0) return fail("#NUM!", "MROUND's number and multiple differ in sign");
+  return toMultiple(Math.abs(x), Math.abs(m), Math.round) * Math.sign(x);
+});
+// EVEN and ODD: to the next even or odd integer away from zero.
+def("EVEN", 1, 1, (args) => {
+  const x = num(args, 0), n = Math.ceil(Math.abs(x));
+  return (n % 2 === 0 ? n : n + 1) * (x < 0 ? -1 : 1);
+});
+def("ODD", 1, 1, (args) => {
+  const x = num(args, 0), n = Math.ceil(Math.abs(x));
+  return (n % 2 === 1 ? n : n + 1) * (x < 0 ? -1 : 1);
+});
+def("EXP", 1, 1, (args) => real(Math.exp(num(args, 0)), "EXP overflows"));
+def("LN", 1, 1, (args) => {
+  const x = num(args, 0);
+  return x > 0 ? Math.log(x) : fail("#NUM!", `LN of ${x}: not positive`);
+});
+def("LOG10", 1, 1, (args) => {
+  const x = num(args, 0);
+  return x > 0 ? Math.log10(x) : fail("#NUM!", `LOG10 of ${x}: not positive`);
+});
+// LOG(x, [base]): base 10 unless told; a base of 1 or less is #NUM!.
+def("LOG", 1, 2, (args) => {
+  const x = num(args, 0), b = num(args, 1, 10);
+  if (x <= 0) return fail("#NUM!", `LOG of ${x}: not positive`);
+  if (b <= 0 || b === 1) return fail("#NUM!", `LOG to base ${b}`);
+  return Number((Math.log(x) / Math.log(b)).toPrecision(15));
+});
+def("QUOTIENT", 2, 2, (args) => {
+  const n = num(args, 0), d = num(args, 1);
+  return d === 0 ? fail("#DIV/0!", "QUOTIENT by zero") : Math.trunc(n / d);
+});
+// GCD and LCM over whole numbers (fractions cut off); a negative is #NUM!.
+const wholes = (args: readonly Arg[], name: string): number[] =>
+  numbers(args).map((n) => (n < 0 ? fail("#NUM!", `${name} of a negative number, ${n}`) : Math.trunc(n)));
+const gcd2 = (a: number, b: number): number => (b === 0 ? a : gcd2(b, a % b));
+def("GCD", 1, Infinity, (args) => wholes(args, "GCD").reduce(gcd2, 0));
+def("LCM", 1, Infinity, (args) => wholes(args, "LCM").reduce((a, b) => (a === 0 || b === 0 ? 0 : (a * b) / gcd2(a, b)), 1));
+const factorial = (n: number): number => {
+  let f = 1;
+  for (let i = 2; i <= n; i++) f *= i;
+  return f;
+};
+def("FACT", 1, 1, (args) => {
+  const n = Math.trunc(num(args, 0));
+  return n < 0 ? fail("#NUM!", `FACT of ${n}: negative`) : real(factorial(n), `FACT of ${n} overflows`);
+});
+// COMBIN(n, k): the ways to choose k of n; PERMUT(n, k): in order.
+def("COMBIN", 2, 2, (args) => {
+  const n = Math.trunc(num(args, 0)), k = Math.trunc(num(args, 1));
+  if (n < 0 || k < 0 || k > n) return fail("#NUM!", `COMBIN of ${k} from ${n}`);
+  let c = 1;
+  for (let i = 1; i <= Math.min(k, n - k); i++) c = (c * (n - i + 1)) / i;
+  return real(Math.round(c), "COMBIN overflows");
+});
+def("PERMUT", 2, 2, (args) => {
+  const n = Math.trunc(num(args, 0)), k = Math.trunc(num(args, 1));
+  if (n < 0 || k < 0 || k > n) return fail("#NUM!", `PERMUT of ${k} from ${n}`);
+  let p = 1;
+  for (let i = 0; i < k; i++) p *= n - i;
+  return real(p, "PERMUT overflows");
+});
+def("SUMSQ", 1, Infinity, (args) => sum(numbers(args).map((n) => n * n)));
+// RAND, RANDBETWEEN and RANDARRAY draw afresh on every change (volatile:
+// evaluate.ts lists them).
+def("RAND", 0, 0, () => Math.random());
+def("RANDBETWEEN", 2, 2, (args) => {
+  const lo = Math.ceil(num(args, 0)), hi = Math.floor(num(args, 1));
+  return lo > hi ? fail("#NUM!", `RANDBETWEEN ${lo} and ${hi}: nothing between`) : lo + Math.floor(Math.random() * (hi - lo + 1));
+});
+// RANDARRAY([rows], [cols], [min], [max], [whole]): a grid of draws, 0 to
+// 1 unless told the range, whole numbers when asked.
+def("RANDARRAY", 0, 5, (args) => {
+  const rows = Math.trunc(num(args, 0, 1)), cols = Math.trunc(num(args, 1, 1));
+  const lo = num(args, 2, 0), hi = num(args, 3, 1), whole = toNumber(val(args, 4)) !== 0;
+  if (rows < 1 || cols < 1) return fail("#VALUE!", "RANDARRAY of no rows or columns");
+  if (lo > hi) return fail("#VALUE!", `RANDARRAY from ${lo} to ${hi}: nothing between`);
+  const draw = whole ? () => Math.ceil(lo) + Math.floor(Math.random() * (Math.floor(hi) - Math.ceil(lo) + 1)) : () => lo + Math.random() * (hi - lo);
+  const values = Array.from({ length: rows * cols }, draw);
+  return values.length === 1 ? values[0] : array(rows, cols, values);
+});
+// Trigonometry, in radians; a value outside a function's domain is #NUM!.
+const trig = (name: string, f: (x: number) => number): void => {
+  def(name, 1, 1, (args) => real(f(num(args, 0)), `${name} of ${num(args, 0)}: outside its domain`));
+};
+trig("SIN", Math.sin); trig("COS", Math.cos); trig("TAN", Math.tan);
+trig("ASIN", Math.asin); trig("ACOS", Math.acos); trig("ATAN", Math.atan);
+trig("SINH", Math.sinh); trig("COSH", Math.cosh); trig("TANH", Math.tanh);
+trig("ASINH", Math.asinh); trig("ACOSH", Math.acosh); trig("ATANH", Math.atanh);
+// ATAN2(x, y): the angle of the point (x, y), as Excel orders them.
+def("ATAN2", 2, 2, (args) => {
+  const x = num(args, 0), y = num(args, 1);
+  return x === 0 && y === 0 ? fail("#DIV/0!", "ATAN2 of the origin") : Math.atan2(y, x);
+});
+def("DEGREES", 1, 1, (args) => (num(args, 0) * 180) / Math.PI);
+def("RADIANS", 1, 1, (args) => (num(args, 0) * Math.PI) / 180);
+
 // --- conditional sums and counts ---
 
 def("SUMIF", 2, 3, (args) => sum(ifs(args)));

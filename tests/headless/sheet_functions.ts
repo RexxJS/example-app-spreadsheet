@@ -32,14 +32,17 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
 });
 
 eq("the library", names().join(" "), [
-  "ABS ADDRESS AND AVERAGE AVERAGEIF AVERAGEIFS CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS CONCAT COUNT COUNTA",
-  "COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FORMULATEXT FV",
-  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INT IRR ISBLANK ISERROR ISFORMULA ISNUMBER ISREF ISTEXT LARGE LEFT LEN",
-  "LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OFFSET",
-  "OR PERCENTILE PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE",
-  "SHEET SHEETS SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT",
-  "TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM UNIQUE UPPER VALUE VAR VARP",
-  "VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
+  "ABS ACOS ACOSH ADDRESS AND ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEIF AVERAGEIFS CEILING CEILING.MATH",
+  "CEILING.PRECISE CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS COMBIN CONCAT COS COSH COUNT COUNTA COUNTBLANK",
+  "COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DEGREES DROP EDATE EOMONTH EVEN EXACT EXP EXPAND FACT FILTER",
+  "FIND FLOOR FLOOR.MATH FLOOR.PRECISE FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT",
+  "INT IRR ISBLANK ISERROR ISFORMULA ISNUMBER ISREF ISTEXT LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX",
+  "MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH MROUND NA NETWORKDAYS NOT NOW NPER NPV ODD OFFSET OR",
+  "PERCENTILE PERMUT PI PMT POWER PRODUCT PROPER PV QUARTILE QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE",
+  "REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY",
+  "SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH TAKE TAN TANH TEXT TEXTAFTER",
+  "TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM TRUNC UNIQUE UPPER VALUE VAR VARP VLOOKUP",
+  "VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
 ].join(" "));
 
 // Maths and statistics.
@@ -89,6 +92,47 @@ eq("SUBSTITUTE, REPT, EXACT", ev(`SUBSTITUTE(D4, "o", "0")`, `SUBSTITUTE(D4, "",
 eq("TEXTJOIN, skipping blanks or not", ev(`TEXTJOIN(", ", TRUE, B1:B6)`, `TEXTJOIN("-", FALSE, B1:B4)`), ["apples, pears, apples, Plums", "apples-pears-apples-"]);
 eq("VALUE", ev("VALUE(D5)+1", `VALUE(" 2.5 ")`), ["6", "2.5"]);
 eq("VALUE of words", why("VALUE(B1)"), ["#VALUE! 'apples' is not a number"]);
+
+// The maths batch (2.2).
+eq("CEILING and FLOOR to a multiple, away from zero and toward it", ev("CEILING(2.5, 1)", "CEILING(-2.5, -2)", "CEILING(1.5, 0.1)", "CEILING(0.234, 0.01)", "FLOOR(3.7, 2)", "FLOOR(-2.5, -2)", "FLOOR(1.58, 0.1)", "FLOOR(0.234, 0.01)", "CEILING(5, 0)"),
+  ["3", "-4", "1.5", "0.24", "2", "-2", "1.5", "0.23", "0"]);
+eq("their errors", why("CEILING(-2.5, 2)", "FLOOR(2.5, -2)", "FLOOR(2, 0)"), ["#NUM! CEILING's number and significance differ in sign", "#NUM! FLOOR's number and significance differ in sign", "#DIV/0! FLOOR by a significance of 0"]);
+eq("CEILING.MATH: up, or away from zero with a mode; FLOOR.MATH: down, or toward zero", ev("CEILING.MATH(24.3, 5)", "CEILING.MATH(6.7)", "CEILING.MATH(-8.1, 2)", "CEILING.MATH(-5.5, 2, -1)", "CEILING.MATH(-5.5, -2)", "FLOOR.MATH(24.3, 5)", "FLOOR.MATH(6.7)", "FLOOR.MATH(-8.1, 2)", "FLOOR.MATH(-5.5, 2, -1)"),
+  ["25", "7", "-8", "-6", "-4", "20", "6", "-10", "-4"]);
+eq("the .PRECISE pair: up and down, the significance's sign ignored", ev("CEILING.PRECISE(4.3)", "CEILING.PRECISE(-4.3)", "CEILING.PRECISE(4.3, 2)", "CEILING.PRECISE(-4.3, -2)", "FLOOR.PRECISE(-3.2, -1)", "FLOOR.PRECISE(3.2, 1)", "FLOOR.PRECISE(-3.2, 1)"),
+  ["5", "-4", "6", "-4", "-4", "3", "-4"]);
+eq("TRUNC, MROUND, EVEN and ODD", ev("TRUNC(8.9)", "TRUNC(-8.9)", "TRUNC(0.45, 1)", "TRUNC(2.675, 2)", "MROUND(10, 3)", "MROUND(-10, -3)", "MROUND(1.3, 0.2)", "MROUND(7, 0)", "EVEN(1.5)", "EVEN(3)", "EVEN(-1)", "EVEN(2)", "ODD(1.5)", "ODD(3)", "ODD(-1.5)", "ODD(0)"),
+  ["8", "-8", "0.4", "2.67", "9", "-9", "1.4", "0", "2", "4", "-2", "2", "3", "3", "-3", "1"]);
+eq("MROUND of different signs", why("MROUND(5, -2)"), ["#NUM! MROUND's number and multiple differ in sign"]);
+eq("EXP, LN, LOG, LOG10", ev("EXP(1)", "EXP(0)", "LN(EXP(2))", "LN(86)", "LOG(8, 2)", "LOG(100)", "LOG(1000, 10)", "LOG10(86)", "LOG(2.7182818)"),
+  ["2.718281828", "1", "2", "4.454347296", "3", "2", "3", "1.934498451", "0.4342944774"]);
+eq("their errors", why("LN(0)", "LN(-1)", "LOG(8, 1)", "LOG(-8)", "LOG10(0)", "EXP(1000)"),
+  ["#NUM! LN of 0: not positive", "#NUM! LN of -1: not positive", "#NUM! LOG to base 1", "#NUM! LOG of -8: not positive", "#NUM! LOG10 of 0: not positive", "#NUM! EXP overflows"]);
+eq("QUOTIENT, GCD, LCM", ev("QUOTIENT(5, 2)", "QUOTIENT(4.5, 3.1)", "QUOTIENT(-10, 3)", "GCD(5, 2)", "GCD(24, 36)", "GCD(7, 1)", "GCD(5, 0)", "GCD(A1:A6)", "LCM(5, 2)", "LCM(24, 36)", "LCM(6, 4, 10)", "LCM(0, 5)"),
+  ["2", "1", "-3", "1", "12", "1", "5", "1", "10", "72", "60", "0"]);
+eq("their errors", why("QUOTIENT(1, 0)", "GCD(-2, 4)", "LCM(3, -1)"), ["#DIV/0! QUOTIENT by zero", "#NUM! GCD of a negative number, -2", "#NUM! LCM of a negative number, -1"]);
+eq("FACT, COMBIN, PERMUT, SUMSQ", ev("FACT(5)", "FACT(1.9)", "FACT(0)", "COMBIN(8, 2)", "COMBIN(5, 5)", "COMBIN(49, 6)", "PERMUT(3, 2)", "PERMUT(100, 3)", "SUMSQ(3, 4)", "SUMSQ(A1:A3)"),
+  ["120", "1", "1", "28", "1", "13983816", "6", "970200", "25", "26"]);
+eq("their errors", why("FACT(-1)", "FACT(200)", "COMBIN(2, 3)", "PERMUT(-1, 0)"), ["#NUM! FACT of -1: negative", "#NUM! FACT of 200 overflows", "#NUM! COMBIN of 3 from 2", "#NUM! PERMUT of 0 from -1"]);
+{
+  // Random numbers: in range, whole when asked, a grid when asked, and
+  // not the same twice (a draw of a million).
+  const draws = Array.from({ length: 20 }, () => evaluate(parse("RAND()"), env) as number);
+  const between = Array.from({ length: 20 }, () => evaluate(parse("RANDBETWEEN(-3, 3)"), env) as number);
+  const grid = evaluate(parse("RANDARRAY(2, 3, 10, 20, TRUE)"), env);
+  const pair = evaluate(parse("RANDARRAY(1, 2)"), env);
+  eq("RAND, RANDBETWEEN and RANDARRAY draw in range", [
+    draws.every((d) => d >= 0 && d < 1), between.every((n) => Number.isInteger(n) && n >= -3 && n <= 3),
+    isArray(grid) && grid.rows === 2 && grid.cols === 3 && grid.values.every((v) => Number.isInteger(v) && (v as number) >= 10 && (v as number) <= 20),
+    isArray(pair) && pair.values.every((v) => (v as number) >= 0 && (v as number) < 1),
+    show(evaluate(parse("RANDBETWEEN(1, 1000000)"), env)) !== show(evaluate(parse("RANDBETWEEN(1, 1000000)"), env)),
+  ], [true, true, true, true, true]);
+  eq("their errors", why("RANDBETWEEN(3, 1)", "RANDARRAY(0)", "RANDARRAY(1, 1, 5, 2)"), ["#NUM! RANDBETWEEN 3 and 1: nothing between", "#VALUE! RANDARRAY of no rows or columns", "#VALUE! RANDARRAY from 5 to 2: nothing between"]);
+}
+eq("trigonometry in radians, with DEGREES and RADIANS", ev("SIN(PI()/2)", "COS(0)", "ROUND(TAN(PI()/4), 10)", "ASIN(1)", "ACOS(1)", "DEGREES(ATAN(1))", "DEGREES(ATAN2(1, 1))", "DEGREES(ATAN2(-1, -1))", "RADIANS(180)", "DEGREES(PI())"),
+  ["1", "1", "1", "1.570796327", "0", "45", "45", "-135", "3.141592654", "180"]);
+eq("hyperbolic", ev("SINH(0)", "COSH(0)", "ROUND(TANH(1), 6)", "ASINH(0)", "ACOSH(1)", "ATANH(0)", "ROUND(ASINH(SINH(2)), 10)"), ["0", "1", "0.761594", "0", "0", "0", "2"]);
+eq("outside a domain", why("ASIN(2)", "ACOSH(0.5)", "ATANH(1)", "ATAN2(0, 0)"), ["#NUM! ASIN of 2: outside its domain", "#NUM! ACOSH of 0.5: outside its domain", "#NUM! ATANH of 1: outside its domain", "#DIV/0! ATAN2 of the origin"]);
 
 // Lookup.
 eq("ROWS and COLUMNS", ev("ROWS(F1:H4)", "COLUMNS(F1:H4)", "ROWS(A1)"), ["4", "3", "1"]);
@@ -209,6 +253,23 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok TEXTJOIN, skipping blanks or not
 // expect: ok VALUE
 // expect: ok VALUE of words
+// expect: ok CEILING and FLOOR to a multiple, away from zero and toward it
+// expect: ok their errors
+// expect: ok CEILING.MATH: up, or away from zero with a mode; FLOOR.MATH: down, or toward zero
+// expect: ok the .PRECISE pair: up and down, the significance's sign ignored
+// expect: ok TRUNC, MROUND, EVEN and ODD
+// expect: ok MROUND of different signs
+// expect: ok EXP, LN, LOG, LOG10
+// expect: ok their errors
+// expect: ok QUOTIENT, GCD, LCM
+// expect: ok their errors
+// expect: ok FACT, COMBIN, PERMUT, SUMSQ
+// expect: ok their errors
+// expect: ok RAND, RANDBETWEEN and RANDARRAY draw in range
+// expect: ok their errors
+// expect: ok trigonometry in radians, with DEGREES and RADIANS
+// expect: ok hyperbolic
+// expect: ok outside a domain
 // expect: ok ROWS and COLUMNS
 // expect: ok ROW and COLUMN of a reference, counted from 1
 // expect: ok over a range: each row down, each column across

@@ -183,6 +183,19 @@ const stub = (name: "Excel" | "RexxJS", log: string[]): Language => ({
   eq("no longer volatile once its formula is not", runs, 0);
 }
 
+{
+  // RAND draws afresh on every change, and on Calculate Now
+  // (recalculate), as Excel's does: volatile.
+  const s = new Sheet();
+  await s.set("A1", "=RANDBETWEEN(1, 1000000)");
+  const first = show(s.value("A1"));
+  await s.set("B1", "x");
+  const second = show(s.value("A1"));
+  await s.recalculate();
+  const third = show(s.value("A1"));
+  eq("RAND draws afresh on a change elsewhere, and on recalculate", [first !== second, second !== third, s.readBy("B1")], [true, true, []]);
+}
+
 // expect: ok constants: numbers, text, nothing
 // expect: ok a formula
 // expect: ok a parse error becomes #ERROR!, with where
@@ -222,3 +235,4 @@ const stub = (name: "Excel" | "RexxJS", log: string[]): Language => ({
 // expect: ok the text changed, the formula follows it, and the old link goes
 // expect: ok volatile: worked out again on a change it does not read (D1 is not)
 // expect: ok no longer volatile once its formula is not
+// expect: ok RAND draws afresh on a change elsewhere, and on recalculate

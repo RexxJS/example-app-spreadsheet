@@ -34,7 +34,8 @@ export class FormulaError extends Error {
 
 const OPS: readonly Op[] = ["<>", "<=", ">=", "+", "-", "*", "/", "^", "&", "=", "<", ">"];
 const NUMBER = /^(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/;
-const WORD = /^[A-Za-z_][A-Za-z0-9_]*/;
+// A name, or a function's with dots in it (CEILING.MATH).
+const WORD = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*/;
 // Another sheet's own name: Costs!QTY, 'My Costs'!QTY (a cell there,
 // Costs!B2, is a reference; a call, Costs!F(, is not this).
 const SHEET_NAME = /^(?:([A-Za-z_]\w*)|'([^']+)')!([A-Za-z_][A-Za-z0-9_]*)(?![\w(])/;
@@ -70,8 +71,9 @@ export function* tokens(formula: string, from = 2): Generator<Token, void, undef
       i += num.length;
       continue;
     }
+    // A reference, unless a '(' follows: LOG10( is a call, not cell LOG10.
     const ref = REF.exec(rest);
-    if (ref) {
+    if (ref && rest[ref[0].length] !== "(") {
       const [text, bare, quoted, fixCol, col, fixRow, row, spill] = ref;
       const sheet = bare ?? quoted;
       const cell = col.toUpperCase() + row;

@@ -40,9 +40,10 @@ export interface Env {
   book?(): { readonly sheets: readonly string[]; readonly here: number };
 }
 
-// The forms that make a reference at run time: a formula calling one is
-// volatile (worked out again on every change).
-export const VOLATILE_FORMS: ReadonlySet<string> = new Set(["OFFSET", "INDIRECT"]);
+// The forms that make a reference at run time, and the functions that
+// draw a random number: a formula calling one is volatile (worked out
+// again on every change).
+export const VOLATILE_FORMS: ReadonlySet<string> = new Set(["OFFSET", "INDIRECT", "RAND", "RANDBETWEEN", "RANDARRAY"]);
 
 // A reference as an expression comes to it: a rectangle of cells, on this
 // sheet (null) or another (its name in upper case, as keys have it).
