@@ -23,6 +23,7 @@ export function editBar(v: SheetView): void {
   ui.hstack(() => {
     ui.btn("Undo", () => v.run("edit.undo"));
     ui.btn("Redo", () => v.run("edit.redo"));
+    bind(ui.text(""), v.history);
     ui.btn("Sort A→Z", () => sort("data.sortAscending"));
     ui.btn("Sort Z→A", () => sort("data.sortDescending"));
     ui.btn("Insert row", () => v.run("rows.insert", span("row")));

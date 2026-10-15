@@ -144,6 +144,9 @@ export interface Watch {
 // clipboard, traces, watches, Show Formulas, Circle Invalid), and not
 // RexxJS's own state: what a setup script defined stays defined.
 interface Saved {
+  // What the change was, as Undo and Redo name it ("Merge Cells"); none for
+  // the workbook saved before a change is known.
+  readonly label?: string;
   readonly pages: readonly SavedPage[];
   readonly names: ReadonlyMap<string, BookName>;
   readonly active: Page;
@@ -207,6 +210,10 @@ export class Workbook {
   // each undo, to redo.
   readonly #undo: Saved[] = [];
   readonly #redo: Saved[] = [];
+  // A group of changes made one step (a script): the workbook before it,
+  // the lowest the undo stack went while it ran (an UNDO in it may take
+  // back steps from before it), and the labels of the changes it made.
+  #group: { depth: number; readonly before: Saved; low: number; readonly labels: string[]; undone: number } | null = null;
   #names = new Map<string, BookName>();
 
   constructor() {
@@ -343,16 +350,40 @@ export class Workbook {
     };
   }
 
-  // A change was made since `before` was saved: one step to undo, and
-  // nothing left to redo.
-  changed(before: Saved): void {
-    this.#undo.push(before);
+  // A change, `label`, was made since `before` was saved: one step to
+  // undo, and nothing left to redo.
+  changed(before: Saved, label: string): void {
+    this.#undo.push({ ...before, label });
+    if (this.#undo.length > HISTORY) this.#undo.shift();
+    this.#redo.length = 0;
+    this.#group?.labels.push(label);
+  }
+
+  // The changes made until endGroup() are one step of undo (a script): each
+  // is still its own step while it runs, so an UNDO in the script takes
+  // back the one before it; at the end they are folded into one, back to
+  // the workbook before the script. Groups nest; the outermost counts.
+  beginGroup(): void {
+    if (this.#group) this.#group.depth++;
+    else this.#group = { depth: 1, before: this.saved(), low: this.#undo.length, labels: [], undone: 0 };
+  }
+
+  endGroup(): void {
+    const g = this.#group;
+    if (!g || --g.depth > 0) return;
+    this.#group = null;
+    if (!g.labels.length && !g.undone) return;
+    this.#undo.length = Math.min(g.low, this.#undo.length);
+    this.#undo.push({ ...g.before, label: g.labels.length === 1 && !g.undone ? g.labels[0] : "Script" });
     if (this.#undo.length > HISTORY) this.#undo.shift();
     this.#redo.length = 0;
   }
 
   get canUndo(): boolean { return this.#undo.length > 0; }
   get canRedo(): boolean { return this.#redo.length > 0; }
+  // What Undo and Redo would take back or do again ("Merge Cells"), or null.
+  get undoLabel(): string | null { return this.#undo.at(-1)?.label ?? null; }
+  get redoLabel(): string | null { return this.#redo.at(-1)?.label ?? null; }
 
   // The last change taken back, whatever it was and on whichever sheet (that
   // sheet active again), or done again. Each gives the active sheet's
@@ -363,7 +394,11 @@ export class Workbook {
   async #step(from: Saved[], to: Saved[]): Promise<string[]> {
     const step = from.pop();
     if (!step) return [];
-    to.push(this.saved());
+    to.push({ ...this.saved(), label: step.label });
+    if (this.#group) {
+      this.#group.undone++;
+      this.#group.low = Math.min(this.#group.low, this.#undo.length);
+    }
     const was = this.#active, before = this.sheet.keys();
     // Sheets added, deleted, moved or renamed: every sheet worked out again,
     // as what reads one by name may read another now.

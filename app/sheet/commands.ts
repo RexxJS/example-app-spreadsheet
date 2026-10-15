@@ -847,15 +847,19 @@ const SPECS: readonly Spec[] = [
   {
     id: "edit.undo", label: "Undo", params: [], journaled: true, unstepped: true,
     run: async (wb) => {
+      const label = wb.undoLabel;
+      if (label === null) return changedBy(wb, [], "nothing to undo");
       const changed = await wb.undo();
-      return changedBy(wb, changed, `undo: ${changed.length} changed`);
+      return changedBy(wb, changed, `undid ${label}: ${changed.length} changed`);
     },
   },
   {
     id: "edit.redo", label: "Redo", params: [], journaled: true, unstepped: true,
     run: async (wb) => {
+      const label = wb.redoLabel;
+      if (label === null) return changedBy(wb, [], "nothing to redo");
       const changed = await wb.redo();
-      return changedBy(wb, changed, `redo: ${changed.length} changed`);
+      return changedBy(wb, changed, `redid ${label}: ${changed.length} changed`);
     },
   },
   {
@@ -1693,7 +1697,7 @@ export class Commands {
       // changed it.
       const before = spec!.journaled && !spec!.unstepped ? this.#wb.saved() : null;
       const outcome = await spec!.run(this.#wb, params, this.#store);
-      if (outcome.ok && before) this.#wb.changed(before);
+      if (outcome.ok && before) this.#wb.changed(before, spec!.label);
       if (outcome.ok && spec!.journaled) this.#journal.push(lineOf(id, params));
       return outcome;
     } catch (e) {
@@ -1714,13 +1718,24 @@ export class Commands {
 
   // A RexxJS script, driving these commands (script.ts); `say` gets its
   // SAY lines.
+  // The whole script is one step of undo.
   script(text: string, say: (line: string) => void): Promise<{ ok: boolean; message: string }> {
-    return runScript(text, this.#scriptHost(), say);
+    return this.#grouped(() => runScript(text, this.#scriptHost(), say));
   }
 
   // One control-bus string, as the Tauri app's (script.ts's runSpreadsheet).
+  // One step of undo, however many commands it runs.
   spreadsheet(code: string, say: (line: string) => void): Promise<{ ok: boolean; message: string; output?: unknown }> {
-    return runSpreadsheet(code, this.#scriptHost(), say);
+    return this.#grouped(() => runSpreadsheet(code, this.#scriptHost(), say));
+  }
+
+  async #grouped<T>(work: () => Promise<T>): Promise<T> {
+    this.#wb.beginGroup();
+    try {
+      return await work();
+    } finally {
+      this.#wb.endGroup();
+    }
   }
 
   #scriptHost() {

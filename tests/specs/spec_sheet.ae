@@ -205,7 +205,7 @@ main() {
             spec.assert_true(g.wait_cell("D", 4, "23"), "D4 = B4 * C4")
             g.pick("B", 4)
             g.key("Ctrl+Z")
-            spec.assert_true(b.wait_for_console("sheet: undo:"), "undone")
+            spec.assert_true(b.wait_for_console("sheet: undid "), "undone")
             spec.assert_true(g.wait_cell("B", 4, "2"), "B4 back to 2")
             spec.assert_true(g.wait_cell("D", 4, "2.3"), "and D4 with it")
             b.click("Redo")
@@ -672,7 +672,7 @@ main() {
             spec.assert_true(uidriver.widget_int_field_by_id(g.cell_id("E", 18), "w") > 120, "one cell two columns wide")
             g.pick("E", 18)
             g.key("Ctrl+Z")
-            spec.assert_true(b.wait_for_console("sheet: undo:"), "undone")
+            spec.assert_true(b.wait_for_console("sheet: undid "), "undone")
             spec.assert_true(uidriver.widget_int_field_by_id(g.cell_id("E", 18), "w") < 120, "one column wide again")
             spec.assert_true(g.wait_cell("E", 18, "wide"), "its value kept")
             g.goto("I2")
@@ -894,6 +894,18 @@ main() {
             spec.assert_true(g.wait_cell("E", 1, "#REF!"), "the old name gone")
             g.enter("E2", "=SUM(Orders[Units])")
             spec.assert_true(g.wait_cell("E", 2, "8"), "the new one found")
+        }
+        spec.it("Undo says what it takes back, and a script is one step of it") callback {
+            g.enter("G1", "1")
+            spec.assert_true(b.wait_for_text("Undo Set a cell"), "the last change named")
+            g.script("LET r = SETCELL('G2', 2); LET r = SETCELL('G3', 3); LET r = SETCELL('G4', 4)")
+            spec.assert_true(g.wait_cell("G", 4, "4"), "the script ran")
+            spec.assert_true(b.wait_for_text("Undo Script"), "named as a script")
+            b.click("Undo")
+            spec.assert_true(g.wait_cell("G", 2, ""), "one Undo takes back all three")
+            spec.assert_true(g.wait_cell("G", 4, ""), "G4 too")
+            spec.assert_true(g.wait_cell("G", 1, "1"), "and nothing before the script")
+            spec.assert_true(b.wait_for_text("Undo Set a cell · Redo Script"), "both named")
         }
     }
     return spec.run_summary(fw)

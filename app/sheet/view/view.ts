@@ -20,6 +20,8 @@ export class SheetView {
   readonly address = state("A1");
   readonly input = state("");
   readonly status = state("");
+  // What Undo and Redo would do: "Undo Merge Cells · Redo Paste".
+  readonly history = state("");
   readonly comment = state("");
   readonly format = state("");
   // The selected cell's editor (editors.ts), or null.
@@ -124,6 +126,8 @@ export class SheetView {
       this.charts.set(this.wb.charts().map((c, i) => ({ ...c, n: i + 1 })));
       this.formulas.set(this.wb.sheet.language.name);
       this.setup.set(this.wb.setupScript ? `Setup script: ${this.wb.setupScript}` : "");
+      const u = this.wb.undoLabel, r = this.wb.redoLabel;
+      this.history.set([u ? `Undo ${u}` : "", r ? `Redo ${r}` : ""].filter((x) => x).join(" · "));
       this.follow();
     });
     if (this.grid) {

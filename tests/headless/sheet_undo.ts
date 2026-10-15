@@ -3,6 +3,7 @@
 // merges, hidden rows, names, tables and sheets added, renamed or deleted
 // are undone as cells are, across sheets, one step a command; what is only
 // looked at or copied is no step, and a file opened is where undo stops.
+// Each step says what it was ("Merge Cells"); a script is one step.
 import { Commands } from "./sheet/commands.ts";
 import { Workbook } from "./sheet/workbook.ts";
 import { show } from "./sheet/format.ts";
@@ -14,11 +15,11 @@ const value = (k: string) => show(wb.sheet.value(k));
 const undo = async () => (await cmds.run("edit.undo")).message;
 const redo = async () => (await cmds.run("edit.redo")).message;
 
-eq("nothing to undo or redo at first", [wb.canUndo, wb.canRedo, await undo()], [false, false, "undo: 0 changed"]);
+eq("nothing to undo or redo at first", [wb.canUndo, wb.canRedo, await undo()], [false, false, "nothing to undo"]);
 await cmds.run("cell.set cell=A1 input=1");
 await cmds.run("cell.set cell=A2 input=2");
 await cmds.run('cell.set cell=A3 input="=A1+A2"');
-eq("cells, as before", [await undo(), wb.sheet.input("A3"), await redo(), value("A3")], ["undo: 1 changed", "", "redo: 1 changed", "3"]);
+eq("cells, as before", [await undo(), wb.sheet.input("A3"), await redo(), value("A3")], ["undid Set a cell: 1 changed", "", "redid Set a cell: 1 changed", "3"]);
 
 // Each of these was the sheet's own to keep, and not undone.
 const look = () => [wb.notes.get("A1").look ?? null, wb.notes.get("A1").comment ?? "", wb.merges(), wb.hidden().rows, wb.charts().length,
@@ -80,6 +81,33 @@ eq("a new change forgets what could be redone", wb.canRedo, false);
 for (let i = 0; i < 105; i++) await cmds.run(`cell.set cell=F1 input=${i}`);
 eq("a hundred steps are kept", await steps(), 100);
 
+// What Undo and Redo would do, by name.
+await cmds.run("cells.merge range=H1:I1");
+eq("each step says what it was", [wb.undoLabel, wb.redoLabel, await undo(), wb.redoLabel, await redo()],
+  ["Merge Cells", null, "undid Merge Cells: 0 changed", "Merge Cells", "redid Merge Cells: 0 changed"]);
+
+// A script is one step, however many commands it runs.
+const said: string[] = [];
+const depth = async () => { let n = 0; while (wb.canUndo) { await cmds.run("edit.undo"); n++; } return n; };
+await cmds.run("file.new");
+await cmds.run("cell.set cell=A1 input=1");
+await cmds.script(`LET r = SETCELL("A2", 2); LET r = SETCELL("A3", 3); LET r = INSERTROW(1)`, (l) => said.push(l));
+eq("a script that changed three things is one step, named Script", [wb.undoLabel, value("A4"), await undo(), value("A1"), wb.sheet.input("A3"), wb.undoLabel],
+  ["Script", "3", "undid Script: 4 changed", "1", "", "Set a cell"]);
+await redo();
+eq("and redone as one", [value("A4"), wb.undoLabel], ["3", "Script"]);
+await cmds.script(`LET r = SETCELL("B1", 5)`, (l) => said.push(l));
+eq("one change in a script is named for its command", wb.undoLabel, "Set a cell");
+await cmds.script(`SAY GETCELL("B1")`, (l) => said.push(l));
+eq("a script that only reads is no step", wb.undoLabel, "Set a cell");
+await cmds.script(`LET r = SETCELL("C1", 7); LET r = SETCELL("C2", 8); LET r = UNDO(); SAY GETCELL("C2") GETCELL("C1")`, (l) => said.push(l));
+eq("an UNDO in a script takes back its last command; the script is still one step", [said.at(-1), wb.undoLabel, await undo(), value("C1")],
+  [" 7", "Script", "undid Script: 1 changed", ""]);
+await cmds.spreadsheet(`SETCELL("D1", 1) + SETCELL("D2", 2)`, (l) => said.push(l));
+eq("a control-bus command is one step too", [value("D2"), wb.undoLabel, await undo(), value("D1")], ["2", "Script", "undid Script: 2 changed", ""]);
+eq("the steps: A1's, the first script's, B1's", await depth(), 3);
+eq("and nothing then", [await undo(), wb.undoLabel], ["nothing to undo", null]);
+
 await cmds.run("file.open sample=test");
 eq("a file opened is where undo stops", [wb.canUndo, wb.canRedo], [false, false]);
 await cmds.run("file.new");
@@ -99,5 +127,14 @@ eq("so is a new one", wb.canUndo, false);
 // expect: ok a copy, going to a sheet, circles and a refusal add no step
 // expect: ok a new change forgets what could be redone
 // expect: ok a hundred steps are kept
+// expect: ok each step says what it was
+// expect: ok a script that changed three things is one step, named Script
+// expect: ok and redone as one
+// expect: ok one change in a script is named for its command
+// expect: ok a script that only reads is no step
+// expect: ok an UNDO in a script takes back its last command; the script is still one step
+// expect: ok a control-bus command is one step too
+// expect: ok the steps: A1's, the first script's, B1's
+// expect: ok and nothing then
 // expect: ok a file opened is where undo stops
 // expect: ok so is a new one

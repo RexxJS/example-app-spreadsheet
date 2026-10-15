@@ -33,7 +33,7 @@ eq("the journal: what changed the sheet, as command lines", cmds.journal(), ["ce
 await cmds.run("range.clear range=A1:B1");
 eq("range.clear", [value("A1"), value("B1")], ["", ""]);
 await cmds.run("edit.undo");
-eq("edit.undo, edit.redo", [value("B1"), (await cmds.run("edit.redo")).message, value("B1")], ["30", "redo: 2 changed", ""]);
+eq("edit.undo, edit.redo", [value("B1"), (await cmds.run("edit.redo")).message, value("B1")], ["30", "redid Clear contents: 2 changed", ""]);
 await cmds.run("edit.undo");
 
 await cmds.run('cell.set cell=C1 input="=A1+B1"');

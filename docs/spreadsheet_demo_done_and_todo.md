@@ -955,8 +955,7 @@ snapshots, the cheap way. The `Sheet`'s own undo is gone.
 Not steps (`unstepped` in `commands.ts`): undo and redo, a copy, going to
 a sheet, Circle Invalid, running the setup script, and opening a file
 (where undo stops). What a RexxJS setup script defined stays defined.
-Still to come: a script as one step (each command it runs is one now), and
-undo labels ("Undo Merge Cells").
+~~A script as one step~~ and ~~undo labels~~ (done: To do 11).
 
 ### 5. A bigger sheet (done, 2026-10-13)
 
@@ -1045,11 +1044,22 @@ makes. Until now only RexxJS formulas read a table by name (`TABLE()`).
 Tested headless (`tests/headless/sheet_structured.ts`) and on the page
 (`spec_sheet`: a column, [@Column] on its row, a header renamed).
 
-### 11. Undo: a script as one step, and saying what it undoes
+### 11. Undo: a script as one step, and saying what it undoes (done, 2026-10-15)
 
-A RexxJS script (the command bar's, ADDRESS SHEET, a control-bus command
-from another program) is one step of undo, not one per command it runs.
-Undo and Redo say what they take back: "Undo Merge Cells", "Redo Paste".
+- Each step of undo keeps the label of the command that made it, and the
+  edit bar says what Undo and Redo would do ("Undo Merge Cells · Redo
+  Script"); `edit.undo` says "undid Merge Cells: 2 changed", or "nothing
+  to undo".
+- A RexxJS script (the command bar's, its ADDRESS SHEET, and each
+  control-bus command from another program) is one step, however many
+  commands it runs: `Workbook.beginGroup`/`endGroup`. While it runs each
+  command is still its own step, so an UNDO() in the script takes back the
+  command before it, as the Tauri app's does; at its end the steps are
+  folded into one, back to the workbook before the script. Named for its
+  command when it made one change, "Script" otherwise; a script that only
+  reads is no step.
+
+Tested headless (`sheet_undo.ts`) and on the page (`spec_sheet`).
 
 ### 12. Correctness: numbers before text, cycles across sheets, "TRUE"
 
