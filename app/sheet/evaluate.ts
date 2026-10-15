@@ -7,7 +7,9 @@
 // one (SEQUENCE, FILTER ...). LET's and LAMBDA's names live in scopes here;
 // a LAMBDA is a closure, a value only while a formula is worked out (one
 // that comes to a LAMBDA is #CALC!), and MAP, REDUCE, SCAN, BYROW, BYCOL and
-// MAKEARRAY call one: they are special forms here, as IF is.
+// MAKEARRAY call one: they are special forms here, as IF is. So are ROW
+// and COLUMN, which read a reference rather than its values, and with no
+// reference the cell the formula is in (`at`).
 import { cellAddr, keyOf, range, span } from "./address.ts";
 import { resolve } from "./structured.ts";
 import type { Expr } from "./parser.ts";
@@ -86,11 +88,13 @@ const DEPTH = 200;
 
 class Evaluator {
   readonly #env: Env;
+  readonly #at: string | null;
   #scope: Scope = new Map();
   #depth = 0;
 
-  constructor(env: Env) {
+  constructor(env: Env, at: string | null) {
     this.#env = env;
+    this.#at = at;
   }
 
   // `work` in `scope`, the scope put back after.
@@ -241,6 +245,31 @@ class Evaluator {
     const args = e.args;
     const takes = (n: number) => (args.length !== n ? fail("#VALUE!", `${e.name} takes ${n} values`) : null);
     switch (e.name) {
+      // ROW(ref) and COLUMN(ref): the reference's row or column, counted
+      // from 1; over a range, each of its rows down (or columns across).
+      // Without a reference, the cell the formula is in.
+      case "ROW":
+      case "COLUMN": {
+        if (args.length > 1) return fail("#VALUE!", `${e.name} takes a reference, or nothing`);
+        const which = e.name === "ROW" ? "row" : "col";
+        if (args.length === 0) {
+          const here = this.#at ? cellAddr(this.#at) : null;
+          return here ? here[which] + 1 : fail("#REF!", `${e.name}() is in no cell`);
+        }
+        const a = args[0];
+        if (a.kind === "ref" || a.kind === "spill") {
+          const c = cellAddr(a.name);
+          return c ? c[which] + 1 : fail("#REF!", `${a.name} is not on the sheet`);
+        }
+        if (a.kind === "range") {
+          const from = cellAddr(a.from), to = cellAddr(a.to);
+          if (!from || !to) return fail("#REF!", `${from ? a.to : a.from} is not on the sheet`);
+          const lo = Math.min(from[which], to[which]), hi = Math.max(from[which], to[which]);
+          const ns = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i + 1);
+          return ns.length === 1 ? ns[0] : which === "row" ? array(ns.length, 1, ns) : array(1, ns.length, ns);
+        }
+        return fail("#VALUE!", `${e.name} takes a reference`);
+      }
       case "IF": {
         // Only the branch taken is worked out: IF(B1=0, 0, A1/B1) is safe;
         // over an array, cell by cell.
@@ -299,9 +328,10 @@ class Evaluator {
 }
 
 // What a formula comes to: a value, or an array (of more than one value).
-export function evaluate(e: Expr, env: Env): Result {
+// `at` is the cell the formula is in, for ROW() and COLUMN().
+export function evaluate(e: Expr, env: Env, at: string | null = null): Result {
   try {
-    const v = new Evaluator(env).any(e);
+    const v = new Evaluator(env, at).any(e);
     return isClosure(v) ? new CellError("#CALC!", "a formula's value is a LAMBDA: call it") : collapsed(v);
   } catch (err) {
     if (err instanceof CellError) return err;

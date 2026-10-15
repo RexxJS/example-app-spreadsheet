@@ -160,7 +160,7 @@ export const EXCEL: Language = {
   compile(formula, names, tables, formulas, at) {
     try {
       const expr = parse(formula, names ?? (() => null), formulas, tables, at ? cellAddr(at)?.row ?? null : null);
-      return { kind: "formula", reads: [...refsOf(expr)], run: (env) => evaluate(expr, env) };
+      return { kind: "formula", reads: [...refsOf(expr)], run: (env) => evaluate(expr, env, at ?? null) };
     } catch (e) {
       if (!(e instanceof FormulaError)) throw e;
       return { kind: "broken", error: new CellError("#ERROR!", `parse error at ${e.at}: ${e.message}`) };

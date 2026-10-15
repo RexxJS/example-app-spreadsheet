@@ -10,6 +10,7 @@ import { sortOrder } from "./sortfind.ts";
 import { sparkline } from "./charts.ts";
 import { addMonths, dateDif, endOfMonth, now, parseDate, parts, serial, workdayFrom, workdaysBetween } from "./dates.ts";
 import { fv, irr, nper, npv, pmt, pv, rate } from "./finance.ts";
+import { colName, sheetPrefix } from "./address.ts";
 
 export interface Arg {
   readonly values: readonly Value[];
@@ -93,7 +94,8 @@ function lifted(fn: Fn, args: readonly Arg[], over: ReadonlySet<number>): Result
   return array(rows, cols, values);
 }
 
-export const names = (): string[] => [...library.keys(), "IF"].sort();
+// The evaluator's own forms count too (IF; ROW and COLUMN read references).
+export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN"].sort();
 
 // --- reading arguments ---
 
@@ -742,6 +744,42 @@ def("HLOOKUP", 3, 4, (args) => {
 
 def("ROWS", 1, 1, (args) => args[0].values.length / args[0].cols);
 def("COLUMNS", 1, 1, (args) => args[0].cols);
+// ADDRESS(row, column, [abs], [a1], [sheet]): a cell's address as text. abs
+// 1 is $A$1, 2 A$1, 3 $A1, 4 A1; a1 FALSE gives the R1C1 form, its
+// relative parts in brackets (R2C[3]); a sheet is put in front, quoted when
+// its name needs it.
+def("ADDRESS", 2, 5, (args) => {
+  const r = Math.trunc(num(args, 0)), c = Math.trunc(num(args, 1)), abs = Math.trunc(num(args, 2, 1));
+  const a1 = args.length > 3 && val(args, 3) !== null ? toNumber(val(args, 3)) !== 0 : true;
+  if (r < 1 || c < 1 || c > 16384) return fail("#VALUE!", `ADDRESS of row ${r}, column ${c}: not on a sheet`);
+  if (abs < 1 || abs > 4) return fail("#VALUE!", `ADDRESS's abs is 1 to 4, not ${abs}`);
+  const rowAbs = abs === 1 || abs === 2, colAbs = abs === 1 || abs === 3;
+  const cell = a1
+    ? `${colAbs ? "$" : ""}${colName(c - 1)}${rowAbs ? "$" : ""}${r}`
+    : `R${rowAbs ? r : `[${r}]`}C${colAbs ? c : `[${c}]`}`;
+  const sheet = args.length > 4 ? str(args, 4) : "";
+  return sheet === "" ? cell : `${sheetPrefix(sheet)}${cell}`;
+});
+// LOOKUP(value, vector, [result]): the last place in the ascending vector
+// not past `value`, read from the result vector (the vector itself when
+// there is none). LOOKUP(value, array) searches along the array's longer
+// side (its first row when it is wider than tall, else its first column)
+// and answers from the last row or column.
+def("LOOKUP", 2, 3, (args) => {
+  const x = scalar(val(args, 0));
+  if (args.length === 3) {
+    const at = position(x, args[1].values, 1);
+    if (at < 0) return notFound(x);
+    return at < args[2].values.length ? args[2].values[at] : fail("#N/A", `LOOKUP's result vector is shorter than its lookup vector`);
+  }
+  const { values, cols } = args[1], rows = values.length / cols;
+  if (cols > rows) {
+    const at = position(x, values.slice(0, cols), 1);
+    return at < 0 ? notFound(x) : values[(rows - 1) * cols + at];
+  }
+  const at = position(x, Array.from({ length: rows }, (_, i) => values[i * cols]), 1);
+  return at < 0 ? notFound(x) : values[at * cols + cols - 1];
+});
 def("INDEX", 2, 3, (args) => {
   const { values, cols } = args[0], rows = values.length / cols;
   // INDEX(list, n) counts along a single row or column.

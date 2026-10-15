@@ -2,7 +2,7 @@
 // every function in the library, its edge cases, and the errors it gives.
 import { evaluate } from "./sheet/evaluate.ts";
 import { criterion, names } from "./sheet/functions.ts";
-import { CellError } from "./sheet/values.ts";
+import { CellError, isArray } from "./sheet/values.ts";
 import type { Value } from "./sheet/values.ts";
 import { parse } from "./sheet/parser.ts";
 import { show } from "./sheet/format.ts";
@@ -30,13 +30,14 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
 });
 
 eq("the library", names().join(" "), [
-  "ABS AND AVERAGE AVERAGEIF AVERAGEIFS CHOOSE CHOOSECOLS CHOOSEROWS COLUMNS CONCAT COUNT COUNTA COUNTBLANK COUNTIF",
-  "COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FV HLOOKUP HOUR HSTACK IF IFERROR",
-  "IFNA IFS INDEX INT IRR ISBLANK ISERROR ISNUMBER ISTEXT LARGE LEFT LEN LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS",
-  "MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OR PERCENTILE PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE",
-  "REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROWS SECOND SEQUENCE SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE",
-  "SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE",
-  "TRIM UNIQUE UPPER VALUE VAR VARP VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
+  "ABS ADDRESS AND AVERAGE AVERAGEIF AVERAGEIFS CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS CONCAT COUNT COUNTA",
+  "COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DROP EDATE EOMONTH EXACT EXPAND FILTER FIND FV",
+  "HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INT IRR ISBLANK ISERROR ISNUMBER ISTEXT LARGE LEFT LEN LOOKUP",
+  "LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH NA NETWORKDAYS NOT NOW NPER NPV OR PERCENTILE",
+  "PI PMT POWER PRODUCT PROPER PV QUARTILE RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND SEQUENCE",
+  "SIGN SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SWITCH TAKE TEXT",
+  "TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW TRANSPOSE TRIM UNIQUE UPPER VALUE VAR VARP",
+  "VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH YEAR",
 ].join(" "));
 
 // Maths and statistics.
@@ -89,6 +90,27 @@ eq("VALUE of words", why("VALUE(B1)"), ["#VALUE! 'apples' is not a number"]);
 
 // Lookup.
 eq("ROWS and COLUMNS", ev("ROWS(F1:H4)", "COLUMNS(F1:H4)", "ROWS(A1)"), ["4", "3", "1"]);
+// An array as rows x cols and its values; a value as shown.
+const grid = (...srcs: string[]): string[] => srcs.map((src) => {
+  const v = evaluate(parse(src), env);
+  return isArray(v) ? `${v.rows}x${v.cols}:${v.values.map(show).join(",")}` : show(v);
+});
+eq("ROW and COLUMN of a reference, counted from 1", ev("ROW(C5)", "COLUMN(C5)", "ROW($A$1)", "COLUMN(Z1)"), ["5", "3", "1", "26"]);
+eq("over a range: each row down, each column across", grid("ROW(A3:A5)", "COLUMN(A1:C1)", "ROW(A1:C1)", "COLUMN(F2:H4)"), ["3x1:3,4,5", "1x3:1,2,3", "1", "1x3:6,7,8"]);
+eq("with nothing, the cell the formula is in", [show(evaluate(parse("ROW()"), env, "D7")), show(evaluate(parse("COLUMN()"), env, "D7")), show(evaluate(parse("ROW()+COLUMN()"), env, "B2"))], ["7", "4", "4"]);
+eq("ROW's and COLUMN's errors", why("ROW()", "ROW(1)", "COLUMN(A1, B1)", "ROW(ZZZ1)"), [
+  "#REF! ROW() is in no cell", "#VALUE! ROW takes a reference", "#VALUE! COLUMN takes a reference, or nothing", "#REF! ZZZ1 is not on the sheet",
+]);
+// The sheet is 26 columns by 100 rows (address.ts): past that is not a
+// reference here, as everywhere in the app, until the sheet grows.
+eq("past the sheet's edge, as any reference is", why("COLUMN(AA1)", "ROW(A101)"), ["#REF! AA1 is not on the sheet", "#REF! A101 is not on the sheet"]);
+eq("ADDRESS: absolute by default, then the three other mixes", ev("ADDRESS(2, 3)", "ADDRESS(2, 3, 2)", "ADDRESS(2, 3, 3)", "ADDRESS(2, 3, 4)", "ADDRESS(1, 27)"), ["$C$2", "C$2", "$C2", "C2", "$AA$1"]);
+eq("ADDRESS in R1C1, and with a sheet", ev("ADDRESS(2, 3, 1, FALSE)", "ADDRESS(2, 3, 2, FALSE)", "ADDRESS(2, 3, 4, FALSE)", `ADDRESS(1, 1, 1, TRUE, "Costs")`, `ADDRESS(1, 1, 4, TRUE, "My Costs")`),
+  ["R2C3", "R2C[3]", "R[2]C[3]", "Costs!$A$1", "'My Costs'!A1"]);
+eq("ADDRESS's errors", why("ADDRESS(0, 1)", "ADDRESS(1, 1, 5)"), ["#VALUE! ADDRESS of row 0, column 1: not on a sheet", "#VALUE! ADDRESS's abs is 1 to 4, not 5"]);
+eq("LOOKUP along an ascending vector: the last not past the value, from the result vector or itself", ev("LOOKUP(25, E1:E5, A1:A5)", "LOOKUP(50, E1:E5)", "LOOKUP(999, E1:E5, A1:A5)"), ["1", "50", "5"]);
+eq("LOOKUP in an array: down the first column when tall, along the first row when wide", ev("LOOKUP(2, F2:H4)", "LOOKUP(2.5, F2:H4)", `LOOKUP(25, {10,20,30;"a","b","c"})`), ["0.75", "0.75", "b"]);
+eq("LOOKUP's errors", why("LOOKUP(5, E1:E5)", "LOOKUP(25, E1:E5, A1:A1)"), ["#N/A 5 is not there", "#N/A LOOKUP's result vector is shorter than its lookup vector"]);
 eq("INDEX by row and column, or along a list", ev("INDEX(F1:H4, 3, 2)", "INDEX(A1:A6, 6)", "INDEX(F1:H1, 3)"), ["pear", "9", "price"]);
 eq("INDEX outside", why("INDEX(F1:H4, 5, 1)"), ["#REF! INDEX 5, 1 is outside 4 x 3"]);
 eq("MATCH exact, ignoring case", ev(`MATCH("PEAR", G1:G4, 0)`, "MATCH(3, F1:F4, 0)"), ["3", "4"]);
@@ -137,6 +159,17 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok VALUE
 // expect: ok VALUE of words
 // expect: ok ROWS and COLUMNS
+// expect: ok ROW and COLUMN of a reference, counted from 1
+// expect: ok over a range: each row down, each column across
+// expect: ok with nothing, the cell the formula is in
+// expect: ok ROW's and COLUMN's errors
+// expect: ok past the sheet's edge, as any reference is
+// expect: ok ADDRESS: absolute by default, then the three other mixes
+// expect: ok ADDRESS in R1C1, and with a sheet
+// expect: ok ADDRESS's errors
+// expect: ok LOOKUP along an ascending vector: the last not past the value, from the result vector or itself
+// expect: ok LOOKUP in an array: down the first column when tall, along the first row when wide
+// expect: ok LOOKUP's errors
 // expect: ok INDEX by row and column, or along a list
 // expect: ok INDEX outside
 // expect: ok MATCH exact, ignoring case
