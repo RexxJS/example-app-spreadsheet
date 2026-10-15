@@ -4,8 +4,9 @@ Start with [README.md](README.md): what the three folders are, and how to
 run and test the sae app. Then [docs/spreadsheet_demo_done_and_todo.md](docs/spreadsheet_demo_done_and_todo.md),
 the plan: what is done, what is next, and how the code is laid out.
 
-- **`app/` is where the work is.** `tauri/` is legacy and kept as it was;
-  read it for what the original did, don't develop it. `rexx/` holds the
+- **`app/` is where the work is.** The legacy Tauri app it grew from is
+  in history only (`git show bd1a002:tauri/...`), for what the original
+  did. `rexx/` holds the
   control-protocol scripts and their ADDRESS library (`ADDRESS
   SPREADSHEET` runs sae's `sae-bus`); `spec_app_sheet_rexx` runs them.
 - **It runs on sae, beside this checkout** (`sae -> ../sae`). A feature

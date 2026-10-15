@@ -8,7 +8,11 @@ parts:
 |---|---|---|
 | [`app/`](app/) | **The spreadsheet, current.** A [sae](https://github.com/aether-lang-dev/sae-it-aint-so) app in sae's TypeScript dialect: it runs as a page in the sae browser or as an installed app, natively on aether-ui (GTK4, AppKit, Win32). | MIT |
 | [`rexx/`](rexx/) | REXX scripts that drive the running sae app from outside, over its control bus (`ADDRESS SPREADSHEET`, through sae's `sae-bus`). | MIT |
-| [`tauri/`](tauri/) | **The original, legacy.** The React + Tauri app the sae one grew from. New features go into `app/`; this stays as it was, for reference. | AGPL (see [LICENSING.md](LICENSING.md)) |
+| [`mcp/`](mcp/) | An MCP server, so an AI client (Claude, or any MCP client) drives the running app over its control bus. | MIT |
+
+The original React + Tauri app the sae one grew from was here as `tauri/`
+until 2026-10-15; it is in this repository's history (last at commit
+`bd1a002`), AGPL as it was.
 
 ## The sae app
 
@@ -88,9 +92,3 @@ RexxJS/core/rexx rexx/test-spreadsheet-address.rexx
 
 See [rexx/README.md](rexx/README.md): how a command reaches the app, and
 where the scripts differ from the Tauri app's.
-
-## The Tauri app
-
-See [tauri/README.md](tauri/README.md). It was written to live inside the
-RexxJS repository (its scripts reach `../../core`), and does not build
-from here as it is.

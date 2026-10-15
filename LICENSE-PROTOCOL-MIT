@@ -24,7 +24,9 @@ SOFTWARE.
 
 APPLIES TO:
 - Spreadsheet Control Protocol/Grammar
-  - tauri/src/spreadsheet-control-functions.js
+  - app/sheet/control.ts and app/sheet/described.ts (the functions, as the
+    sae app implements and describes them; formerly the Tauri app's
+    src/spreadsheet-control-functions.js)
   - Protocol documentation and specifications
   - Example/test scripts (rexx/test-spreadsheet-address.rexx, etc.)
   - ADDRESS SPREADSHEET command grammar

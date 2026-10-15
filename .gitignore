@@ -45,11 +45,6 @@ yarn-error.log*
 .Spotlight-V100
 .Trashes
 
-# Tauri
-src-tauri/target/
-src-tauri/.env
-src-tauri/capabilities/
-src-tauri/tauri.conf.json.bak
 
 # Local development scripts
 rexxsheet-dev

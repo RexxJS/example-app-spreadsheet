@@ -10,7 +10,7 @@ Demo 18 (`sae/docs/roadmap.md`), `app/sheet.ts`, as of 2026-10-12, pinned
 to aether-ui `0cfbf942`. It began as the third of five
 demo ideas meant to show off sae's TypeScript dialect, and grew into the
 sae page that uses the most of the page API. It is taking in the Tauri
-spreadsheet (`tauri/` here) as pure sae TypeScript, with
+spreadsheet (`tauri/` in this repository's history, last at `bd1a002`) as pure sae TypeScript, with
 no DOM: its RexxJS formulas are one of two major settings, and its other
 features are coming over one by one ("From the Tauri spreadsheet", below).
 

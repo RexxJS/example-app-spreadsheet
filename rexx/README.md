@@ -58,7 +58,8 @@ header says how).
 
 ## Where they differ from the Tauri app's
 
-These scripts were written for the Tauri app (`../tauri/`), whose bus
+These scripts were written for the Tauri app (`tauri/` in this repository's
+history, last at `bd1a002`), whose bus
 was plain HTTP at `http://localhost:2410` with a fixed token. What changed
 to drive the sae app:
 
