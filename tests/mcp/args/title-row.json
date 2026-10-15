@@ -1,0 +1,1 @@
+{"calls": [{"function": "INSERTROW", "args": [2]}, {"function": "SETCELL", "args": ["A2", "Expenses for October"]}]}

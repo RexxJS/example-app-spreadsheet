@@ -30,12 +30,14 @@ tests/
   headless/         the model and commands, no window: sae's lowerer harness
                     on sae's QuickJS (sheet -> ../../app/sheet)
   specs/            the app driven in sae-driver: grid, keys, clipboard, files,
-                    the control bus, and rexx/'s scripts run against it
+                    the control bus, rexx/'s scripts and mcp/'s server run against it
   lib/griddriver.ae reads and clicks the datagrid for the specs
+  mcp/              the MCP server's protocol tests (node --test, a stand-in sae-bus)
 vendor/rexxjs/      RexxJS's interpreter and parser, vendored (MIT, its LICENSE)
 tools/              bundle-rexxjs.mjs: re-vendors RexxJS and writes app/sheet/rexxjs.js
 docs/               the plan, and notes for the Tauri app
 rexx/               REXX scripts that drive the app, and their ADDRESS library
+mcp/                an MCP server, so an AI client drives the app over its control bus
 sae -> ../sae       the sae checkout it builds and tests against
 RexxJS -> ../RexxJS the RexxJS checkout the REXX scripts run on
 ```
@@ -59,7 +61,8 @@ this machine can drive the sheet (sae's `docs/control-bus.md`).
 ```
 
 It needs `node`, and RexxJS checked out beside this repository, for the
-REXX scripts' spec. That runs the headless tests and the four specs, one line of PASS or FAIL
+REXX scripts' spec and the MCP server's tests. That runs the headless tests, the MCP
+server's protocol tests and the five specs, one line of PASS or FAIL
 each, with logs under `target/run-tests/`. `./run-tests.sh headless` runs
 only the headless tests; `./run-tests.sh spec_sheet` only that spec.
 `SAE_DIR=...` picks another sae checkout. On Linux with no display it runs

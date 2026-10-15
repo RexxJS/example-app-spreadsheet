@@ -16,7 +16,9 @@
 # The specs (tests/specs/) drive the app in sae-driver through sae's
 # tests/run_spec.sh, with this repo's tests/lib first on the module path;
 # spec_app_sheet_rexx runs rexx/'s scripts against it, with node and the
-# RexxJS beside this checkout (./RexxJS -> ../RexxJS).
+# RexxJS beside this checkout (./RexxJS -> ../RexxJS). mcp: the MCP
+# server's protocol (tests/mcp/, node --test, a stand-in for sae-bus);
+# spec_app_sheet_mcp drives the app through that server, with node.
 # On Linux with no display it reruns itself under xvfb-run.
 ROOT=$(cd "$(dirname "$0")" && pwd)
 cd "$ROOT" || exit 1
@@ -35,7 +37,7 @@ done
 
 T=$ROOT/target
 LOGS=$T/run-tests
-rm -rf "$LOGS" "$T/sheet-storage" "$T/sheet-bus-appdata" "$T/sheet-rexx-appdata"; mkdir -p "$LOGS"
+rm -rf "$LOGS" "$T/sheet-storage" "$T/sheet-bus-appdata" "$T/sheet-rexx-appdata" "$T/sheet-mcp-appdata"; mkdir -p "$LOGS"
 # label | environment (space-separated NAME=value) | command
 TABLE="
 headless||headless
@@ -43,6 +45,8 @@ spec_sheet|AETHER_UI_TEST_CLIPBOARD=1 SAE_STORAGE_DIR=$T/sheet-storage|spec spec
 spec_app_sheet_bus|SAE_TEST_FLAGS=--control-bus SAE_APPDATA_DIR=$T/sheet-bus-appdata AETHER_UI_HEADLESS=1 SAE_TEST_APP=$ROOT/app|spec spec_app_sheet_bus
 spec_app_sheet_files|AETHER_UI_HEADLESS=1 SAE_TEST_APP=$ROOT/app|spec spec_app_sheet_files
 spec_app_sheet_rexx|SAE_TEST_FLAGS=--control-bus SAE_APPDATA_DIR=$T/sheet-rexx-appdata AETHER_UI_HEADLESS=1 SAE_TEST_APP=$ROOT/app SHEET_ROOT=$ROOT|spec spec_app_sheet_rexx
+mcp||mcp
+spec_app_sheet_mcp|SAE_TEST_FLAGS=--control-bus SAE_APPDATA_DIR=$T/sheet-mcp-appdata AETHER_UI_HEADLESS=1 SAE_TEST_APP=$ROOT/app SHEET_ROOT=$ROOT|spec spec_app_sheet_mcp
 "
 
 pass=0; fail=0; failed=""
@@ -62,9 +66,18 @@ for line in $TABLE; do
         fail=$((fail + 1)); failed="$failed $label"; IFS='
 '; continue
     fi
+    # The MCP server runs on node.
+    case "$label" in mcp|spec_app_sheet_mcp)
+        if ! command -v node >/dev/null 2>&1; then
+            echo "FAIL $label (needs node)"
+            fail=$((fail + 1)); failed="$failed $label"; IFS='
+'; continue
+        fi ;;
+    esac
     set -- $cmd
     case "$1" in
         headless) set -- env SAE_LOWER_OUT="$T/lower-tests" "$SAE/lower/run-tests.sh" --mod "$ROOT/tests/headless" ;;
+        mcp) set -- node --test "$ROOT/tests/mcp/" ;;
         spec) set -- env SAE_TEST_LIB_DIR="$ROOT/tests/lib" \
                   "$SAE/tests/run_spec.sh" "$ROOT/tests/specs/$2.ae" "$ROOT/app" ;;
     esac

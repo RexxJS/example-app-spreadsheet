@@ -1099,7 +1099,7 @@ Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
   `asks/aether-ui-drag-to-reorder.md`. Until it lands, Move left, Move
   right and `sheet.move to=` do the same.
 
-### 14. An MCP server over the control bus
+### 14. An MCP server over the control bus (done, 2026-10-15)
 
 So that an AI client (Claude, or any MCP client) can drive a running
 spreadsheet. The bus already has the shape; what is missing is the server
@@ -1127,23 +1127,66 @@ What already fits:
 
 What it needs:
 
-1. **A first server, small:** three tools over `sae-bus`: run a command
-   (the REXX string), read a range (`GETCELLS`, its stem turned into rows),
-   and list the commands. With a cheat sheet of the common functions in
-   the run tool's description. In `mcp/` here, with a test that starts the
-   app with `--control-bus`, talks MCP to the server, and checks the grid
-   (as `spec_app_sheet_rexx` does for the REXX scripts).
-2. **Functions described.** `LISTCOMMANDS()` gives names only. A table
-   in `control.ts` of each function's parameters, their types and a line
-   of description (`commands.ts`'s specs have ids, labels and parameter
-   lists to start from) would let the server offer one tool per function,
-   generated, rather than one generic tool. `LISTCOMMANDS()` could give the
-   table too.
-3. **Values in and out.** Arguments go in as REXX text inside the command,
-   so the server should build the string itself from the tool's typed
-   arguments and quote values (RexxJS reads `''` and `""` as one quote
-   since its 6ec1ab7), rather than leave it to the model. Ranges come back
-   as REXX stems (`{0: count, 1: ...}`): turn them into rows and columns.
+1. ~~**A first server, small**~~ (done, 2026-10-15: `mcp/`, see its
+   README). `mcp/spreadsheet-mcp.js` is MCP over stdio in plain node, no
+   packages: `spreadsheet_run` (the REXX string, a cheat sheet of the
+   common functions in its description), `spreadsheet_read_range`
+   (`GETCELLS`'s stem as rows, the formulas beside) and
+   `spreadsheet_list_commands`. A range is checked before it is put in a
+   command, so no REXX rides in on it. Tested twice: `mcp`
+   (`tests/mcp/server.test.js` on `node --test`, a stand-in `sae-bus`: the
+   handshake, each tool, errors, order) and `spec_app_sheet_mcp` (the app
+   driven through the server, the grid checked). Two things in the app
+   came out of it:
+   - **A failed request is taken back whole.** `SETCELL("D1", "x");
+     BOGUS()` used to leave D1 set while answering that it failed; now the
+     request is undone and the error ends "(nothing it did was kept)",
+     with nothing left to redo (`commands.spreadsheet`,
+     `Workbook.endGroup(whole)`, `forgetRedo`).
+   - **`UNDO()` sent twice goes back two steps.** A request that only
+     undid was folded into a new "Script" step that put the undone change
+     back, so the next `UNDO()` undid the undo. A group that only undoes
+     and redoes is no longer folded; Redo stays (`sheet_undo`).
+   And one thing to know rather than fix: a command is one REXX
+   expression (`LET RESULT = ...`); statements after a `;` run, in the
+   same step, but the answer is the first one's.
+2. **Functions described** (the table done, 2026-10-15; one tool per
+   function not). `app/sheet/described.ts` describes all 130: each
+   parameter's name, kind (cell, range, row, column, text, number, flag,
+   json, stem, query), whether it is optional, and a line on what it takes;
+   what the function does; what it gives. `LISTCOMMANDS(1)` gives it,
+   `{name, signature, params, does, gives}` a function, the signature as
+   `SORTRANGE(range, by, [ascending])`; `LISTCOMMANDS()` is the names, as
+   the Tauri app's. `sheet_described` holds the table to the functions:
+   every listed name described and nothing else, each one's parameters as
+   many as it takes (a function's own length). The MCP server's
+   `spreadsheet_list_commands` lists them so, or one in full by `name`.
+   One tool per function was decided against: a client carries every
+   tool's description into each turn, and models choose better among a
+   few. Instead, one generic `spreadsheet_call` (below) takes any function
+   by name, checked against this table.
+3. ~~**Values in and out.**~~ (done, 2026-10-15). The server's tools are
+   chosen when it starts: `--tools=json` (the default) offers
+   `spreadsheet_write_cells` (rows of values from a cell) and
+   `spreadsheet_call` (`{"function": "SORTRANGE", "args": [...]}`, or
+   several `calls` as one step), with `spreadsheet_read_range` and
+   `spreadsheet_list_commands`; `--tools=rexx` offers `spreadsheet_run`
+   instead, for those who would write REXX; `--tools=all`, all five. The
+   JSON tools never put a value in a REXX string: they send the calls to
+   `BATCH_EXECUTE` as ASCII JSON, base64-encoded (`BASE64_DECODE`), and
+   `BATCH_EXECUTE(commands, 1)` now stops at the first failure, so the
+   request fails and is taken back whole. Quoting in REXX was not enough:
+   RexxJS reads `\n`, `\t` and `\r` in the strings a host function is
+   given, and a backslash before one cannot be written at all (`C:\temp`
+   arrived with a tab; RexxJS's `TODO.md`). Stems come back as lists,
+   all the way down. `spreadsheet_call` checks each argument against
+   `described.ts` (how many; a row a number from 1, a flag 1 or 0, a
+   column a letter or number, a stem a list, JSON as text or an object)
+   before anything is sent. Tested by `mcp` (32 checks) and
+   `spec_app_sheet_mcp` (the expenses written, sorted, a row and
+   its title undone as one, a half-failed call keeping nothing); 19 awkward
+   values (quotes, backslashes, new lines, emoji) round-trip whole through
+   the app.
 
 Limits to say in the tools' descriptions, not to fix for this:
 

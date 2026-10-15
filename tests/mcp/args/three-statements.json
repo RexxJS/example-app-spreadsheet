@@ -1,0 +1,1 @@
+{"command": "SETCELL(\"F1\", \"2\"); SETCELL(\"F2\", \"3\"); SETCELL(\"F3\", \"=F1*F2\")"}

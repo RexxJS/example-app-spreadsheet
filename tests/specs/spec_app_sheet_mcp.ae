@@ -1,0 +1,159 @@
+// spec_app_sheet_mcp.ae — an AI client drives the app through the MCP
+// server (mcp/spreadsheet-mcp.js) over its control bus, as Claude would:
+// tests/mcp/drive.js makes one MCP tool call apiece, through the server and
+// sae's sae-bus, and what it did must be on the grid. First the tools a
+// client is offered by default (JSON in, nothing to escape), then
+// spreadsheet_run's REXX, offered with --tools=all. The server's protocol
+// itself is tested without the app by tests/mcp/server.test.js.
+//   ./run-tests.sh spec_app_sheet_mcp
+// Needs node and sae's target/sae-bus.
+import std.spec
+import std.string
+import std.list
+import std.os
+import std.os (os_getenv)
+import saedriver as b
+import griddriver as g
+import uidriver
+
+// One tool call's line of JSON ({isError, result}) and the client's status.
+// `env` is prepended to the command ("" for none); `args` is JSON, or
+// @tests/mcp/args/<file>.json.
+mcp_env_(env: string, tool: string, args: string) -> (string, int) {
+    root = os_getenv("SHEET_ROOT")
+    argv = list.new()
+    list.add(argv, "-c")
+    list.add(argv, "cd \"$0\" && ${env} node tests/mcp/drive.js \"$1\" \"$2\" 2>&1")
+    list.add(argv, root)
+    list.add(argv, tool)
+    list.add(argv, args)
+    out, status, _err = os.run_capture("sh", argv, null)
+    return out, status
+}
+
+mcp_(tool: string, args: string) -> (string, int) {
+    out, status = mcp_env_("", tool, args)
+    return out, status
+}
+
+// A call that must work, and its line.
+ok_env_(env: string, tool: string, args: string, what: string) -> string {
+    out, status = mcp_env_(env, tool, args)
+    spec.assert_eq(status, 0, "${what}: the client exits 0")
+    spec.assert_contains(out, "\"isError\":false", "${what}: no tool error")
+    return out
+}
+
+ok_(tool: string, args: string, what: string) -> string {
+    return ok_env_("", tool, args, what)
+}
+
+// spreadsheet_run is offered with --tools=all (or rexx).
+run_(args: string, what: string) -> string {
+    return ok_env_("SPREADSHEET_MCP_TOOLS=all", "spreadsheet_run", args, what)
+}
+
+main() {
+    fw = spec.init()
+    uidriver.wait_server()
+    spec.describe(fw, "an AI client, through the MCP server's JSON tools") {
+        spec.it("lists the app's functions, each with its parameters") callback {
+            spec.assert_true(b.wait_for_console("sae: control bus: listening"), "listening")
+            out = ok_("spreadsheet_list_commands", "{}", "list")
+            spec.assert_contains(out, "\"signature\":\"SETCELL(cell, value)\"", "SETCELL")
+            spec.assert_contains(out, "\"signature\":\"SORTRANGE(range, by, [ascending])\"", "SORTRANGE, its optional one in brackets")
+            spec.assert_contains(out, "\"signature\":\"LISTCOMMANDS([described])\"", "LISTCOMMANDS itself")
+            one = ok_("spreadsheet_list_commands", "{\"name\": \"SETCELLVALIDATION\"}", "one")
+            spec.assert_contains(one, "\"signature\":\"SETCELLVALIDATION(range, type, [limits...])\"", "one in full")
+            spec.assert_contains(one, "\"about\":\"list, number or text\"", "with what its type takes")
+        }
+        spec.it("writes rows of expenses, a backslash and quotes in them as they are, and a total") callback {
+            out = ok_("spreadsheet_write_cells", "@tests/mcp/args/expenses.json", "write")
+            spec.assert_contains(out, "\"range\":\"A1:C5\",\"cells\":15", "fifteen cells")
+            spec.assert_true(g.wait_cell("B", 2, "Taxi to C:\\temp's office"), "the backslash kept, no tab")
+            spec.assert_true(g.wait_cell("B", 3, "Lunch \"client\" meeting"), "the quotes kept")
+            spec.assert_true(g.wait_cell("C", 5, "75.5"), "the total worked out")
+        }
+        spec.it("reads them back as rows, with the formula behind the total") callback {
+            out = ok_("spreadsheet_read_range", "{\"range\": \"A1:C5\"}", "read")
+            spec.assert_contains(out, "[\"2026-10-02\",\"Lunch \\\"client\\\" meeting\",40]", "a row")
+            spec.assert_contains(out, "\"formulas\":{\"C5\":\"=SUM(C2:C4)\"}", "the formula")
+        }
+        spec.it("calls a function by name, its arguments as JSON: the rows sorted by amount") callback {
+            ok_("spreadsheet_call", "@tests/mcp/args/sort.json", "sort")
+            spec.assert_true(g.wait_cell("B", 2, "Lunch \"client\" meeting"), "the dearest first")
+            spec.assert_true(g.wait_cell("B", 4, "Train"), "the cheapest last")
+            spec.assert_true(g.wait_cell("C", 5, "75.5"), "the total as it was")
+        }
+        spec.it("several calls as one step: one Undo takes back both") callback {
+            out = ok_("spreadsheet_call", "@tests/mcp/args/title-row.json", "a title row")
+            spec.assert_contains(out, "\"results\":[\"OK\",\"Expenses for October\"]", "each one's result")
+            spec.assert_true(g.wait_cell("A", 2, "Expenses for October"), "the row in, its title set")
+            spec.assert_true(g.wait_cell("C", 6, "75.5"), "the total moved down, still right")
+            ok_("spreadsheet_call", "{\"function\": \"UNDO\"}", "undo")
+            spec.assert_true(g.wait_cell("B", 2, "Lunch \"client\" meeting"), "the row gone with its title")
+            spec.assert_true(g.wait_cell("C", 5, "75.5"), "and the total back in its place")
+        }
+        spec.it("calls that fail part way: a tool error saying which, and nothing kept") callback {
+            out, status = mcp_("spreadsheet_call", "@tests/mcp/args/half-fails.json")
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "\"isError\":true", "a tool error")
+            spec.assert_contains(out, "command 2 (DELETESHEET): ", "which, and the app's reason")
+            spec.assert_contains(out, "(nothing it did was kept)", "and that it was taken back")
+            spec.assert_true(g.wait_cell("D", 1, ""), "D1 as it was")
+        }
+        spec.it("arguments checked before anything is sent") callback {
+            out, status = mcp_("spreadsheet_call", "{\"function\": \"INSERTROW\", \"args\": [0]}")
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "INSERTROW's argument 1 (row) must be a row number from 1, not 0", "said which")
+            spec.assert_true(g.wait_cell("A", 2, "2026-10-02"), "no row inserted")
+        }
+        spec.it("with no app to ask, a tool error that says so") callback {
+            out, status = mcp_env_("SAE_APPDATA_DIR=/nonexistent", "spreadsheet_list_commands", "{}")
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "\"isError\":true", "a tool error")
+            spec.assert_contains(out, "no spreadsheet to ask: sae-bus: no courier file at /nonexistent/.control-bus", "and why")
+        }
+    }
+    spec.describe(fw, "REXX, through spreadsheet_run (--tools=all)") {
+        spec.it("is not offered by default") callback {
+            out, status = mcp_("spreadsheet_run", "{\"command\": \"GETCELL(\\\"A1\\\")\"}")
+            spec.assert_contains(out, "no tool named", "a protocol error, no tool")
+        }
+        spec.it("a command of three statements: on the grid, and the formula worked out") callback {
+            run_("@tests/mcp/args/three-statements.json", "run")
+            spec.assert_true(g.wait_cell("F", 1, "2"), "F1 on the grid")
+            spec.assert_true(g.wait_cell("F", 3, "6"), "F3 worked out")
+        }
+        spec.it("a value with doubled quotes goes in with its quotes") callback {
+            run_("{\"command\": \"SETCELL(\\\"G1\\\", \\\"say \\\"\\\"hi\\\"\\\"\\\")\"}", "quotes")
+            spec.assert_true(g.wait_cell("G", 1, "say \"hi\""), "G1 has its quotes")
+        }
+        spec.it("sees what the person typed since") callback {
+            g.enter("B9", "typed by hand")
+            spec.assert_true(g.wait_cell("B", 9, "typed by hand"), "typed")
+            out = ok_("spreadsheet_read_range", "{\"range\": \"B9\"}", "read B9")
+            spec.assert_contains(out, "\"rows\":[[\"typed by hand\"]]", "the person's edit is read")
+        }
+        spec.it("UNDO() sent again and again goes back a step each time") callback {
+            run_("{\"command\": \"UNDO()\"}", "undo B9")
+            spec.assert_true(g.wait_cell("B", 9, ""), "the person's B9 undone, the last change")
+            spec.assert_true(g.wait_cell("G", 1, "say \"hi\""), "G1 not yet")
+            run_("{\"command\": \"UNDO()\"}", "undo G1")
+            spec.assert_true(g.wait_cell("G", 1, ""), "G1 undone")
+            run_("{\"command\": \"UNDO()\"}", "undo the three")
+            spec.assert_true(g.wait_cell("F", 3, ""), "F3 gone")
+            spec.assert_true(g.wait_cell("F", 1, ""), "and F1 with it, in the same step")
+            spec.assert_true(g.wait_cell("C", 5, "75.5"), "the expenses still there")
+        }
+        spec.it("a command that fails part way is a tool error with the app's reason, and keeps nothing") callback {
+            out, status = mcp_env_("SPREADSHEET_MCP_TOOLS=all", "spreadsheet_run", "{\"command\": \"SETCELL(\\\"D1\\\", \\\"x\\\"); BOGUS()\"}")
+            spec.assert_eq(status, 0, "the client exits 0")
+            spec.assert_contains(out, "\"isError\":true", "a tool error")
+            spec.assert_contains(out, "Function BOGUS is not available", "the reason")
+            spec.assert_contains(out, "(nothing it did was kept)", "and that it was taken back")
+            spec.assert_true(g.wait_cell("D", 1, ""), "D1 as it was")
+        }
+    }
+    return spec.run_summary(fw)
+}

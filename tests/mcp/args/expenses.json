@@ -1,0 +1,30 @@
+{
+  "cell": "A1",
+  "rows": [
+    [
+      "Date",
+      "Item",
+      "Amount"
+    ],
+    [
+      "2026-10-01",
+      "Taxi to C:\\temp's office",
+      23.5
+    ],
+    [
+      "2026-10-02",
+      "Lunch \"client\" meeting",
+      40
+    ],
+    [
+      "2026-10-03",
+      "Train",
+      12
+    ],
+    [
+      "",
+      "Total",
+      "=SUM(C2:C4)"
+    ]
+  ]
+}
