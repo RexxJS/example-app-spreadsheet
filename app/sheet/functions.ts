@@ -483,6 +483,140 @@ def("REPT", 2, 2, (args) => {
 def("EXACT", 2, 2, (args) => str(args, 0) === str(args, 1));
 def("VALUE", 1, 1, (args) => num(args, 0));
 
+// CODE and CHAR over the first 255 codes; UNICODE and UNICHAR over all.
+def("CODE", 1, 1, (args) => {
+  const s = str(args, 0);
+  return s === "" ? fail("#VALUE!", "CODE of no text") : s.charCodeAt(0);
+});
+def("CHAR", 1, 1, (args) => {
+  const n = Math.trunc(num(args, 0));
+  return n >= 1 && n <= 255 ? String.fromCharCode(n) : fail("#VALUE!", `CHAR(${n}): 1 to 255`);
+});
+def("UNICODE", 1, 1, (args) => {
+  const s = str(args, 0);
+  return s === "" ? fail("#VALUE!", "UNICODE of no text") : s.codePointAt(0)!;
+});
+def("UNICHAR", 1, 1, (args) => {
+  const n = Math.trunc(num(args, 0));
+  if (n < 1 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff)) return fail("#VALUE!", `UNICHAR(${n}): not a character`);
+  return String.fromCodePoint(n);
+});
+// CLEAN: the control characters (codes 0 to 31) taken out.
+def("CLEAN", 1, 1, (args) => str(args, 0).replace(/[\x00-\x1f]/g, ""));
+// A number to `decimals` places (a negative count rounds left of the
+// point), away from zero at a half, with thousands separated unless not.
+function fixed(x: number, decimals: number, commas: boolean): string {
+  const d = Math.trunc(decimals), f = 10 ** Math.abs(d);
+  const rounded = d >= 0 ? Math.round(Number((Math.abs(x) * f).toPrecision(15))) / f : Math.round(Math.abs(x) / f) * f;
+  const [whole, frac = ""] = rounded.toFixed(Math.max(d, 0)).split(".");
+  const grouped = commas ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : whole;
+  return `${x < 0 && rounded !== 0 ? "-" : ""}${grouped}${d > 0 ? `.${frac}` : ""}`;
+}
+def("FIXED", 1, 3, (args) => fixed(num(args, 0), num(args, 1, 2), !(args.length > 2 && toNumber(val(args, 2)) !== 0)));
+// DOLLAR: as FIXED with commas, a $ in front, a negative in parentheses.
+def("DOLLAR", 1, 2, (args) => {
+  const x = num(args, 0), s = fixed(Math.abs(x), num(args, 1, 2), true);
+  return x < 0 && s !== "0" && !/^0\.0*$/.test(s) ? `($${s})` : `$${s}`;
+});
+// SEARCH(find, within, [start]): where the text is, counted from 1,
+// without regard to case; ? stands for one character, * for any run, ~
+// makes the next one plain. Not there is #VALUE!.
+const searchPattern = (pattern: string): RegExp => {
+  let out = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "~" && i + 1 < pattern.length) out += pattern[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    else if (c === "?") out += ".";
+    else if (c === "*") out += ".*?";
+    else out += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(out, "i");
+};
+def("SEARCH", 2, 3, (args) => {
+  const needle = str(args, 0), hay = str(args, 1), start = Math.trunc(num(args, 2, 1));
+  if (start < 1 || start > hay.length + 1) return fail("#VALUE!", `SEARCH from ${start}: outside the text`);
+  const at = hay.slice(start - 1).search(searchPattern(needle));
+  return at < 0 ? fail("#VALUE!", `'${needle}' is not in '${hay}'`) : at + start;
+});
+// REPLACE(old, start, count, new): that many characters from `start`
+// (counted from 1) replaced by the new text.
+def("REPLACE", 4, 4, (args) => {
+  const old = str(args, 0), start = Math.trunc(num(args, 1)), count = Math.trunc(num(args, 2));
+  if (start < 1 || count < 0) return fail("#VALUE!", `REPLACE from ${start}, ${count} characters`);
+  return old.slice(0, start - 1) + str(args, 3) + old.slice(start - 1 + count);
+});
+// CONCATENATE joins values (a range goes cell by cell, as CONCAT joins a
+// range whole).
+def("CONCATENATE", 1, Infinity, (args) => args.map((_, i) => toText(val(args, i))).join(""));
+// NUMBERVALUE(text, [decimal], [group]): text as a number, with the
+// separators given (the locale's, "." and ",", unless told); spaces are
+// ignored, and a % at the end divides by 100 (each one).
+def("NUMBERVALUE", 1, 3, (args) => {
+  const text = str(args, 0), dec = (args.length > 1 ? str(args, 1) : ".")[0] ?? ".", grp = (args.length > 2 ? str(args, 2) : ",")[0] ?? ",";
+  if (text.trim() === "") return 0;
+  if (dec === grp) return fail("#VALUE!", "NUMBERVALUE's separators are the same");
+  let s = text.replace(/\s+/g, ""), pct = 0;
+  while (s.endsWith("%")) { s = s.slice(0, -1); pct++; }
+  if (s.includes(grp) && s.includes(dec) && s.lastIndexOf(grp) > s.indexOf(dec)) return fail("#VALUE!", `'${text}' is not a number`);
+  s = s.split(grp).join("").split(dec).join(".");
+  if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(s)) return fail("#VALUE!", `'${text}' is not a number`);
+  return Number(s) / 100 ** pct;
+});
+// A value as text in the strict form: text in quotes, the rest as shown.
+const strict = (v: Value): string => (typeof v === "string" ? `"${v.replace(/"/g, '""')}"` : v instanceof CellError ? v.code : toText(v));
+const shown = (v: Value): string => (v instanceof CellError ? v.code : toText(v));
+// VALUETOTEXT(value, [format]): the value as text, concise (0) or strict
+// (1: text in quotes). ARRAYTOTEXT(array, [format]): its cells joined by
+// ", " and rows by "; " (concise), or in braces as an array constant.
+def("VALUETOTEXT", 1, 2, (args) => (num(args, 1, 0) === 1 ? strict : shown)(val(args, 0)));
+def("ARRAYTOTEXT", 1, 2, (args) => {
+  const { values, cols } = args[0], form = Math.trunc(toNumber(val(args, 1)));
+  if (form !== 0 && form !== 1) return fail("#VALUE!", `ARRAYTOTEXT's format is 0 or 1, not ${form}`);
+  const rows: string[] = [];
+  for (let i = 0; i < values.length; i += cols) rows.push(values.slice(i, i + cols).map(form === 1 ? strict : shown).join(form === 1 ? "," : ", "));
+  return form === 1 ? `{${rows.join(";")}}` : rows.join("; ");
+});
+// The REGEX trio on the engine's own regular expressions (ECMAScript,
+// Unicode aware); a pattern that does not compile is #VALUE!. Case
+// sensitivity: 0 (sensitive) unless 1.
+function regex(pattern: string, flags: string): RegExp {
+  try {
+    return new RegExp(pattern, flags);
+  } catch {
+    return fail("#VALUE!", `'${pattern}' is not a regular expression`);
+  }
+}
+const caseFlag = (args: readonly Arg[], i: number): string => (Math.trunc(num(args, i, 0)) === 1 ? "i" : "");
+def("REGEXTEST", 2, 3, (args) => regex(str(args, 1), `u${caseFlag(args, 2)}`).test(str(args, 0)));
+// REGEXEXTRACT(text, pattern, [mode], [case]): the first match (0), every
+// match as a column (1), or the first match's groups as a row (2); none
+// is #N/A.
+def("REGEXEXTRACT", 2, 4, (args) => {
+  const text = str(args, 0), mode = Math.trunc(num(args, 2, 0)), re = regex(str(args, 1), `gu${caseFlag(args, 3)}`);
+  if (mode < 0 || mode > 2) return fail("#VALUE!", `REGEXEXTRACT's mode is 0, 1 or 2, not ${mode}`);
+  const matches = [...text.matchAll(re)];
+  if (!matches.length) return fail("#N/A", `'${str(args, 1)}' matches nothing in '${text}'`);
+  if (mode === 1) return matches.length === 1 ? matches[0][0] : array(matches.length, 1, matches.map((m) => m[0]));
+  if (mode === 0) return matches[0][0];
+  const groups = matches[0].slice(1).map((g) => g ?? "");
+  return groups.length === 0 ? matches[0][0] : groups.length === 1 ? groups[0] : array(1, groups.length, groups);
+});
+// REGEXREPLACE(text, pattern, replacement, [occurrence], [case]): every
+// match replaced (0), or only the nth; $1 in the replacement is a group.
+def("REGEXREPLACE", 3, 5, (args) => {
+  const text = str(args, 0), rep = str(args, 2), nth = Math.trunc(num(args, 3, 0)), re = regex(str(args, 1), `gu${caseFlag(args, 4)}`);
+  if (nth < 0) return fail("#VALUE!", `REGEXREPLACE's occurrence is 0 or more, not ${nth}`);
+  if (nth === 0) return text.replace(re, rep);
+  let seen = 0;
+  return text.replace(re, (...m) => {
+    seen++;
+    const whole = m[0] as string;
+    if (seen !== nth) return whole;
+    const groups = m.slice(1, -2) as (string | undefined)[];
+    return rep.replace(/\$(\d+|\$)/g, (_, k: string) => (k === "$" ? "$" : k === "0" ? whole : groups[Number(k) - 1] ?? ""));
+  });
+});
+
 // TEXT: a value in an Excel number format ("0.00", "#,##0", "0%",
 // "yyyy-mm-dd"); text that reads as a number is formatted as one.
 def("TEXT", 2, 2, (args) => {

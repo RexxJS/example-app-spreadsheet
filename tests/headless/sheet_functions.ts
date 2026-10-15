@@ -31,19 +31,26 @@ const why = (...srcs: string[]): string[] => srcs.map((src) => {
   return v instanceof CellError ? `${v.code} ${v.why}` : `not an error: ${show(v)}`;
 });
 
+// An array as rows x cols and its values; a value as shown.
+const grid = (...srcs: string[]): string[] => srcs.map((src) => {
+  const v = evaluate(parse(src), env);
+  return isArray(v) ? `${v.rows}x${v.cols}:${v.values.map(show).join(",")}` : show(v);
+});
+
 eq("the library", names().join(" "), [
-  "ABS ACOS ACOSH ADDRESS AND ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEIF AVERAGEIFS CEILING CEILING.MATH",
-  "CEILING.PRECISE CHOOSE CHOOSECOLS CHOOSEROWS COLUMN COLUMNS COMBIN CONCAT COS COSH COUNT COUNTA COUNTBLANK",
-  "COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DEGREES DROP EDATE EOMONTH ERROR.TYPE EVEN EXACT EXP EXPAND",
-  "FACT FALSE FILTER FIND FLOOR FLOOR.MATH FLOOR.PRECISE FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS",
-  "INDEX INDIRECT INFO INT IRR ISBLANK ISERR ISERROR ISEVEN ISFORMULA ISLOGICAL ISNA ISNONTEXT ISNUMBER ISODD ISREF",
-  "ISTEXT LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH",
-  "MROUND N NA NETWORKDAYS NOT NOW NPER NPV ODD OFFSET OR PERCENTILE PERMUT PI PMT POWER PRODUCT PROPER PV QUARTILE",
-  "QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SECOND",
-  "SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS",
-  "SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TOCOL TODAY TOROW",
-  "TRANSPOSE TRIM TRUE TRUNC TYPE UNIQUE UPPER VALUE VAR VARP VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS",
-  "XLOOKUP XMATCH XOR YEAR",
+  "ABS ACOS ACOSH ADDRESS AND ARRAYTOTEXT ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEIF AVERAGEIFS CEILING",
+  "CEILING.MATH CEILING.PRECISE CHAR CHOOSE CHOOSECOLS CHOOSEROWS CLEAN CODE COLUMN COLUMNS COMBIN CONCAT",
+  "CONCATENATE COS COSH COUNT COUNTA COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DEGREES DOLLAR",
+  "DROP EDATE EOMONTH ERROR.TYPE EVEN EXACT EXP EXPAND FACT FALSE FILTER FIND FIXED FLOOR FLOOR.MATH FLOOR.PRECISE",
+  "FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INFO INT IRR ISBLANK ISERR ISERROR",
+  "ISEVEN ISFORMULA ISLOGICAL ISNA ISNONTEXT ISNUMBER ISODD ISREF ISTEXT LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP",
+  "LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH MROUND N NA NETWORKDAYS NOT NOW NPER NPV",
+  "NUMBERVALUE ODD OFFSET OR PERCENTILE PERMUT PI PMT POWER PRODUCT PROPER PV QUARTILE QUOTIENT RADIANS RAND",
+  "RANDARRAY RANDBETWEEN RANK RATE REGEXEXTRACT REGEXREPLACE REGEXTEST REPLACE REPT RIGHT ROUND ROUNDDOWN ROUNDUP",
+  "ROW ROWS SEARCH SECOND SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY SPARKLINE SQRT STDEV STDEVP",
+  "SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT",
+  "TIME TOCOL TODAY TOROW TRANSPOSE TRIM TRUE TRUNC TYPE UNICHAR UNICODE UNIQUE UPPER VALUE VALUETOTEXT VAR VARP",
+  "VLOOKUP VSTACK WEEKDAY WORKDAY WRAPCOLS WRAPROWS XLOOKUP XMATCH XOR YEAR",
 ].join(" "));
 
 // Maths and statistics.
@@ -106,6 +113,34 @@ eq("TEXTJOIN, skipping blanks or not", ev(`TEXTJOIN(", ", TRUE, B1:B6)`, `TEXTJO
 eq("VALUE", ev("VALUE(D5)+1", `VALUE(" 2.5 ")`), ["6", "2.5"]);
 eq("VALUE of words", why("VALUE(B1)"), ["#VALUE! 'apples' is not a number"]);
 
+// The text batch (2.4).
+eq("CODE, CHAR, UNICODE, UNICHAR", ev(`CODE("A")`, `CODE("apple")`, "CHAR(65)", "CHAR(33)", `UNICODE("é")`, `UNICODE("😀")`, "UNICHAR(233)", "UNICHAR(128512)", `LEN(UNICHAR(128512))`), ["65", "97", "A", "!", "233", "128512", "é", "😀", "2"]);
+eq("their errors", why(`CODE("")`, "CHAR(0)", "CHAR(256)", `UNICODE("")`, "UNICHAR(0)", "UNICHAR(55296)"), ["#VALUE! CODE of no text", "#VALUE! CHAR(0): 1 to 255", "#VALUE! CHAR(256): 1 to 255", "#VALUE! UNICODE of no text", "#VALUE! UNICHAR(0): not a character", "#VALUE! UNICHAR(55296): not a character"]);
+eq("CLEAN takes the control characters out", ev(`CLEAN("a" & CHAR(9) & "b" & CHAR(10) & "c")`, `LEN(CLEAN(CHAR(1) & CHAR(31) & "x"))`), ["abc", "1"]);
+eq("FIXED: places, commas or not, rounding left of the point", ev("FIXED(1234.567, 1)", "FIXED(1234.567, -1)", "FIXED(-1234.567, -1, TRUE)", "FIXED(44.332)", "FIXED(0.5, 0)", "FIXED(2.675, 2)", "FIXED(-0.001, 2)", "FIXED(1234567.891, 2, FALSE)"),
+  ["1,234.6", "1,230", "-1230", "44.33", "1", "2.68", "0.00", "1,234,567.89"]);
+eq("DOLLAR: a $ in front, a negative in parentheses", ev("DOLLAR(1234.567, 2)", "DOLLAR(-1234.567, -2)", "DOLLAR(-0.123, 4)", "DOLLAR(99)", "DOLLAR(-0.001)"), ["$1,234.57", "($1,200)", "($0.1230)", "$99.00", "$0.00"]);
+eq("SEARCH: without regard to case, with wildcards, from a start", ev(`SEARCH("e", "Statements")`, `SEARCH("margin", "Profit Margin")`, `SEARCH("P?L", "Apple")`, `SEARCH("a*e", "banana cake")`, `SEARCH("~?", "what? why?")`, `SEARCH("a", "banana", 3)`, `SEARCH("", "abc")`),
+  ["5", "8", "2", "2", "5", "4", "1"]);
+eq("SEARCH's errors", why(`SEARCH("z", "apple")`, `SEARCH("a", "apple", 0)`, `SEARCH("a", "apple", 7)`), ["#VALUE! 'z' is not in 'apple'", "#VALUE! SEARCH from 0: outside the text", "#VALUE! SEARCH from 7: outside the text"]);
+eq("REPLACE and CONCATENATE", ev(`REPLACE("abcdefghijk", 6, 5, "*")`, `REPLACE("2009", 3, 2, "10")`, `REPLACE("123456", 1, 3, "@")`, `REPLACE("abc", 5, 1, "X")`, `CONCATENATE("a", 1, TRUE, B5, "b")`, `CONCATENATE(B1, " & ", B2)`),
+  ["abcde*k", "2010", "@456", "abcX", "a1TRUEb", "apples & pears"]);
+eq("CONCATENATE over a range goes cell by cell; CONCAT joins it whole", grid(`CONCATENATE(A1:A3, "-")`, "CONCAT(A1:A3)"), ["3x1:3-,1-,4-", "314"]);
+eq("REPLACE's errors", why(`REPLACE("abc", 0, 1, "x")`, `REPLACE("abc", 1, -1, "x")`), ["#VALUE! REPLACE from 0, 1 characters", "#VALUE! REPLACE from 1, -1 characters"]);
+eq("NUMBERVALUE: the separators given, spaces ignored, a % divides", ev(`NUMBERVALUE("2.500,27", ",", ".")`, `NUMBERVALUE("3.5%")`, `NUMBERVALUE("1 234.5")`, `NUMBERVALUE("")`, `NUMBERVALUE("-1,234")`, `NUMBERVALUE("12%%")`, `NUMBERVALUE("1e3")`),
+  ["2500.27", "0.035", "1234.5", "0", "-1234", "0.0012", "1000"]);
+eq("NUMBERVALUE's errors", why(`NUMBERVALUE("abc")`, `NUMBERVALUE("1,2.3,4")`, `NUMBERVALUE("1.5", ".", ".")`), ["#VALUE! 'abc' is not a number", "#VALUE! '1,2.3,4' is not a number", "#VALUE! NUMBERVALUE's separators are the same"]);
+eq("VALUETOTEXT and ARRAYTOTEXT, concise and strict", ev("VALUETOTEXT(A1)", "VALUETOTEXT(B1)", "VALUETOTEXT(B1, 1)", "VALUETOTEXT(D1, 1)", "VALUETOTEXT(D2)", "ARRAYTOTEXT(F1:H2)", "ARRAYTOTEXT(F1:H2, 1)", `ARRAYTOTEXT({1,"a";TRUE,#N/A}, 1)`, "ARRAYTOTEXT(A1:A3)"),
+  ["3", "apples", "\"apples\"", "TRUE", "#DIV/0!", "id, fruit, price; 1, apple, 0.5", "{\"id\",\"fruit\",\"price\";1,\"apple\",0.5}", "{1,\"a\";TRUE,#N/A}", "3; 1; 4"]);
+eq("ARRAYTOTEXT's format", why("ARRAYTOTEXT(A1:A2, 2)"), ["#VALUE! ARRAYTOTEXT's format is 0 or 1, not 2"]);
+eq("REGEXTEST, case sensitive unless told", ev(`REGEXTEST("Apple 42", "\\d+")`, `REGEXTEST("Apple", "^a")`, `REGEXTEST("Apple", "^a", 1)`, `REGEXTEST(D4, "^hello\\s\\w+$")`, `REGEXTEST("café", "^\\p{L}+$")`), ["TRUE", "FALSE", "TRUE", "TRUE", "TRUE"]);
+eq("REGEXEXTRACT: the first match, every match, or the groups", grid(`REGEXEXTRACT("a1b22c333", "\\d+")`, `REGEXEXTRACT("a1b22c333", "\\d+", 1)`, `REGEXEXTRACT("John Smith", "(\\w+) (\\w+)", 2)`, `REGEXEXTRACT("x=12", "(\\w)=(\\d+)", 2)`, `REGEXEXTRACT("one", "o(n)e", 2)`, `REGEXEXTRACT("ABC", "b", 0, 1)`),
+  ["1", "3x1:1,22,333", "1x2:John,Smith", "1x2:x,12", "n", "B"]);
+eq("REGEXREPLACE: all, or the nth, with $1 for a group", ev(`REGEXREPLACE("a1b22c333", "\\d+", "#")`, `REGEXREPLACE("a1b22c333", "\\d+", "#", 2)`, `REGEXREPLACE("John Smith", "(\\w+) (\\w+)", "$2, $1")`, `REGEXREPLACE("x-y-z", "-", "+", 3)`, `REGEXREPLACE("aaa", "a", "b", 2)`, `REGEXREPLACE("Hello", "L", "_", 0, 1)`),
+  ["a#b#c#", "a1b#c333", "Smith, John", "x-y-z", "aba", "He__o"]);
+eq("REGEX errors: a pattern that does not compile, no match, a bad mode", why(`REGEXTEST("a", "(")`, `REGEXEXTRACT("abc", "\\d")`, `REGEXEXTRACT("abc", "b", 3)`, `REGEXREPLACE("abc", "b", "x", -1)`),
+  ["#VALUE! '(' is not a regular expression", "#N/A '\\d' matches nothing in 'abc'", "#VALUE! REGEXEXTRACT's mode is 0, 1 or 2, not 3", "#VALUE! REGEXREPLACE's occurrence is 0 or more, not -1"]);
+
 // The maths batch (2.2).
 eq("CEILING and FLOOR to a multiple, away from zero and toward it", ev("CEILING(2.5, 1)", "CEILING(-2.5, -2)", "CEILING(1.5, 0.1)", "CEILING(0.234, 0.01)", "FLOOR(3.7, 2)", "FLOOR(-2.5, -2)", "FLOOR(1.58, 0.1)", "FLOOR(0.234, 0.01)", "CEILING(5, 0)"),
   ["3", "-4", "1.5", "0.24", "2", "-2", "1.5", "0.23", "0"]);
@@ -149,11 +184,6 @@ eq("outside a domain", why("ASIN(2)", "ACOSH(0.5)", "ATANH(1)", "ATAN2(0, 0)"), 
 
 // Lookup.
 eq("ROWS and COLUMNS", ev("ROWS(F1:H4)", "COLUMNS(F1:H4)", "ROWS(A1)"), ["4", "3", "1"]);
-// An array as rows x cols and its values; a value as shown.
-const grid = (...srcs: string[]): string[] => srcs.map((src) => {
-  const v = evaluate(parse(src), env);
-  return isArray(v) ? `${v.rows}x${v.cols}:${v.values.map(show).join(",")}` : show(v);
-});
 eq("ROW and COLUMN of a reference, counted from 1", ev("ROW(C5)", "COLUMN(C5)", "ROW($A$1)", "COLUMN(Z1)"), ["5", "3", "1", "26"]);
 eq("over a range: each row down, each column across", grid("ROW(A3:A5)", "COLUMN(A1:C1)", "ROW(A1:C1)", "COLUMN(F2:H4)"), ["3x1:3,4,5", "1x3:1,2,3", "1", "1x3:6,7,8"]);
 eq("with nothing, the cell the formula is in", [show(evaluate(parse("ROW()"), env, "D7")), show(evaluate(parse("COLUMN()"), env, "D7")), show(evaluate(parse("ROW()+COLUMN()"), env, "B2"))], ["7", "4", "4"]);
@@ -276,6 +306,24 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok TEXTJOIN, skipping blanks or not
 // expect: ok VALUE
 // expect: ok VALUE of words
+// expect: ok CODE, CHAR, UNICODE, UNICHAR
+// expect: ok their errors
+// expect: ok CLEAN takes the control characters out
+// expect: ok FIXED: places, commas or not, rounding left of the point
+// expect: ok DOLLAR: a $ in front, a negative in parentheses
+// expect: ok SEARCH: without regard to case, with wildcards, from a start
+// expect: ok SEARCH's errors
+// expect: ok REPLACE and CONCATENATE
+// expect: ok CONCATENATE over a range goes cell by cell; CONCAT joins it whole
+// expect: ok REPLACE's errors
+// expect: ok NUMBERVALUE: the separators given, spaces ignored, a % divides
+// expect: ok NUMBERVALUE's errors
+// expect: ok VALUETOTEXT and ARRAYTOTEXT, concise and strict
+// expect: ok ARRAYTOTEXT's format
+// expect: ok REGEXTEST, case sensitive unless told
+// expect: ok REGEXEXTRACT: the first match, every match, or the groups
+// expect: ok REGEXREPLACE: all, or the nth, with $1 for a group
+// expect: ok REGEX errors: a pattern that does not compile, no match, a bad mode
 // expect: ok CEILING and FLOOR to a multiple, away from zero and toward it
 // expect: ok their errors
 // expect: ok CEILING.MATH: up, or away from zero with a mode; FLOOR.MATH: down, or toward zero
