@@ -20,6 +20,10 @@ until 2026-10-15; it is in this repository's history (last at commit
 history up to then is in sae's git log (to sae commit `61e4adb`). What it
 does and what is still to do: [docs/spreadsheet_demo_done_and_todo.md](docs/spreadsheet_demo_done_and_todo.md).
 The bugs it found in the Tauri app: [docs/tauri-spreadsheet-upstream-notes.md](docs/tauri-spreadsheet-upstream-notes.md).
+Where it is going: [docs/gridcraft_parity.md](docs/gridcraft_parity.md),
+small tested steps toward the feature set of GridCraft (summarised in
+[docs/gridcraft_feature_reference.md](docs/gridcraft_feature_reference.md);
+its source is never read), each reachable from REXX.
 
 ```
 app/

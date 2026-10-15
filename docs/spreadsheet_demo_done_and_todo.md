@@ -1219,6 +1219,19 @@ Limits to say in the tools' descriptions, not to fix for this:
 - One machine: the bus beyond the local machine is designed in sae's
   `docs/control-bus.md`, not built.
 
+### 15. Toward GridCraft, in small steps, each reachable from REXX
+
+Started 2026-10-15 (Paul: "track spraedsheet toward goals of gridcraft in
+many baby steps with tests: REXX of as much as possible too cos we do
+that and gridcraft does not"). The yardstick is
+`docs/gridcraft_feature_reference.md`, a summary taken on trust (never
+GridCraft's repository: a different licence; `AGENTS.md`). The tracker is
+`docs/gridcraft_parity.md`: where this app stands against each section of
+the reference, and about ninety steps in the reference's own kickoff
+order, each one commit with its headless test and spec `it`, each adding
+its control function so scripts, the bus and the MCP server reach it.
+Steps land there; this list stays the record of what came before.
+
 The lists below are where these came from, with what has landed struck
 through.
 
