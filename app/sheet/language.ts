@@ -68,7 +68,9 @@ export interface Language {
   // `names` reads the sheet's named ranges; a name it does not know is
   // #NAME?. A read of a cell on another sheet is its key qualified:
   // "COSTS!B2".
-  compile(formula: string, names?: Names, tables?: Tables, formulas?: Formulas): Formula;
+  // `at` is the key of the cell the formula is in (for a table's
+  // [@Column], its own row), when it is in one.
+  compile(formula: string, names?: Names, tables?: Tables, formulas?: Formulas, at?: string): Formula;
   // A cell's input (a formula or a constant) with its references moved by
   // an edit (a copy, rows or columns inserted or deleted: shift.ts); one
   // whose cell is gone is #REF!.

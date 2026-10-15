@@ -71,6 +71,7 @@ function printed(n: Node): string {
     case "ref": return e.name;
     case "spill": return `${e.name}#`;
     case "range": return `${e.from}:${e.to}`;
+    case "table": return e.text;
     case "neg": return `-${wrap(n.kids[0], level(n.kids[0]) < NEG)}`;
     case "binary": {
       const l = LEVEL[e.op];

@@ -871,6 +871,30 @@ main() {
             g.enter("E3", "Mauve")
             spec.assert_true(b.wait_for_console("sheet: refused: E3 is one of Amber, Teal"), "what is typed is held to its options")
         }
+        spec.it("table references in Excel formulas: a column, [@Column] on its own row, a header renamed") callback {
+            g.command("sheet.add name=Orders")
+            g.command("formulas.use language=Excel")
+            g.command("cell.set cell=A1 input=Item")
+            g.command("cell.set cell=B1 input=Qty")
+            g.command("cell.set cell=C1 input=Price")
+            g.command("cell.set cell=A2 input=pens")
+            g.command("cell.set cell=B2 input=3")
+            g.command("cell.set cell=C2 input=2")
+            g.command("cell.set cell=A3 input=ink")
+            g.command("cell.set cell=B3 input=1")
+            g.command("cell.set cell=C3 input=10")
+            g.command("table.define name=Orders range=A1:C3 headers=1")
+            g.enter("E1", "=SUM(Orders[Qty])")
+            spec.assert_true(g.wait_cell("E", 1, "4"), "a column's data")
+            g.enter("D2", "=Orders[@Qty]*Orders[@Price]")
+            spec.assert_true(g.wait_cell("D", 2, "6"), "this row's Qty times its Price")
+            g.enter("B3", "5")
+            spec.assert_true(g.wait_cell("E", 1, "8"), "an edit in the table ripples")
+            g.enter("B1", "Units")
+            spec.assert_true(g.wait_cell("E", 1, "#REF!"), "the old name gone")
+            g.enter("E2", "=SUM(Orders[Units])")
+            spec.assert_true(g.wait_cell("E", 2, "8"), "the new one found")
+        }
     }
     return spec.run_summary(fw)
 }

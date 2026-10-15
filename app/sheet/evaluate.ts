@@ -8,7 +8,8 @@
 // a LAMBDA is a closure, a value only while a formula is worked out (one
 // that comes to a LAMBDA is #CALC!), and MAP, REDUCE, SCAN, BYROW, BYCOL and
 // MAKEARRAY call one: they are special forms here, as IF is.
-import { cellAddr, span } from "./address.ts";
+import { cellAddr, keyOf, range, span } from "./address.ts";
+import { resolve } from "./structured.ts";
 import type { Expr } from "./parser.ts";
 import { call, single } from "./functions.ts";
 import type { Arg } from "./functions.ts";
@@ -166,6 +167,14 @@ class Evaluator {
         if (!s) return fail("#REF!", `${cellAddr(e.from) ? e.to : e.from} is not on the sheet`);
         return array(s.keys.length / s.cols, s.cols, s.keys.map((k) => this.#env.get(k)));
       }
+      // A table reference: its cells as the table is now (its header row
+      // read for a column's name); one cell is its value.
+      case "table": {
+        const r = resolve(e.table, e.spec, (a) => toText(this.#env.get(keyOf(a))), e.row);
+        if (r instanceof CellError) throw r;
+        const keys = [...range(r[0], r[1])];
+        return keys.length === 1 ? this.#env.get(keys[0]) : array(r[1].row - r[0].row + 1, r[1].col - r[0].col + 1, keys.map((k) => this.#env.get(k)));
+      }
       case "missing":
         return null;
       // An error in an array constant is that cell's value.
@@ -200,7 +209,7 @@ class Evaluator {
       const r = this.result(e);
       return isArray(r) ? { values: r.values, cols: r.cols } : single(r);
     } catch (err) {
-      if (err instanceof CellError && e.kind !== "range") return single(err);
+      if (err instanceof CellError && e.kind !== "range" && e.kind !== "table") return single(err);
       throw err;
     }
   }

@@ -13,6 +13,10 @@ export type Token = (
   | { readonly kind: "ref"; readonly name: string; readonly fixCol: boolean; readonly fixRow: boolean; readonly spill: boolean }
   | { readonly kind: "error"; readonly code: ErrorCode }
   | { readonly kind: "name"; readonly name: string }
+  // A table reference: Sales[Amount], Sales[@Amount], Sales[[#Headers],[Qty]]:
+  // the table's name (upper case) and what is between its outer brackets,
+  // as written.
+  | { readonly kind: "table"; readonly name: string; readonly spec: string }
   | { readonly kind: "op"; readonly op: Op }
   | { readonly kind: "(" | ")" | "," | ":" | "{" | "}" | ";" }
   | { readonly kind: "end" }
@@ -37,6 +41,19 @@ const REF = /^(?:(?:([A-Za-z_]\w*)|'([^']+)')!)?(\$?)([A-Za-z]+)(\$?)([0-9]+)(?!
 // reference it moved off the sheet).
 const ERRORS: readonly ErrorCode[] = ["#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#CALC!"];
 
+// Where the ']' that closes the '[' at `open` is (brackets nest, and ' makes
+// the character after it plain, as in Excel: Sales['[Old']]), or -1.
+function closing(formula: string, open: number): number {
+  let depth = 0;
+  for (let j = open; j < formula.length; j++) {
+    const c = formula[j];
+    if (c === "'") j++;
+    else if (c === "[") depth++;
+    else if (c === "]" && --depth === 0) return j;
+  }
+  return -1;
+}
+
 // `formula` is what follows the '='; `from` is where it starts in the input.
 export function* tokens(formula: string, from = 2): Generator<Token, void, undefined> {
   let i = 0;
@@ -59,6 +76,14 @@ export function* tokens(formula: string, from = 2): Generator<Token, void, undef
       continue;
     }
     const word = WORD.exec(rest)?.[0];
+    if (word && formula[i + word.length] === "[") {
+      const end = closing(formula, i + word.length);
+      if (end < 0) throw new FormulaError(at, `a table reference that never ends: ${rest}`);
+      const text = formula.slice(i, end + 1);
+      yield { kind: "table", name: word.toUpperCase(), spec: formula.slice(i + word.length + 1, end), at, text };
+      i = end + 1;
+      continue;
+    }
     if (word) {
       yield { kind: "name", name: word.toUpperCase(), at, text: word };
       i += word.length;

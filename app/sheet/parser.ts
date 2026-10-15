@@ -11,7 +11,9 @@ import type { Op, Token } from "./lexer.ts";
 import type { ErrorCode } from "./values.ts";
 import { keyOf, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
-import type { Formulas, Names } from "./language.ts";
+import type { Formulas, Names, TableDef, Tables } from "./language.ts";
+import { parseSpec } from "./structured.ts";
+import type { TableSpec } from "./structured.ts";
 
 export type Expr =
   | { readonly kind: "num"; readonly value: number }
@@ -20,6 +22,10 @@ export type Expr =
   | { readonly kind: "ref"; readonly name: string }
   | { readonly kind: "range"; readonly from: string; readonly to: string }
   | { readonly kind: "spill"; readonly name: string }
+  // A table reference (structured.ts): the table as it was when the formula
+  // was compiled (a table defined, moved or deleted compiles every formula
+  // again), what it asks for, and the formula's own row for [@...].
+  | { readonly kind: "table"; readonly table: TableDef; readonly spec: TableSpec; readonly row: number | null; readonly text: string }
   // An array constant, {1,2;3,4}: rows split by ';', each a row's values.
   | { readonly kind: "array"; readonly rows: number; readonly cols: number; readonly values: readonly ArrayItem[] }
   | { readonly kind: "error"; readonly code: ErrorCode; readonly why?: string }
@@ -60,11 +66,15 @@ class Parser {
 
   readonly #names: Names | undefined;
   readonly #formulas: Formulas;
+  readonly #tables: Tables;
+  readonly #row: number | null;
 
-  constructor(formula: string, names?: Names, formulas: Formulas = () => null) {
+  constructor(formula: string, names?: Names, formulas: Formulas = () => null, tables: Tables = () => null, row: number | null = null) {
     this.#tokens = tokens(formula);
     this.#names = names;
     this.#formulas = formulas;
+    this.#tables = tables;
+    this.#row = row;
     this.#next();
   }
 
@@ -200,13 +210,13 @@ class Parser {
   #named(name: string): Expr | null {
     const text = this.#formulas(name);
     if (text === null) return null;
-    const names = this.#names, formulas = this.#formulas;
+    const names = this.#names, formulas = this.#formulas, tables = this.#tables;
     let expr: Expr | null = null;
     return {
       kind: "named", name, expr: () => {
         if (!expr) {
           try {
-            expr = new Parser(text, names, formulas).whole();
+            expr = new Parser(text, names, formulas, tables).whole();
           } catch (e) {
             if (!(e instanceof FormulaError)) throw e;
             expr = { kind: "error", code: "#ERROR!", why: `${name}: parse error at ${e.at}: ${e.message}` };
@@ -248,6 +258,11 @@ class Parser {
       case "num": return { kind: "num", value: t.value };
       case "str": return { kind: "str", value: t.value };
       case "error": return { kind: "error", code: t.code };
+      case "table": {
+        const spec = parseSpec(t.spec, t.at);
+        const table = this.#tables(t.name);
+        return table ? { kind: "table", table, spec, row: this.#row, text: t.text } : { kind: "error", code: "#REF!", why: `no table ${t.text.slice(0, t.text.indexOf("["))}` };
+      }
       case "ref": {
         if (t.spill) return { kind: "spill", name: t.name };
         if (this.#tok.kind !== ":") return { kind: "ref", name: t.name };
@@ -269,6 +284,9 @@ class Parser {
           // name does not parse.
           if (!this.#names) throw new FormulaError(t.at, `unknown name '${t.text}'`);
           const r = this.#names(t.name);
+          // A table's name alone is its data rows (Sales is Sales[]).
+          const table = r ? null : this.#tables(t.name);
+          if (table) return { kind: "table", table, spec: parseSpec("", t.at), row: this.#row, text: t.text };
           if (!r) return this.#named(t.name) ?? { kind: "error", code: "#NAME?", why: `no name ${t.name}` };
           const on = (a: Addr) => (r.sheet ? `${r.sheet}!${keyOf(a)}` : keyOf(a));
           const [a, b] = [on(r.range[0]), on(r.range[1])];
@@ -295,5 +313,7 @@ class Parser {
 }
 
 // `formula` is what follows the '='; `names`, the sheet's named ranges;
-// `formulas`, its named formulas.
-export const parse = (formula: string, names?: Names, formulas?: Formulas): Expr => new Parser(formula, names, formulas).whole();
+// `formulas`, its named formulas; `tables`, its tables; `row`, the row of
+// the cell it is in (for a table's [@Column]), null for none.
+export const parse = (formula: string, names?: Names, formulas?: Formulas, tables?: Tables, row: number | null = null): Expr =>
+  new Parser(formula, names, formulas, tables, row).whole();

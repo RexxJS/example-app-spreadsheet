@@ -3,7 +3,7 @@
 // references and ranges name; it is rewritten token by token, so only
 // references change ($ fixes a column or row in a copy, and a reference
 // moved off the sheet, or into what was deleted, is #REF!).
-import { cellAddr, colName, sheetPrefix, span, splitKey } from "./address.ts";
+import { cellAddr, colName, range, sheetPrefix, span, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
 import { movedBy } from "./shift.ts";
 import type { Edit, Fixed } from "./shift.ts";
@@ -26,6 +26,11 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
       return;
     case "range":
       yield* span(e.from, e.to)?.keys ?? [];
+      return;
+    // The whole table: which of its cells a reference comes to depends on
+    // its header row then, so it is worked out again when any of them changes.
+    case "table":
+      yield* range(e.table.range[0], e.table.range[1]);
       return;
     case "neg": return yield* refsOf(e.arg, seen);
     case "binary":
@@ -151,9 +156,9 @@ function references(formula: string): string[] {
 
 export const EXCEL: Language = {
   name: "Excel",
-  compile(formula, names, _tables, formulas) {
+  compile(formula, names, tables, formulas, at) {
     try {
-      const expr = parse(formula, names ?? (() => null), formulas);
+      const expr = parse(formula, names ?? (() => null), formulas, tables, at ? cellAddr(at)?.row ?? null : null);
       return { kind: "formula", reads: [...refsOf(expr)], run: (env) => evaluate(expr, env) };
     } catch (e) {
       if (!(e instanceof FormulaError)) throw e;

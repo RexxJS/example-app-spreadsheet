@@ -750,8 +750,8 @@ thing to do on the Mac mini is `./build.sh`, `AETHER_UI_WITH_DRIVER=1
 
 ## To do
 
-What comes next, in order. The first three are in progress as a smaller
-plan agreed on 2026-10-13; the rest follow.
+What comes next, in order. 1 to 9 were the round agreed on 2026-10-13
+and 14, all done; 10 to 13 the round agreed on 2026-10-15.
 
 ### 1. The Tauri app's query functions, and tables (done, but for the last points below)
 
@@ -1015,6 +1015,56 @@ moves), another app's text is pasted as written (`edit.pasteText`). In the
 browser too: a page may write while the person clicks or types and read
 their paste (`clipboard`, sae/docs/page-services.md section 8).
 
+### 10. Table references in Excel formulas (done, 2026-10-15)
+
+`Sales[Amount]`, `Sales[@Amount]`, `Sales[[#Headers],[Qty]:[Price]]`:
+Excel's structured references, on the tables `table.define` (DEFINETABLE)
+makes. Until now only RexxJS formulas read a table by name (`TABLE()`).
+
+- `Sales` or `Sales[]` is the data rows; `Sales[Qty]` a column's;
+  `Sales[[Qty]:[Price]]` a span of columns; `[#All]`, `[#Data]`,
+  `[#Headers]` and `[#Totals]` areas, together as `[[#Headers],[#Data],
+  [Qty]]`; `Sales[@Qty]`, `Sales[@[Unit Price]]` or
+  `Sales[[#This Row],[Qty]]` the formula's own row. Inside brackets `'`
+  makes the next character plain (`Sales['#Units]`). A column's name is
+  what its header cell says, any case (or the names the table was given).
+- Worked out against the table as it is then (`structured.ts`): a header
+  renamed is found by its new name at once, and the old one is #REF!. A
+  formula reads its whole table, so it is worked out again whenever any
+  cell of the table changes. A table defined, grown by a row inserted,
+  moved or deleted compiles every formula again (#REF!, "no table Sales",
+  when it goes; undo brings it back).
+- No such column, no totals row (a table here has none), no such table:
+  #REF!, saying which. `[@...]` off the table's rows: #VALUE!. Two columns
+  not as a span (`[[Qty],[Price]]`) does not parse.
+- Tables are a sheet's: a reference reads the formula's own sheet's.
+  Not yet: a reference rewritten when its header is renamed (Excel does);
+  a table reference coloured while the formula is typed; a table named
+  like a cell (T1) is read as the cell.
+
+Tested headless (`tests/headless/sheet_structured.ts`) and on the page
+(`spec_sheet`: a column, [@Column] on its row, a header renamed).
+
+### 11. Undo: a script as one step, and saying what it undoes
+
+A RexxJS script (the command bar's, ADDRESS SHEET, a control-bus command
+from another program) is one step of undo, not one per command it runs.
+Undo and Redo say what they take back: "Undo Merge Cells", "Redo Paste".
+
+### 12. Correctness: numbers before text, cycles across sheets, "TRUE"
+
+- Comparing and sorting rank every number below every text, and text
+  below TRUE and FALSE, as spreadsheets do; today it is text order.
+- A cycle through two sheets is found and shown as one (#CYCLE! in each
+  cell on it), where now settle() passes changes between the sheets twenty
+  times and stops.
+- AND and OR read the text "TRUE" and "FALSE" as the values.
+
+### 13. Names and sheets
+
+- `Costs!QTY`: another sheet's own name, written from here.
+- Dragging a tab to move a sheet (aether-ui's tabs first: an ask there).
+
 The lists below are where these came from, with what has landed struck
 through.
 
@@ -1028,20 +1078,19 @@ is `src/spreadsheet-model.js`, its control functions
    4), ~~names scoped to the workbook~~ (done: To do 8), and a cycle
    through two sheets found as one
    (settle() passes changes between sheets twenty times, then stops).
-2. ~~Saving and opening~~ (done, through `storage`; CSV in a textarea).
-   Still to come: `files` in app mode (a `.json` or `.rexxsheet` the app
-   can open too, and a `.csv`).
+2. ~~Saving and opening~~ (done, through `storage`; CSV in a textarea),
+   and ~~files in app mode~~ (done: To do 9, through `documents`).
 3. ~~The query functions~~ (done: RANGE, TABLE, WHERE in RexxJS, PLUCK,
-   GROUP_BY, SUM, AVG, COUNT, RESULT). Still to come: structured
-   references in Excel formulas, table metadata.
+   GROUP_BY, SUM, AVG, COUNT, RESULT), ~~table metadata~~ (done), and
+   ~~structured references in Excel formulas~~ (done: To do 10).
 4. ~~Hide rows and columns, freeze panes, text wrapping, conditional
     formatting, data validation~~ (done; freezing columns at run time
-    needs aether-ui). Still to come: validation by pattern, and **auto
-    IDs**.
+    needs aether-ui), ~~auto IDs~~ (done). Still to come: validation by
+    pattern.
 5. ~~The control functions~~ by the app's names in scripts, and ADDRESS
-    SPREADSHEET (done, every one of them). Still to come:
-    a **control bus** for other apps (the app's is HTTP or postMessage;
-    sae's would be a page service): the To do's 3.
+    SPREADSHEET (done, every one of them), and ~~a control bus~~ for
+    other apps (done: To do 3; the Tauri app's REXX scripts drive it, in
+    `rexx/`).
 6. ~~Charts~~ of a range in `vg` (done: bar, line, pie, sparklines). Still
    to come: the app's chart scripts (they drive Chart.js), more kinds
    (area, scatter, stacked), and axis titles.

@@ -38,8 +38,8 @@ export type Compiled = Formula | { readonly kind: "constant"; readonly value: Va
 
 const NUMERIC = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$/;
 
-export function compile(input: string, language: Language = EXCEL, names?: Names, tables?: Tables, formulas?: Formulas): Compiled {
-  if (input.startsWith("=")) return language.compile(input.slice(1), names, tables, formulas);
+export function compile(input: string, language: Language = EXCEL, names?: Names, tables?: Tables, formulas?: Formulas, at?: string): Compiled {
+  if (input.startsWith("=")) return language.compile(input.slice(1), names, tables, formulas, at);
   if (input === "") return { kind: "constant", value: null };
   return { kind: "constant", value: NUMERIC.test(input) ? Number(input) : input };
 }
@@ -321,7 +321,7 @@ export class Sheet {
   }
 
   #compile(key: string): void {
-    const c = compile(this.input(key), this.#language, this.#named, (n) => this.#tables.get(n.toUpperCase()) ?? null, this.#formula);
+    const c = compile(this.input(key), this.#language, this.#named, (n) => this.#tables.get(n.toUpperCase()) ?? null, this.#formula, key);
     this.#compiled.set(key, c);
     this.#link(key, new Set(c.kind === "formula" ? c.reads.map((k) => this.#local(k) ?? k) : []));
   }
