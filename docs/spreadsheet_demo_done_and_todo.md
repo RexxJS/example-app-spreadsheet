@@ -991,8 +991,9 @@ standard IF ... THEN ... ELSE, `;` between clauses (sae's own splitting of
 workbook's by default (`Workbook`'s names; a sheet reads them through its
 `Context`, a range of another sheet qualified by that sheet's name, the
 `Named` a formula's names lookup gives), or a sheet's own (`scope=sheet`);
-undone, and saved as the file's `bookNames`. Still to come: a sheet's own
-name written from another sheet (`Costs!QTY`), and dragging a tab.
+undone, and saved as the file's `bookNames`. ~~A sheet's own name written
+from another sheet~~ (done: To do 13); dragging a tab waits on aether-ui
+(`asks/aether-ui-drag-to-reorder.md`).
 
 ### 9. Real files in app mode, and the system clipboard (done, 2026-10-14)
 
@@ -1081,10 +1082,21 @@ Tested headless (`sheet_undo.ts`) and on the page (`spec_sheet`).
 
 Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
 
-### 13. Names and sheets
+### 13. Names and sheets (done but for dragging a tab, 2026-10-15)
 
-- `Costs!QTY`: another sheet's own name, written from here.
-- Dragging a tab to move a sheet (aether-ui's tabs first: an ask there).
+- `Costs!QTY`, `'My Costs'!QTY`: another sheet's own name (a name defined
+  with `scope=sheet` there), written from here, in Excel formulas. The
+  lexer reads it as a qualified name (a cell there, Costs!B2, is still a
+  reference); the workbook's context answers it with that sheet's range.
+  Other sheets are compiled again when a sheet's own names change, by a
+  command or by undo; a rename carries the formula along (quoting the
+  new name when it needs it); an unknown name, or the sheet deleted, is
+  #NAME?. Not in RexxJS formulas, which name another sheet's cells as
+  Costs_B2. Tested headless (`sheet_qualified_names.ts`) and on the page.
+- Dragging a tab to move a sheet waits on aether-ui: it can drag a file
+  out to another app, but has no drag within the app. The ask is
+  `asks/aether-ui-drag-to-reorder.md`. Until it lands, Move left, Move
+  right and `sheet.move to=` do the same.
 
 The lists below are where these came from, with what has landed struck
 through.

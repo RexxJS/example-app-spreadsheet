@@ -276,6 +276,14 @@ class Parser {
         return { kind: "range", from: t.name, to: sheet === null ? other.cell : `${sheet}!${other.cell}` };
       }
       case "name": {
+        // Another sheet's own name: that sheet's range, or #NAME?.
+        if (t.name.includes("!")) {
+          const r = this.#names?.(t.name);
+          if (!r) return { kind: "error", code: "#NAME?", why: `no name ${t.text}` };
+          const on = (a: Addr) => (r.sheet ? `${r.sheet}!${keyOf(a)}` : keyOf(a));
+          const [a, b] = [on(r.range[0]), on(r.range[1])];
+          return a === b ? { kind: "ref", name: a } : { kind: "range", from: a, to: b };
+        }
         const local = this.#bound(t.name);
         if (this.#tok.kind !== "(") {
           if (local) return { kind: "local", name: t.name };

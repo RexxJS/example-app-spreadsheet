@@ -12,6 +12,7 @@ export type Token = (
   | { readonly kind: "str"; readonly value: string }
   | { readonly kind: "ref"; readonly name: string; readonly fixCol: boolean; readonly fixRow: boolean; readonly spill: boolean }
   | { readonly kind: "error"; readonly code: ErrorCode }
+  // A name (upper case); another sheet's own name is SHEET!NAME.
   | { readonly kind: "name"; readonly name: string }
   // A table reference: Sales[Amount], Sales[@Amount], Sales[[#Headers],[Qty]]:
   // the table's name (upper case) and what is between its outer brackets,
@@ -34,6 +35,9 @@ export class FormulaError extends Error {
 const OPS: readonly Op[] = ["<>", "<=", ">=", "+", "-", "*", "/", "^", "&", "=", "<", ">"];
 const NUMBER = /^(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/;
 const WORD = /^[A-Za-z_][A-Za-z0-9_]*/;
+// Another sheet's own name: Costs!QTY, 'My Costs'!QTY (a cell there,
+// Costs!B2, is a reference; a call, Costs!F(, is not this).
+const SHEET_NAME = /^(?:([A-Za-z_]\w*)|'([^']+)')!([A-Za-z_][A-Za-z0-9_]*)(?![\w(])/;
 // A reference, perhaps on another sheet: Costs!B2, 'My Costs'!$B$2; A1#
 // is the whole of what A1 spills.
 const REF = /^(?:(?:([A-Za-z_]\w*)|'([^']+)')!)?(\$?)([A-Za-z]+)(\$?)([0-9]+)(?![A-Za-z0-9_])(#(?![A-Za-z/]))?/;
@@ -72,6 +76,13 @@ export function* tokens(formula: string, from = 2): Generator<Token, void, undef
       const sheet = bare ?? quoted;
       const cell = col.toUpperCase() + row;
       yield { kind: "ref", name: sheet ? `${sheet.toUpperCase()}!${cell}` : cell, fixCol: fixCol === "$", fixRow: fixRow === "$", spill: !!spill, at, text };
+      i += text.length;
+      continue;
+    }
+    const qualified = SHEET_NAME.exec(rest);
+    if (qualified) {
+      const [text, bare, quoted, name] = qualified;
+      yield { kind: "name", name: `${(bare ?? quoted).toUpperCase()}!${name.toUpperCase()}`, at, text };
       i += text.length;
       continue;
     }

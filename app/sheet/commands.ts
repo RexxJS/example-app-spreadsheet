@@ -935,10 +935,12 @@ const SPECS: readonly Spec[] = [
       if (p.formula !== undefined) {
         const f = formulaOf(wb, n, p.formula);
         if (own) await wb.sheet.define(n, f); else await wb.defineName(n, { formula: f });
+        if (own) await wb.ownNamesChanged();
       } else {
         const { page, range: r } = sheetRangeOf(wb, p.range!);
         if (own && page !== wb.page(wb.active)) refuse(`a sheet's own name is for a range of it: ${p.range}`);
         if (own) await wb.sheet.define(n, r); else await wb.defineName(n, { page, range: r });
+        if (own) await wb.ownNamesChanged();
       }
       const listed = (own ? wb.sheet.names() : wb.names()).find(([x]) => x === n)![1];
       return changedBy(wb, wb.sheet.keys(), `${own ? `${sheetPrefix(wb.active)}${n}` : n} is ${listed}`);
@@ -954,7 +956,10 @@ const SPECS: readonly Spec[] = [
       const own = p.scope === undefined ? mine : scopeOf(p.scope) === "sheet";
       if (own && !mine) refuse(`no name ${n} of ${wb.active}'s own`);
       if (!own && !wb.bookName(n)) refuse(`no name ${n}`);
-      if (own) await wb.sheet.define(n, null); else await wb.defineName(n, null);
+      if (own) {
+        await wb.sheet.define(n, null);
+        await wb.ownNamesChanged();
+      } else await wb.defineName(n, null);
       return changedBy(wb, wb.sheet.keys(), `${own ? `${sheetPrefix(wb.active)}${n}` : n} deleted`);
     },
   },

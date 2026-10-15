@@ -122,7 +122,8 @@ function renamed(input: string, from: string, to: string): string {
   }
   let out = "", at = 0;
   for (const t of toks) {
-    if (t.kind !== "ref" || splitKey(t.name).sheet !== from) continue;
+    // A cell there, or one of its own names (Costs!QTY).
+    if ((t.kind !== "ref" && !(t.kind === "name" && t.name.includes("!"))) || splitKey(t.name).sheet !== from) continue;
     out += input.slice(at, t.at) + sheetPrefix(to) + t.text.slice(t.text.lastIndexOf("!") + 1);
     at = t.at + t.text.length;
   }

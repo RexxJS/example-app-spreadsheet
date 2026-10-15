@@ -262,6 +262,8 @@ export class Sheet {
   // A named formula's text (what follows the '='), or null.
   // A name as a formula reads it: the sheet's own, else the workbook's.
   readonly #named = (n: string): Named | null => {
+    // Another sheet's own name (COSTS!QTY) is the workbook's to answer.
+    if (n.includes("!")) return this.#context.named?.(n.toUpperCase()) ?? null;
     const r = this.#names.get(n.toUpperCase());
     return r ? { range: r, sheet: null } : this.#formulas.has(n.toUpperCase()) ? null : this.#context.named?.(n.toUpperCase()) ?? null;
   };

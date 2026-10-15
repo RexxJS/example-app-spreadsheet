@@ -924,6 +924,16 @@ main() {
             spec.assert_true(g.wait_cell("B", 1, "2"), "numbers first")
             spec.assert_true(g.wait_cell("B", 3, "Apple"), "then text, without case")
         }
+        spec.it("another sheet's own name, written from here: Loop!QTY") callback {
+            g.command("names.define name=QTY range=B1:B2 scope=sheet")
+            g.command("sheet.activate name=Orders")
+            g.enter("H2", "=SUM(Loop!QTY)")
+            spec.assert_true(g.wait_cell("H", 2, "12"), "Loop's own QTY, read from Orders")
+            g.command("sheet.activate name=Loop")
+            g.command("cell.set cell=B1 input=20")
+            g.command("sheet.activate name=Orders")
+            spec.assert_true(g.wait_cell("H", 2, "30"), "and following it")
+        }
     }
     return spec.run_summary(fw)
 }

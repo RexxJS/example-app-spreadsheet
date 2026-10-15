@@ -241,6 +241,13 @@ export class Workbook {
     const context: Context = {
       get name() { return upper(); }, turns: this.#turns, value: (key) => this.#valueOf(key),
       named: (n) => {
+        // Another sheet's own name: COSTS!QTY.
+        if (n.includes("!")) {
+          const { sheet, cell: name } = splitKey(n);
+          const there = sheet === null ? undefined : this.page(sheet);
+          const r = there?.sheet.name(name) ?? null;
+          return there && r ? { range: r, sheet: there === page ? null : there.name.toUpperCase() } : null;
+        }
         const b = this.#names.get(n);
         return b && "range" in b ? { range: b.range, sheet: b.page === page ? null : b.page.name.toUpperCase() } : null;
       },
@@ -318,6 +325,13 @@ export class Workbook {
 
   // A name for the whole workbook defined (or redefined), or deleted
   // (null): every sheet worked out again, as any formula may read it.
+  // A sheet's own names changed: every other sheet compiled again, as a
+  // formula there may name one (Costs!QTY).
+  async ownNamesChanged(): Promise<void> {
+    for (const p of this.#pages) if (p !== this.#active) await p.sheet.recalculate();
+    await this.settle();
+  }
+
   async defineName(n: string, b: BookName | null): Promise<void> {
     if (b) this.#names.set(n.toUpperCase(), b); else this.#names.delete(n.toUpperCase());
     await this.#recalculate();
@@ -400,6 +414,8 @@ export class Workbook {
       this.#group.low = Math.min(this.#group.low, this.#undo.length);
     }
     const was = this.#active, before = this.sheet.keys();
+    const ownNames = () => this.#pages.map((p) => JSON.stringify(p.sheet.names())).join("|");
+    const namesBefore = ownNames();
     // Sheets added, deleted, moved or renamed: every sheet worked out again,
     // as what reads one by name may read another now.
     const sameNames = step.names.size === this.#names.size && [...step.names].every(([n, b]) => this.#names.get(n) === b);
@@ -417,7 +433,8 @@ export class Workbook {
       const c = await s.page.sheet.restore(s.sheet);
       if (s.page === this.#active) changed = c;
     }
-    if (moved) {
+    // A sheet's own names put back: other sheets may name them (Costs!QTY).
+    if (moved || ownNames() !== namesBefore) {
       for (const p of this.#pages) {
         const c = await p.sheet.recalculate();
         if (p === this.#active) changed = [...new Set([...changed, ...c])];
