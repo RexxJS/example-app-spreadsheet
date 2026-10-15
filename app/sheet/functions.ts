@@ -8,7 +8,7 @@ import { numberFormat } from "./numfmt.ts";
 import type { ArrayValue, Comparison, Result, Value } from "./values.ts";
 import { sortOrder } from "./sortfind.ts";
 import { sparkline } from "./charts.ts";
-import { addMonths, dateDif, endOfMonth, now, parseDate, parts, serial, workdayFrom, workdaysBetween } from "./dates.ts";
+import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
 import { fv, irr, nper, npv, pmt, pv, rate } from "./finance.ts";
 import { colName, sheetPrefix } from "./address.ts";
 
@@ -825,6 +825,37 @@ def("DATEDIF", 3, 3, (args) => {
 });
 def("NETWORKDAYS", 2, 3, (args) => workdaysBetween(date(args, 0), date(args, 1), holidays(args, 2)));
 def("WORKDAY", 2, 3, (args) => workdayFrom(date(args, 0), Math.trunc(num(args, 1)), holidays(args, 2)));
+// The .INTL pair take which days are the weekend (dates.ts weekendOf):
+// a number, or seven 1s and 0s from Monday; Saturday and Sunday unless told.
+const weekendArg = (args: readonly Arg[], i: number) => {
+  const v = absent(args, i) ? 1 : scalar(val(args, i));
+  const w = weekendOf(typeof v === "string" ? v : toNumber(v));
+  return w ?? fail("#NUM!", `${toText(v)} is not a weekend: 1 to 7, 11 to 17, or seven 1s and 0s`);
+};
+def("NETWORKDAYS.INTL", 2, 4, (args) => workdaysBetween(date(args, 0), date(args, 1), holidays(args, 3), weekendArg(args, 2)));
+def("WORKDAY.INTL", 2, 4, (args) => workdayFrom(date(args, 0), Math.trunc(num(args, 1)), holidays(args, 3), weekendArg(args, 2)));
+// WEEKNUM(date, [type]): the week of the year, 1 at the week January 1 is
+// in; type 1 (or 17) has weeks start on Sunday, 2 (or 11) Monday, 12
+// Tuesday ... 16 Saturday; 21 is ISO 8601's week (ISOWEEKNUM).
+def("WEEKNUM", 1, 2, (args) => {
+  const s = date(args, 0), type = Math.trunc(num(args, 1, 1));
+  if (type === 21) return isoWeek(s);
+  const start = type === 1 || type === 17 ? 0 : type === 2 || type === 11 ? 1 : type >= 12 && type <= 16 ? type - 10 : -1;
+  return start < 0 ? fail("#NUM!", `WEEKNUM's type is 1, 2, 11 to 17 or 21, not ${type}`) : weekOfYear(s, start);
+});
+def("ISOWEEKNUM", 1, 1, (args) => isoWeek(date(args, 0)));
+// YEARFRAC(start, end, [basis]) and DAYS360(start, end, [european]):
+// dates.ts says the conventions.
+def("YEARFRAC", 2, 3, (args) => {
+  const basis = Math.trunc(num(args, 2, 0));
+  return yearFraction(date(args, 0), date(args, 1), basis) ?? fail("#NUM!", `YEARFRAC's basis is 0 to 4, not ${basis}`);
+});
+def("DAYS360", 2, 3, (args) => days360(date(args, 0), date(args, 1), !absent(args, 2) && toNumber(val(args, 2)) !== 0));
+// TIMEVALUE(text): the time of day as the fraction of a day.
+def("TIMEVALUE", 1, 1, (args) => {
+  const s = str(args, 0);
+  return parseTime(s) ?? fail("#VALUE!", `'${s}' is not a time`);
+});
 def("TIME", 3, 3, (args) => ((num(args, 0) * 3600 + num(args, 1) * 60 + num(args, 2)) / 86400) % 1);
 const clock = (args: readonly Arg[]) => Math.round((date(args, 0) % 1) * 86400);
 def("HOUR", 1, 1, (args) => Math.floor(clock(args) / 3600) % 24);
