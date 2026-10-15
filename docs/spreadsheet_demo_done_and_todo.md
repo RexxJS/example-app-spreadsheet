@@ -751,7 +751,8 @@ thing to do on the Mac mini is `./build.sh`, `AETHER_UI_WITH_DRIVER=1
 ## To do
 
 What comes next, in order. 1 to 9 were the round agreed on 2026-10-13
-and 14, all done; 10 to 13 the round agreed on 2026-10-15.
+and 14, all done; 10 to 13 the round agreed on 2026-10-15; 14 added the
+same day, not yet started.
 
 ### 1. The Tauri app's query functions, and tables (done, but for the last points below)
 
@@ -1097,6 +1098,62 @@ Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
   out to another app, but has no drag within the app. The ask is
   `asks/aether-ui-drag-to-reorder.md`. Until it lands, Move left, Move
   right and `sheet.move to=` do the same.
+
+### 14. An MCP server over the control bus
+
+So that an AI client (Claude, or any MCP client) can drive a running
+spreadsheet. The bus already has the shape; what is missing is the server
+and a description of each function.
+
+What already fits:
+
+- **Request and reply.** A bus request is one string of REXX run in the
+  app (`SETCELL("A1", "100")`, `GETCELLS("A1:C5")`, `EXPORT()`), and its
+  reply is JSON, `{success, result, errorCode, error}`: an MCP tool call and
+  its result, errors included.
+- **Coverage.** About 130 control functions (cells, formats, comments,
+  rows and columns, sheets, tables, pivots, names, validation, filters,
+  find and replace, undo and redo, import and export, the query
+  functions); `LISTCOMMANDS()` lists them.
+- **A client to call.** `sae-bus <app> <command>` finds the courier file,
+  seals, and prints the opened reply as one line of JSON. An MCP server
+  (Node, or anything) runs it for each tool call, as
+  `rexx/spreadsheet-address.js` does, and never handles the sealing.
+- **Undo.** Each bus command is one step of undo (To do 11), named on the
+  edit bar: whatever one call does, the person takes back with one Undo.
+- **Security.** The bus is on loopback only, off unless the app is
+  started with `--control-bus`, and its key is fresh each launch and
+  readable only by this user.
+
+What it needs:
+
+1. **A first server, small:** three tools over `sae-bus`: run a command
+   (the REXX string), read a range (`GETCELLS`, its stem turned into rows),
+   and list the commands. With a cheat sheet of the common functions in
+   the run tool's description. In `mcp/` here, with a test that starts the
+   app with `--control-bus`, talks MCP to the server, and checks the grid
+   (as `spec_app_sheet_rexx` does for the REXX scripts).
+2. **Functions described.** `LISTCOMMANDS()` gives names only. A table
+   in `control.ts` of each function's parameters, their types and a line
+   of description (`commands.ts`'s specs have ids, labels and parameter
+   lists to start from) would let the server offer one tool per function,
+   generated, rather than one generic tool. `LISTCOMMANDS()` could give the
+   table too.
+3. **Values in and out.** Arguments go in as REXX text inside the command,
+   so the server should build the string itself from the tool's typed
+   arguments and quote values (RexxJS reads `''` and `""` as one quote
+   since its 6ec1ab7), rather than leave it to the model. Ranges come back
+   as REXX stems (`{0: count, 1: ...}`): turn them into rows and columns.
+
+Limits to say in the tools' descriptions, not to fix for this:
+
+- Request and reply only: the AI is not told when the person edits the
+  sheet. Messages pushed to a client are sae's option (b), later
+  (sae's `docs/control-bus.md`).
+- One command at a time, each with a 10 s deadline: a long script needs
+  care, or a job of its own.
+- One machine: the bus beyond the local machine is designed in sae's
+  `docs/control-bus.md`, not built.
 
 The lists below are where these came from, with what has landed struck
 through.
