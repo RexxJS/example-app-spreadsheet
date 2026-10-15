@@ -224,13 +224,27 @@ def("AVERAGEIF", 2, 3, (args) => {
 
 // --- logic and information ---
 
+// The text "TRUE" or "FALSE" (any case) as the value, or null for other text.
+const truthText = (s: string): boolean | null => {
+  const t = s.trim().toUpperCase();
+  return t === "TRUE" ? true : t === "FALSE" ? false : null;
+};
+// AND's and OR's operands as TRUE or FALSE: numbers by whether they are 0,
+// the text "TRUE" and "FALSE" as those, other text and empty cells skipped.
 const truths = (name: string, args: readonly Arg[]): boolean[] => {
-  const ts = every(args).map(scalar).filter((v) => v !== null && typeof v !== "string").map((v) => toNumber(v) !== 0);
+  const ts = every(args).map(scalar).flatMap((v): boolean[] => {
+    if (v === null) return [];
+    if (typeof v === "string") { const t = truthText(v); return t === null ? [] : [t]; }
+    return [toNumber(v) !== 0];
+  });
   return ts.length ? ts : fail("#VALUE!", `${name} found no TRUE or FALSE`);
 };
 def("AND", 1, Infinity, (args) => truths("AND", args).every(Boolean));
 def("OR", 1, Infinity, (args) => truths("OR", args).some(Boolean));
-def("NOT", 1, 1, (args) => num(args, 0) === 0);
+def("NOT", 1, 1, (args) => {
+  const v = scalar(val(args, 0)), t = typeof v === "string" ? truthText(v) : null;
+  return t !== null ? !t : num(args, 0) === 0;
+});
 def("IFERROR", 2, 2, (args) => {
   const x = val(args, 0);
   return x instanceof CellError ? val(args, 1) : x;
@@ -547,7 +561,7 @@ def("FILTER", 2, 3, (args) => {
 });
 // Rows in order of a key each (ascending, or not), equal ones as they were.
 const ordered = <T>(items: readonly T[], key: (t: T) => Value, ascending: boolean): T[] =>
-  items.map((t, i) => ({ t, i })).sort((p, q) => (ascending ? 1 : -1) * sortOrder(key(p.t), key(q.t)) || p.i - q.i).map((x) => x.t);
+  items.map((t, i) => ({ t, i })).sort((p, q) => sortOrder(key(p.t), key(q.t), ascending) || p.i - q.i).map((x) => x.t);
 def("SORT", 1, 4, (args) => {
   const byCol = !absent(args, 3) && num(args, 3) !== 0, a = byCol ? transposed(args[0]) : args[0];
   const index = Math.trunc(num(args, 1, 1)), ascending = num(args, 2, 1) >= 0;
@@ -563,7 +577,7 @@ def("SORTBY", 2, Infinity, (args) => {
   }
   const order = rows.map((_, i) => i).sort((p, q) => {
     for (const k of keys) {
-      const c = (k.ascending ? 1 : -1) * sortOrder(k.by[p], k.by[q]);
+      const c = sortOrder(k.by[p], k.by[q], k.ascending);
       if (c) return c;
     }
     return p - q;

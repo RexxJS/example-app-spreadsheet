@@ -1061,14 +1061,25 @@ Tested headless (`tests/headless/sheet_structured.ts`) and on the page
 
 Tested headless (`sheet_undo.ts`) and on the page (`spec_sheet`).
 
-### 12. Correctness: numbers before text, cycles across sheets, "TRUE"
+### 12. Correctness: numbers before text, cycles across sheets, "TRUE" (done, 2026-10-15)
 
-- Comparing and sorting rank every number below every text, and text
-  below TRUE and FALSE, as spreadsheets do; today it is text order.
-- A cycle through two sheets is found and shown as one (#CYCLE! in each
-  cell on it), where now settle() passes changes between the sheets twenty
-  times and stops.
-- AND and OR read the text "TRUE" and "FALSE" as the values.
+- Comparisons rank every number below every text, text below FALSE, FALSE
+  below TRUE, text without case (`values.ts`'s `ordered`): `="10">5` and
+  `=TRUE>99` are TRUE, `=TRUE=1` FALSE, as in Excel. An empty cell is the
+  other side's empty value, so it equals 0, "" and FALSE.
+- Sorts (Sort A to Z and Z to A, SORT, SORTBY) go numbers, text, FALSE and
+  TRUE, then errors, and empty cells last whichever way they sort.
+- AND, OR and NOT read the text "TRUE" and "FALSE" (any case) as those
+  values; other text is skipped.
+- A cycle through more than one sheet is found (the workbook's
+  `#crossCycles`: Tarjan's components over the whole graph, from the
+  cells that read another sheet), and each cell on it is #CYCLE! with a
+  path round it (SHEET1!J1 → COSTS!A1 → SHEET1!J1), not worked out while it
+  is on it; broken, they are worked out again. Before, settle() passed
+  changes between the sheets twenty times, and a cycle whose cells only
+  copied each other settled with no error at all.
+
+Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
 
 ### 13. Names and sheets
 
@@ -1085,9 +1096,8 @@ is `src/spreadsheet-model.js`, its control functions
 
 1. ~~Several sheets~~ (done). Still to come: ~~renaming~~ and ~~moving a sheet~~
    (a rename rewrites what reads it), ~~undo across sheets~~ (done: To do
-   4), ~~names scoped to the workbook~~ (done: To do 8), and a cycle
-   through two sheets found as one
-   (settle() passes changes between sheets twenty times, then stops).
+   4), ~~names scoped to the workbook~~ (done: To do 8), and ~~a cycle
+   through two sheets found as one~~ (done: To do 12).
 2. ~~Saving and opening~~ (done, through `storage`; CSV in a textarea),
    and ~~files in app mode~~ (done: To do 9, through `documents`).
 3. ~~The query functions~~ (done: RANGE, TABLE, WHERE in RexxJS, PLUCK,
@@ -1133,10 +1143,8 @@ fields for CSV and RexxJS scripts.
 
 **Correctness edges, known and accepted:**
 
-- Comparisons between text and numbers use text order. Spreadsheets
-  instead rank all numbers below all text.
-- AND and OR skip text in their arguments, and give `#VALUE!` when nothing
-  is left. Some spreadsheets coerce `"TRUE"` instead.
+- ~~Comparisons between text and numbers use text order~~, ~~AND and OR
+  skip "TRUE"~~ (done: To do 12).
 - VLOOKUP's approximate match, and MATCH types 1 and -1, assume sorted
   data, as spreadsheets do, and say nothing when it is not.
 - A formula's result that is an empty cell shows as 0, as spreadsheets do.

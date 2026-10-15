@@ -907,6 +907,23 @@ main() {
             spec.assert_true(g.wait_cell("G", 1, "1"), "and nothing before the script")
             spec.assert_true(b.wait_for_text("Undo Set a cell · Redo Script"), "both named")
         }
+        spec.it("a cycle through two sheets shows #CYCLE!, and goes when it is broken; numbers sort before text") callback {
+            g.command("sheet.add name=Loop")
+            g.command("cell.set cell=A1 input=\"=Orders!H1+1\"")
+            g.command("sheet.activate name=Orders")
+            g.enter("H1", "=Loop!A1+1")
+            spec.assert_true(g.wait_cell("H", 1, "#CYCLE!"), "found, where it used to settle on a number")
+            g.enter("H1", "5")
+            g.command("sheet.activate name=Loop")
+            spec.assert_true(g.wait_cell("A", 1, "6"), "broken: worked out again")
+            g.command("cell.set cell=B1 input=pear")
+            g.command("cell.set cell=B2 input=10")
+            g.command("cell.set cell=B3 input=Apple")
+            g.command("cell.set cell=B4 input=2")
+            g.command("data.sortAscending range=B1:B4 by=B")
+            spec.assert_true(g.wait_cell("B", 1, "2"), "numbers first")
+            spec.assert_true(g.wait_cell("B", 3, "Apple"), "then text, without case")
+        }
     }
     return spec.run_summary(fw)
 }

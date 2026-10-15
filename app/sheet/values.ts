@@ -65,13 +65,23 @@ export const finite = (n: number): number => (Number.isFinite(n) ? n : fail("#VA
 
 export type Comparison = "=" | "<>" | "<" | ">" | "<=" | ">=";
 
-// Numbers (and TRUE, FALSE, empty) by value; anything else as text, ignoring case.
+// How two values order, as a spreadsheet orders them: every number below
+// every text, every text below FALSE, FALSE below TRUE; text without case.
+// An empty cell is the other side's empty value (0, "" or FALSE), so it
+// equals 0, "" and FALSE. Negative, 0 or positive.
+export function ordered(a: Exclude<Value, CellError>, b: Exclude<Value, CellError>): number {
+  const rank = (v: typeof a) => (typeof v === "number" ? 0 : typeof v === "string" ? 1 : 2);
+  const empty = (like: typeof a) => (typeof like === "number" ? 0 : typeof like === "string" ? "" : false);
+  if (a === null && b === null) return 0;
+  const x = a === null ? empty(b) : a, y = b === null ? empty(a) : b;
+  if (rank(x) !== rank(y)) return rank(x) - rank(y);
+  if (typeof x === "number") return x - (y as number);
+  if (typeof x === "string") return x.toUpperCase().localeCompare((y as string).toUpperCase());
+  return Number(x) - Number(y);
+}
+
 export function compare(op: Comparison, a: Value, b: Value): boolean {
-  const x = scalar(a), y = scalar(b);
-  const numeric = (v: typeof x) => v === null || typeof v === "number" || typeof v === "boolean";
-  const d = numeric(x) && numeric(y)
-    ? toNumber(x) - toNumber(y)
-    : toText(x).toUpperCase().localeCompare(toText(y).toUpperCase());
+  const d = ordered(scalar(a), scalar(b));
   switch (op) {
     case "=": return d === 0;
     case "<>": return d !== 0;

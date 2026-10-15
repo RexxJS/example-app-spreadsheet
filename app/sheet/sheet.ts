@@ -121,6 +121,9 @@ export class Sheet {
   // Named formulas (a named LAMBDA), by name: what follows the '='.
   readonly #formulas = new Map<string, string>();
   readonly #tables = new Map<string, TableDef>();
+  // The cells on a cycle through other sheets (the workbook's #crossCycles),
+  // each with what it says: not worked out while they are on it.
+  #onCycle = new Map<string, string>();
   readonly #areas = new Map<string, string[]>();          // a formula -> the cells its array covers (or would)
   readonly #spills = new Map<string, ArrayValue>();       // a formula -> the array it spills
   readonly #spilledBy = new Map<string, string>();        // a cell -> the formula whose array it shows
@@ -314,6 +317,28 @@ export class Sheet {
     return this.#inTurn(() => this.#recompute(keys));
   }
 
+  // The cells on a cycle through other sheets, now (the workbook finds
+  // those; a sheet finds its own): each is #CYCLE!, saying the path, and is
+  // not worked out while it is on one. One no longer on a cycle is worked
+  // out again, and so is what reads any of them. The cells that changed.
+  cycle(marks: ReadonlyMap<string, string>): Promise<string[]> {
+    return this.#inTurn(async () => {
+      const gone = [...this.#onCycle.keys()].filter((k) => !marks.has(k));
+      this.#onCycle = new Map(marks);
+      for (const [k, why] of marks) {
+        this.#values.set(k, new CellError("#CYCLE!", why));
+        this.#listener?.changed(k, this.value(k));
+      }
+      const readers = [...marks.keys()].flatMap((k) => [...(this.#readBy.get(k) ?? [])]).filter((r) => !marks.has(r));
+      const again = [...new Set([...gone, ...readers])];
+      const changed = again.length ? await this.#recompute(again) : [];
+      return [...new Set([...marks.keys(), ...changed])];
+    });
+  }
+
+  // Whether any of its cells is on a cycle through other sheets.
+  get cycling(): boolean { return this.#onCycle.size > 0; }
+
   #recomputeAll(): Promise<string[]> {
     const keys = this.keys();
     keys.forEach((k) => this.#compile(k));
@@ -476,6 +501,11 @@ export class Sheet {
   async #evaluate(key: string): Promise<void> {
     // A cell another formula spills into shows that formula's value.
     if (!this.#inputs.has(key) && this.#spilledBy.has(key)) return;
+    const cycle = this.#onCycle.get(key);
+    if (cycle !== undefined) {
+      this.#values.set(key, new CellError("#CYCLE!", cycle));
+      return;
+    }
     const c = this.#compiled.get(key);
     let r: Result = null;
     if (c?.kind === "formula") r = (await c.run(this.#env())) ?? 0;

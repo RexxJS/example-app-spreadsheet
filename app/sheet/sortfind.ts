@@ -7,7 +7,7 @@ import type { Addr } from "./address.ts";
 import { show } from "./format.ts";
 import type { Language } from "./language.ts";
 import { movedBy } from "./shift.ts";
-import { CellError } from "./values.ts";
+import { CellError, ordered } from "./values.ts";
 import type { Value } from "./values.ts";
 
 export interface Cells {
@@ -16,15 +16,18 @@ export interface Cells {
   value(key: string): Value;
 }
 
-// Numbers first (by size), then text (without case), then empty cells.
-export function sortOrder(x: Value, y: Value): number {
-  const rank = (v: Value) => (typeof v === "number" ? 0 : v === null || v === "" ? 2 : 1);
-  const rx = rank(x), ry = rank(y);
-  if (rx !== ry) return rx - ry;
-  if (rx === 0) return (x as number) - (y as number);
-  if (rx === 2) return 0;
-  const sx = (x instanceof CellError ? x.code : String(x)).toLowerCase(), sy = (y instanceof CellError ? y.code : String(y)).toLowerCase();
-  return sx < sy ? -1 : sx > sy ? 1 : 0;
+// A sort's order, ascending or not, as a spreadsheet sorts: numbers (by
+// size), then text (without case), then FALSE and TRUE (compare's order),
+// then errors (by code); empty cells last whichever way it sorts.
+export function sortOrder(x: Value, y: Value, ascending = true): number {
+  const blank = (v: Value) => v === null || v === "";
+  if (blank(x) || blank(y)) return Number(blank(x)) - Number(blank(y));
+  const err = (v: Value) => v instanceof CellError;
+  let c: number;
+  if (err(x) || err(y)) {
+    c = err(x) && err(y) ? (x as CellError).code.localeCompare((y as CellError).code) : Number(err(x)) - Number(err(y));
+  } else c = ordered(x as Exclude<Value, CellError>, y as Exclude<Value, CellError>);
+  return ascending ? c : -c;
 }
 
 // The rectangle's rows in order of the values in its column `col` (counted
@@ -37,8 +40,7 @@ export function sortedRows(cells: Cells, a: Addr, b: Addr, col: number, ascendin
   for (let row = top; row <= bottom; row++) rows.push(row);
   const key = (row: number) => cells.value(keyOf({ col: left + col, row }));
   return rows.map((row, i) => ({ row, i })).sort((p, q) => {
-    const c = sortOrder(key(p.row), key(q.row));
-    return c !== 0 ? (ascending ? c : -c) : p.i - q.i;
+    return sortOrder(key(p.row), key(q.row), ascending) || p.i - q.i;
   }).map(({ row }) => row);
 }
 

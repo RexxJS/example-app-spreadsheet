@@ -179,8 +179,8 @@ export type BookName = { readonly page: Page; readonly range: [Addr, Addr] } | {
 // Undo steps kept, as the Tauri spreadsheet keeps.
 const HISTORY = 100;
 
-// How many times settle() passes changes between sheets before it stops (a
-// cycle through two sheets would go on for ever).
+// How many times settle() passes changes between sheets before it stops: a
+// guard only, as a cycle through two sheets is found first (#crossCycles).
 const ROUNDS = 20;
 
 export class Workbook {
@@ -449,6 +449,7 @@ export class Workbook {
   // worked out again (and what reads those, in turn), then the active
   // sheet's styles.
   async settle(): Promise<void> {
+    await this.#crossCycles();
     for (let round = 0; round < ROUNDS && this.#pending.size; round++) {
       const pending = this.#pending;
       this.#pending = new Map();
@@ -459,6 +460,78 @@ export class Workbook {
     }
     this.#pending.clear();
     await this.#restyle();
+  }
+
+  // Cycles through more than one sheet (a sheet finds those within it):
+  // the strongly connected cells of the workbook's graph, searched from the
+  // cells that read another sheet (a cycle across sheets has one), each
+  // marked #CYCLE! with a path round it, on its own sheet, and what reads it
+  // worked out again. A cell already so marked is not marked again.
+  async #crossCycles(): Promise<void> {
+    const id = (p: Page, c: string) => `${p.name.toUpperCase()}!${c}`;
+    const starts: [Page, string][] = this.#pages.flatMap((p) =>
+      p.sheet.keys().filter((k) => p.sheet.reads(k).some((r) => r.includes("!"))).map((k): [Page, string] => [p, k]));
+    if (!starts.length && !this.#pages.some((p) => p.sheet.cycling)) return;
+    // Tarjan's strongly connected components over what each cell reads.
+    const index = new Map<string, number>(), low = new Map<string, number>(), cell = new Map<string, [Page, string]>();
+    const stack: string[] = [], onStack = new Set<string>(), groups: string[][] = [];
+    let next = 0;
+    const visit = (p: Page, c: string): void => {
+      const v = id(p, c);
+      index.set(v, next); low.set(v, next); next++;
+      cell.set(v, [p, c]);
+      stack.push(v); onStack.add(v);
+      for (const [q, d] of this.#neighbours(p, c, "precedents")) {
+        const w = id(q, d);
+        if (!index.has(w)) {
+          visit(q, d);
+          low.set(v, Math.min(low.get(v)!, low.get(w)!));
+        } else if (onStack.has(w)) low.set(v, Math.min(low.get(v)!, index.get(w)!));
+      }
+      if (low.get(v) !== index.get(v)) return;
+      const group: string[] = [];
+      for (let w = stack.pop()!; ; w = stack.pop()!) {
+        onStack.delete(w);
+        group.push(w);
+        if (w === v) break;
+      }
+      if (new Set(group.map((w) => cell.get(w)![0])).size > 1) groups.push(group);
+    };
+    for (const [p, c] of starts) if (!index.has(id(p, c))) visit(p, c);
+    // A path round the cycle from each cell, within its group.
+    const marks = new Map<Page, Map<string, string>>();
+    for (const group of groups) {
+      const members = new Set(group);
+      for (const v of group) {
+        const [p, c] = cell.get(v)!;
+        const path = this.#pathRound(v, members, cell);
+        if (!marks.has(p)) marks.set(p, new Map());
+        marks.get(p)!.set(c, `a circular reference through more than one sheet: ${path.join(" → ")}`);
+      }
+    }
+    // Every sheet told which of its cells are on one now (none, for one
+    // whose cycle was broken); what changed reaches the other sheets through
+    // settle()'s rounds, as any change does.
+    for (const p of this.#pages) if (marks.has(p) || p.sheet.cycling) await p.sheet.cycle(marks.get(p) ?? new Map());
+  }
+
+  // The cells from `v` round a cycle back to it, staying within `members`.
+  #pathRound(v: string, members: ReadonlySet<string>, cell: ReadonlyMap<string, [Page, string]>): string[] {
+    const path = [v], seen = new Set([v]);
+    const walk = (w: string): boolean => {
+      const [p, c] = cell.get(w)!;
+      for (const [q, d] of this.#neighbours(p, c, "precedents")) {
+        const u = `${q.name.toUpperCase()}!${d}`;
+        if (u === v) { path.push(v); return true; }
+        if (!members.has(u) || seen.has(u)) continue;
+        seen.add(u); path.push(u);
+        if (walk(u)) return true;
+        path.pop();
+      }
+      return false;
+    };
+    walk(v);
+    return path;
   }
 
   // A cell's neighbours in the graph, on any sheet: what it reads, or what
