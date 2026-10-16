@@ -63,6 +63,8 @@ export interface Env {
   // Whether a cell's row is hidden: by hand, by a filter, or not (null),
   // for SUBTOTAL and AGGREGATE.
   hidden?(key: string): Hidden;
+  // How the workbook calculates, for INFO("recalc").
+  calc?(): { readonly manual: boolean };
 }
 
 export type Hidden = "manual" | "filter" | null;

@@ -44,6 +44,9 @@ interface State {
   readonly autoId: { readonly column: string; readonly next: string } | null;
   readonly language: string;
   readonly referenceStyle: string;
+  readonly calculation: string;
+  readonly iteration: { readonly max: number; readonly change: number } | null;
+  readonly stale: readonly string[];
 }
 
 // A command that must be done: a refusal is the function's error, as the
@@ -110,6 +113,22 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   IMPORT: async (exec, json) => (await must(exec, "file.import", { text: text(json) }), "OK"),
   EVALUATE: async (exec, formula) => (await must(exec, "formulas.calculate", { formula: text(formula) })).output,
   RECALCULATE: async (exec) => (await must(exec, "formulas.recalculate")).output,
+  // Calculation Options: "Automatic" or "Manual"; Calculate Now and
+  // Calculate Sheet; the cells out of date; iterative calculation (0 off).
+  SETCALCULATION: async (exec, m) => (await must(exec, "formulas.calculation", { mode: text(m) }), (await state(exec)).calculation),
+  GETCALCULATION: async (exec) => (await state(exec)).calculation,
+  CALCULATE: async (exec) => (await must(exec, "formulas.recalculate")).output,
+  CALCULATESHEET: async (exec) => (await must(exec, "formulas.calculateSheet")).output,
+  STALECELLS: async (exec) => stem((await state(exec)).stale),
+  SETITERATION: async (exec, max, change) => {
+    const n = text(max).trim();
+    await must(exec, "formulas.iteration", n === "0" ? { off: "1" } : { ...(n ? { max: n } : {}), ...(text(change).trim() ? { change: text(change).trim() } : {}) });
+    return (await state(exec)).iteration?.max ?? 0;
+  },
+  GETITERATION: async (exec) => {
+    const it = (await state(exec)).iteration;
+    return it ? `${it.max} ${it.change}` : "0";
+  },
   GETSETUPSCRIPT: async (exec) => (await must(exec, "setup.get")).output,
   SETSETUPSCRIPT: async (exec, script) => (await must(exec, "setup.set", { text: text(script) }), "OK"),
   EXECUTESETUPSCRIPT: async (exec) => (await must(exec, "setup.run"), "OK"),

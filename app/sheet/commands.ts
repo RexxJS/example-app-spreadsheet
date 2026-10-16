@@ -133,6 +133,18 @@ async function setting(wb: Workbook, entries: readonly (readonly [string, string
 // Every sheet compiled and worked out again: the active one's cells whose
 // shown value changed.
 async function recalculated(wb: Workbook): Promise<string[]> {
+  // Worked out as if automatic, so what one sheet reads of another is
+  // brought up to date too; manual again after.
+  const calc = wb.calculation;
+  wb.calculation = { ...calc, manual: false };
+  try {
+    return await everySheet(wb);
+  } finally {
+    wb.calculation = calc;
+  }
+}
+
+async function everySheet(wb: Workbook): Promise<string[]> {
   let changed: string[] = [];
   for (const page of wb.pages()) {
     const keys = await page.sheet.recalculate();
@@ -155,6 +167,8 @@ const SAMPLES: Record<string, unknown> = { budget: SAMPLE_BUDGET, test: TEST_SHE
 async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   const before = wb.sheet.keys();
   wb.reset(file.sheets[0].name);
+  // Worked out as it opens, iterating if the file does; manual after.
+  wb.calculation = { ...file.calculation, manual: false };
   const failed = file.language === "RexxJS" ? await wb.rexx.setup(file.setupScript) : null;
   await wb.setLanguage(wb.language(file.language));
   for (const [i, s] of file.sheets.entries()) {
@@ -192,6 +206,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   wb.name = file.name;
   wb.setupScript = file.setupScript;
   await wb.settle();
+  wb.calculation = file.calculation;
   // A filter is worked out once every sheet's cells are.
   for (const s of file.sheets) if (s.view.filter) filtering(wb.page(s.name)!, s.view.filter);
   const cells = file.sheets.reduce((n, s) => n + s.entries.length, 0);
@@ -1474,6 +1489,42 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Calculate Sheet (Shift+F9): the active sheet worked out again; under
+    // manual calculation, what reads it on other sheets is stale then.
+    id: "formulas.calculateSheet", label: "Calculate Sheet", params: [], journaled: false,
+    run: async (wb) => {
+      const changed = await wb.sheet.recalculate();
+      const n = wb.sheet.keys().filter((k) => wb.sheet.input(k).startsWith("=")).length;
+      return { ...await changedBy(wb, changed, `${wb.active}: ${n} formula${n === 1 ? "" : "s"} worked out`), output: n };
+    },
+  },
+  {
+    // Calculation Options: automatic, or manual (a change works out only
+    // the cells set; Calculate Now or Sheet the rest). Back to automatic,
+    // everything is worked out. Saved with the file, not a step to undo.
+    id: "formulas.calculation", label: "Calculation Options", params: ["mode"], journaled: true, unstepped: true,
+    run: async (wb, p) => {
+      const manual = ({ automatic: false, manual: true } as Record<string, boolean>)[p.mode.toLowerCase()] ?? refuse(`${p.mode} is not a calculation mode (automatic, manual)`);
+      wb.calculation = { ...wb.calculation, manual };
+      const changed = manual ? [] : await recalculated(wb);
+      return changedBy(wb, changed, `${manual ? "manual" : "automatic"} calculation`);
+    },
+  },
+  {
+    // Enable iterative calculation: a circular reference worked round, up
+    // to `max` times (100) or until no cell of it moves by more than
+    // `change` (0.001), instead of #CYCLE!; off, it is #CYCLE! again.
+    id: "formulas.iteration", label: "Iterative Calculation", params: [], optional: ["off", "max", "change"], journaled: true, unstepped: true,
+    run: async (wb, p) => {
+      const max = Number(p.max ?? wb.calculation.iterate?.max ?? 100), change = Number(p.change ?? wb.calculation.iterate?.change ?? 0.001);
+      if (!flag(p.off) && !(Number.isInteger(max) && max >= 1 && max <= 32767)) refuse(`${p.max} is not a number of iterations (1 to 32767)`);
+      if (!flag(p.off) && !(change >= 0)) refuse(`${p.change} is not a maximum change (0 or more)`);
+      wb.calculation = { ...wb.calculation, iterate: flag(p.off) ? null : { max, change } };
+      const changed = wb.calculation.manual ? [] : await recalculated(wb);
+      return changedBy(wb, changed, flag(p.off) ? "no iteration" : `iteration: at most ${max} times, to a change of ${change}`);
+    },
+  },
+  {
     // The setup script (RexxJS: what it LETs, every formula reads), as the
     // file keeps it; set, and run (everything is then worked out again).
     id: "setup.get", label: "Setup script", params: [], journaled: false,
@@ -1539,6 +1590,7 @@ const SPECS: readonly Spec[] = [
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
         language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
+        calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

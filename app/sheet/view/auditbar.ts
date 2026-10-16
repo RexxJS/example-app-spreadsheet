@@ -1,7 +1,9 @@
 // Formula auditing, as Excel's Formulas tab has it: trace what the selected
 // cell reads (blue) or what reads it (orange), a level further each time;
 // remove the arrows; Show Formulas (on, then off); Evaluate Formula's steps; and the Watch
-// Window, the cells watched on any sheet as they change.
+// Window, the cells watched on any sheet as they change. And Calculation
+// Options: manual calculation (on, then off), Calculate now (F9) and
+// Calculate sheet (Shift+F9), iterative calculation (on, then off).
 import type { Watch } from "../workbook.ts";
 import type { SheetView } from "./view.ts";
 
@@ -17,6 +19,12 @@ export function auditBar(v: SheetView): void {
       steps.set(o.ok ? o.message : "");
     });
     ui.btn("Add watch", () => v.run("formulas.watch", { cell: v.here() }));
+  });
+  ui.hstack(() => {
+    ui.btn("Manual calculation", () => v.run("formulas.calculation", { mode: v.wb.calculation.manual ? "automatic" : "manual" }));
+    ui.btn("Calculate now", () => v.run("formulas.recalculate"));
+    ui.btn("Calculate sheet", () => v.run("formulas.calculateSheet"));
+    ui.btn("Iterative calculation", () => v.run("formulas.iteration", v.wb.calculation.iterate ? { off: "1" } : {}));
   });
   bind(ui.text_wrapped("", 720), steps);
   each(v.watches, (w: Watch) => `${w.sheet}!${w.cell}`, (w: Watch) => ui.hstack(() => {

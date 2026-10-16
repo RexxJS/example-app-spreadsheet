@@ -22,8 +22,8 @@ import type { Language } from "./language.ts";
 import { CellNotes } from "./notes.ts";
 import type { Note } from "./notes.ts";
 import { RexxLanguage } from "./rexx.ts";
-import { Sheet, Turns } from "./sheet.ts";
-import type { Context, SavedSheet } from "./sheet.ts";
+import { AUTOMATIC, Sheet, Turns } from "./sheet.ts";
+import type { Calc, Context, SavedSheet } from "./sheet.ts";
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 import { applied } from "./rules.ts";
@@ -189,6 +189,9 @@ export class Workbook {
   // How Excel formulas are shown and typed (a view of them: they are
   // stored A1 either way, and RexxJS formulas are shown as written).
   referenceStyle: "A1" | "R1C1" = "A1";
+  // How formulas are worked out: automatically or by hand, and whether a
+  // circular reference is iterated (Calc); saved with the file.
+  calculation: Calc = AUTOMATIC;
   #pages: Page[] = [];
   #active: Page;
   // Each sheet's cells (by its name in upper case) whose value changed
@@ -274,6 +277,7 @@ export class Workbook {
         return this.page(sheet ?? "")?.sheet.input(cell) ?? "";
       },
       sheets: () => this.sheetNames(),
+      calc: () => this.calculation,
       hidden: (key) => {
         const { sheet, cell } = splitKey(key), p = this.page(sheet ?? ""), row = cellAddr(cell)?.row;
         if (!p || row === undefined) return null;
@@ -377,6 +381,7 @@ export class Workbook {
     this.#active = this.#make(name, this.sheet.language);
     this.#pages = [this.#active];
     this.#names = new Map();
+    this.calculation = AUTOMATIC;
     this.#pending.clear();
     this.#undo.length = 0;
     this.#redo.length = 0;
@@ -507,6 +512,11 @@ export class Workbook {
     for (const p of this.#pages) await p.sheet.recalculate();
   }
 
+  // Every sheet's cells out of date under manual calculation, qualified.
+  stale(): string[] {
+    return this.#pages.flatMap((p) => p.sheet.stale().map((k) => `${p.name}!${k}`));
+  }
+
   // Rows hidden or shown (by hand or a filter): every sheet worked out
   // again, as SUBTOTAL and AGGREGATE skip hidden rows.
   async hiddenChanged(): Promise<void> {
@@ -522,7 +532,10 @@ export class Workbook {
   // sheet's styles.
   async settle(): Promise<void> {
     await this.#crossCycles();
-    for (let round = 0; round < ROUNDS && this.#pending.size; round++) {
+    // Under iteration a cycle through sheets is worked round by these
+    // rounds, up to its most iterations, until nothing changes.
+    const rounds = Math.max(ROUNDS, this.calculation.iterate?.max ?? 0);
+    for (let round = 0; round < rounds && this.#pending.size; round++) {
       const pending = this.#pending;
       this.#pending = new Map();
       for (const [from, keys] of pending) {
@@ -572,7 +585,7 @@ export class Workbook {
     for (const [p, c] of starts) if (!index.has(id(p, c))) visit(p, c);
     // A path round the cycle from each cell, within its group.
     const marks = new Map<Page, Map<string, string>>();
-    for (const group of groups) {
+    for (const group of this.calculation.iterate ? [] : groups) {
       const members = new Set(group);
       for (const v of group) {
         const [p, c] = cell.get(v)!;

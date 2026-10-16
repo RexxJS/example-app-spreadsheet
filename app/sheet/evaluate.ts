@@ -462,12 +462,12 @@ class Evaluator {
         return array(out.length, out[0].length, out.flat());
       }
       // INFO(type), what applies here: "numfile" is the sheets the workbook
-      // has, "recalc" how it calculates (always "Automatic", until 2.15).
+      // has, "recalc" how it calculates ("Automatic" or "Manual").
       case "INFO": {
         takes(1);
         const type = toText(this.#scalar(args[0])).trim().toLowerCase();
         if (type === "numfile") return this.#book().sheets.length;
-        if (type === "recalc") return "Automatic";
+        if (type === "recalc") return this.#env.calc?.().manual ? "Manual" : "Automatic";
         return fail("#VALUE!", `INFO of '${type}': only numfile and recalc apply here`);
       }
       // ISOMITTED(x): whether a LAMBDA's parameter x was left out.

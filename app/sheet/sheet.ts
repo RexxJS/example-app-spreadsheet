@@ -112,7 +112,22 @@ export interface Context {
   // Whether a cell's row (its key qualified) is hidden by hand, by a
   // filter, or not.
   hidden?(key: string): Hidden;
+  // How the workbook calculates (Calc), when it is not automatically and
+  // without iteration.
+  calc?(): Calc;
 }
+
+// How formulas are worked out (the workbook's calculation settings, as
+// Excel's Calculation Options): `manual`, a change works out only the cells
+// set (a formula typed), what reads them waiting, stale, for Calculate;
+// `iterate`, a circular reference is worked round, from the values its
+// cells have, up to `max` times or until no cell of it moves by more than
+// `change`, rather than being #CYCLE!.
+export interface Calc {
+  readonly manual: boolean;
+  readonly iterate: { readonly max: number; readonly change: number } | null;
+}
+export const AUTOMATIC: Calc = { manual: false, iterate: null };
 
 // A sheet on its own: no other sheet to read.
 export const alone = (): Context => ({
@@ -141,6 +156,9 @@ export class Sheet {
   readonly #spills = new Map<string, ArrayValue>();       // a formula -> the array it spills
   readonly #spilledBy = new Map<string, string>();        // a cell -> the formula whose array it shows
   #spillChanged = new Set<string>();
+  // Manual calculation: the cells a change has made out of date, until the
+  // sheet is calculated.
+  readonly #stale = new Set<string>();
 
   constructor(listener?: SheetListener, language: Language = EXCEL, context: Context = alone()) {
     this.#listener = listener;
@@ -354,10 +372,14 @@ export class Sheet {
   // Whether any of its cells is on a cycle through other sheets.
   get cycling(): boolean { return this.#onCycle.size > 0; }
 
+  // The cells out of date under manual calculation, in sheet order.
+  stale(): string[] { return [...this.#stale].sort(byOrder); }
+
   #recomputeAll(): Promise<string[]> {
     const keys = this.keys();
     keys.forEach((k) => this.#compile(k));
-    return this.#recompute(keys);
+    this.#stale.clear();
+    return this.#recompute(keys, 0, true);
   }
 
   #compile(key: string): void {
@@ -401,6 +423,7 @@ export class Sheet {
         const sheets = this.#context.sheets?.() ?? [this.#context.name];
         return { sheets, here: Math.max(0, sheets.findIndex((s) => s.toUpperCase() === this.#context.name)) };
       },
+      calc: () => this.#context.calc?.() ?? AUTOMATIC,
       hidden: (k: string) => { const local = this.#local(k); return this.#context.hidden?.(local === null ? k : `${this.#context.name}!${local}`) ?? null; },
     };
   }
@@ -463,10 +486,22 @@ export class Sheet {
   // here) and what reads them, worked out in order; a formula whose area a
   // set cell is in, and every volatile formula, too. When spills moved,
   // what reads the cells they left or took is worked out again.
-  async #recompute(set: readonly string[], depth = 0): Promise<string[]> {
+  //
+  // Under manual calculation (and not `all`) only the set cells, and a
+  // formula whose area one is in, are worked out; what is downstream of
+  // them is stale until the sheet is calculated. Under iteration a cycle's
+  // cells are worked round (#iterate) instead of being #CYCLE!.
+  async #recompute(set: readonly string[], depth = 0, all = false): Promise<string[]> {
+    const calc = this.#context.calc?.() ?? AUTOMATIC;
     const before = new Map<string, string>();
     const anchors = [...this.#areas].filter(([, area]) => area.some((k) => set.includes(k))).map(([a]) => a);
-    const affected = this.#downstream([...set, ...anchors, ...this.#volatile]);
+    let affected = this.#downstream([...set, ...anchors, ...(calc.manual && !all ? [] : this.#volatile)]);
+    if (calc.manual && !all) {
+      const now = new Set([...set, ...anchors].filter((k) => !k.includes("!")));
+      for (const k of affected) if (!now.has(k) && !k.includes("!")) this.#stale.add(k);
+      for (const k of now) this.#stale.delete(k);
+      affected = now;
+    }
     this.#spillChanged = new Set();
     const mine = [...affected].filter((k) => !k.includes("!"));
     for (const k of mine) before.set(k, show(this.value(k)));
@@ -479,8 +514,9 @@ export class Sheet {
         const path = this.#cycleThrough(k, left);
         if (!path) continue;
         onCycle.add(k);
-        this.#values.set(k, new CellError("#CYCLE!", `a circular reference: ${[...path, k].join(" → ")}`));
+        if (!calc.iterate) this.#values.set(k, new CellError("#CYCLE!", `a circular reference: ${[...path, k].join(" → ")}`));
       }
+      if (calc.iterate) await this.#iterate([...onCycle].sort(byOrder), calc.iterate);
       // What is downstream of a cycle reads its error, in order.
       const rest = new Set([...left].filter((k) => !onCycle.has(k)));
       for (const k of this.#ordered(rest).ordered) await this.#evaluate(k);
@@ -489,8 +525,32 @@ export class Sheet {
     let changed = mine.filter((k) => set.includes(k) || before.get(k) !== show(this.value(k))).sort(byOrder);
     for (const k of changed) this.#listener?.changed(k, this.value(k));
     const moved = [...this.#spillChanged];
-    if (moved.length && depth < 4) changed = [...new Set([...changed, ...(await this.#recompute(moved, depth + 1))])].sort(byOrder);
+    if (moved.length && depth < 4) changed = [...new Set([...changed, ...(await this.#recompute(moved, depth + 1, all))])].sort(byOrder);
     return changed;
+  }
+
+  // A cycle's cells worked round, in sheet order, each from the values the
+  // others have now (Excel's iteration): from where they were (0 for an
+  // empty one, or one that was #CYCLE!), up to `max` times, until no
+  // number moved by more than `change` and nothing else changed.
+  async #iterate(cells: readonly string[], { max, change }: { max: number; change: number }): Promise<number> {
+    for (const k of cells) {
+      const v = this.#values.get(k);
+      if (v instanceof CellError && v.code === "#CYCLE!") this.#values.delete(k);
+    }
+    for (let i = 1; i <= max; i++) {
+      let moved = 0;
+      for (const k of cells) {
+        const was = this.value(k);
+        await this.#evaluate(k);
+        const now = this.value(k);
+        const d = typeof was === "number" && typeof now === "number" ? Math.abs(now - was)
+          : (was ?? 0) === (now ?? 0) || show(was) === show(now) ? 0 : Infinity;
+        moved = Math.max(moved, d);
+      }
+      if (moved <= change) return i;
+    }
+    return max;
   }
 
   // A formula's spill taken back: its cells empty again (but for any that

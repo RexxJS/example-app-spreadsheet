@@ -17,7 +17,8 @@
 // other sheets (sheets: [{ name, cells, names, rules, charts, view, merges,
 // tables }]), and the workbook's own names, a range with its sheet's name
 // or a formula (bookNames: { QTY: "Sheet1!B2:B4", DOUBLE: "=LAMBDA(x, x*2)" };
-// a sheet's names are its own).
+// a sheet's names are its own), and how it calculates (calculation: { mode:
+// "manual", iterate: true, maxIterations: 100, maxChange: 0.001 }).
 // writeSheetFile writes it all.
 import { addrOf, colName, keyOf, order, parseRange } from "./address.ts";
 import { ICONS, rangeName } from "./rules.ts";
@@ -32,6 +33,8 @@ import { ruleOf } from "./validation.ts";
 import { editorIn } from "./editors.ts";
 import type { AutoId, Filter, Page, Pivot, Workbook } from "./workbook.ts";
 import { AGGREGATES } from "./pivot.ts";
+import { AUTOMATIC } from "./sheet.ts";
+import type { Calc } from "./sheet.ts";
 import type { Aggregate } from "./pivot.ts";
 
 export interface FileSheet {
@@ -58,6 +61,7 @@ export interface SheetFile {
   readonly setupScript: string;
   readonly sheets: readonly FileSheet[];           // the first one, then any others
   readonly bookNames: readonly [string, string][]; // [NAME, "Sheet1!B2:B4"], or a formula [NAME, "=LAMBDA(x, x*2)"]
+  readonly calculation: Calc;
 }
 
 interface FileCell {
@@ -192,8 +196,24 @@ export function readSheetFile(data: any): SheetFile {
       ...others.map((s: any, i: number) => sheetOf(String(s?.name ?? `Sheet${i + 2}`), s)),
     ],
     bookNames: Object.entries((data?.bookNames ?? {}) as Record<string, unknown>).map(([n, r]): [string, string] => [n.toUpperCase(), String(r)]),
+    calculation: calcOf(data?.calculation),
   };
 }
+
+// The calculation settings: { mode: "manual", iterate: true, maxIterations,
+// maxChange }, Excel's defaults (100, 0.001) where left out.
+function calcOf(c: any): Calc {
+  if (!c || typeof c !== "object") return AUTOMATIC;
+  const max = Number(c.maxIterations ?? 100), change = Number(c.maxChange ?? 0.001);
+  return {
+    manual: String(c.mode ?? "").toLowerCase() === "manual",
+    iterate: c.iterate === true && Number.isInteger(max) && max >= 1 && change >= 0 ? { max, change } : null,
+  };
+}
+
+const calcIn = (c: Calc) => c.manual || c.iterate ? {
+  calculation: { mode: c.manual ? "manual" : "automatic", ...(c.iterate ? { iterate: true, maxIterations: c.iterate.max, maxChange: c.iterate.change } : {}) },
+} : {};
 
 // A sheet's cells as the file has them: a constant alone as its text; a
 // formula as the value it came to and its expression; notes beside either.
@@ -251,5 +271,6 @@ export function writeSheetFile(wb: Workbook) {
     ...sheetIn(first),
     sheets: others.map((p) => ({ name: p.name, ...sheetIn(p) })),
     ...(wb.names().length ? { bookNames: Object.fromEntries(wb.names()) } : {}),
+    ...calcIn(wb.calculation),
   };
 }
