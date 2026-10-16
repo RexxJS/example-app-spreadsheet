@@ -489,6 +489,19 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("the status bar: Ready, or the selection's figures; the sheet's cells") callback {
+            g.enter("K60", "1")
+            g.enter("K61", "2")
+            g.enter("K62", "3")
+            g.pick("K", 60)
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "Ready  ·  ", 40), "one cell: Ready")
+            g.key("Shift+Down")
+            g.key("Shift+Down")
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "Average: 2  Count: 3  Numerical Count: 3  Min: 1  Max: 3  Sum: 6  ·  ", 40), "three cells: Excel's figures")
+            spec.assert_true(uidriver.wait_body_contains("/widgets", " cells", 40), "and the sheet's cells")
+            g.command("range.clear range=K60:K62")
+            g.goto("A1")
+        }
         spec.it("panels on demand: a tab opens its panel, closing the one open; the open one's tab closes it") callback {
             gt = uidriver.widget_id_of("button", "Greater than")
             rules = uidriver.widget_int_field_by_id(uidriver.widget_int_field_by_id(gt, "parent"), "parent")

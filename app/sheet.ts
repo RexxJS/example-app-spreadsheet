@@ -32,7 +32,7 @@ import { chartPanel } from "./sheet/view/chartpanel.ts";
 import { dataBar } from "./sheet/view/databar.ts";
 import { commandBar } from "./sheet/view/commandbar.ts";
 import { fileBar } from "./sheet/view/filebar.ts";
-import { functionList, problemList, setupScript, statusLine } from "./sheet/view/lists.ts";
+import { functionList, problemList, setupScript, statusBar, statusLine } from "./sheet/view/lists.ts";
 import { menuBar } from "./sheet/view/menubar.ts";
 import { toolBar } from "./sheet/view/toolbar.ts";
 import { panelTabs } from "./sheet/view/paneltabs.ts";
@@ -46,6 +46,7 @@ formulaBar(sheet);
 statusLine(sheet);
 sheetGrid(sheet);
 sheetTabs(sheet);
+statusBar(sheet);
 // The bars, as panels under the grid, one open at a time (view.panel).
 panelTabs(sheet);
 sheet.panel("edit", () => editBar(sheet));
@@ -72,6 +73,8 @@ sheet.refresh();
 // A request sae stopped (past the page's time limit, or unanswered at the
 // bus's deadline) is told to the commands, which put back what it did.
 if (typeof bus !== "undefined") {
+  sheet.bus = true;
+  sheet.follow();
   bus.serve(async (code: string) => {
     const o = await sheet.cmds.spreadsheet(code, (line) => print(`sheet: ${line}`));
     sheet.refresh();

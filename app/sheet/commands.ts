@@ -43,6 +43,7 @@ const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 import type { Direction, Filter, LanguageName, Page, Pivot, Workbook } from "./workbook.ts";
+import { statsLine } from "./workbook.ts";
 import { AGGREGATES, pivoted } from "./pivot.ts";
 import type { Aggregate } from "./pivot.ts";
 import { FormulaError } from "./lexer.ts";
@@ -1527,6 +1528,15 @@ const SPECS: readonly Spec[] = [
       const changed = await recalculated(wb);
       const n = wb.pages().reduce((t, page) => t + page.sheet.keys().filter((k) => page.sheet.input(k).startsWith("=")).length, 0);
       return { ...await changedBy(wb, changed, `${n} formula${n === 1 ? "" : "s"} worked out`), output: n };
+    },
+  },
+  {
+    // The status bar's figures for a range: average, count, numerical
+    // count, min, max, sum.
+    id: "range.stats", label: "Status Bar figures", params: ["range"], journaled: false,
+    run: async (wb, p) => {
+      const st = wb.stats(rangeOf(p.range));
+      return { ok: true, message: statsLine(st), changed: [], output: st };
     },
   },
   {

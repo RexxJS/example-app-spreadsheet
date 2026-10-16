@@ -197,6 +197,7 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   RECALCULATE: fn([], "Works every formula out again", "how many there were"),
   SETCALCULATION: fn([p("mode", "text", "Automatic or Manual")], "Sets how formulas are worked out: on every change, or only when calculated (CALCULATE)", "the mode now"),
   GETCALCULATION: fn([], "How formulas are worked out", "Automatic or Manual"),
+  SELECTIONSTATS: fn([p("range", "range"), opt("figure", "text", "sum, average, count, numbers, min or max; none for the whole line")], "The status bar's figures for a range, as Excel's", "the line (\"Average: 2  Count: 3 ...\"), or the one figure"),
   SHOWPANEL: fn([p("name", "text", "edit, looks, view, names, rules, validation, editors, data, find, audit, chart, file, script, lists, or none")], "Opens a panel under the grid, closing the one open", "the panel now, \"\" for none"),
   GETPANEL: fn([], "The panel open under the grid", "its name, \"\" for none"),
   LISTMENUS: fn([], "The menu bar's items, for finding a command by where it is on the menus", "a stem of \"Menu > Item | command.id | shortcut\" lines"),

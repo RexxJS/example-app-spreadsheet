@@ -183,6 +183,21 @@ const HISTORY = 100;
 // guard only, as a cycle through two sheets is found first (#crossCycles).
 const ROUNDS = 20;
 
+export interface Stats {
+  readonly count: number;
+  readonly numbers: number;
+  readonly sum: number | null;
+  readonly average: number | null;
+  readonly min: number | null;
+  readonly max: number | null;
+}
+
+// The status bar's line for a range's Stats: "Average: 2  Count: 3 ...".
+export function statsLine(s: Stats): string {
+  const n = (x: number | null) => show(x);
+  return s.numbers ? `Average: ${n(s.average)}  Count: ${s.count}  Numerical Count: ${s.numbers}  Min: ${n(s.min)}  Max: ${n(s.max)}  Sum: ${n(s.sum)}` : `Count: ${s.count}`;
+}
+
 export class Workbook {
   readonly rexx = new RexxLanguage();
   readonly #turns = new Turns();
@@ -806,6 +821,22 @@ export class Workbook {
   }
 
   // The status line for a cell.
+  // What the status bar says of a range, as Excel's: the average, count
+  // (cells not empty), numerical count, min, max and sum of its numbers;
+  // nothing but the count when it has no numbers.
+  stats(r: [Addr, Addr]): Stats {
+    const lo = { col: Math.min(r[0].col, r[1].col), row: Math.min(r[0].row, r[1].row) }, hi = { col: Math.max(r[0].col, r[1].col), row: Math.max(r[0].row, r[1].row) };
+    const values: Value[] = [];
+    for (let row = lo.row; row <= hi.row; row++) for (let col = lo.col; col <= hi.col; col++) values.push(this.sheet.value(keyOf({ col, row })));
+    const nums = values.filter((v): v is number => typeof v === "number");
+    const sum = nums.reduce((t, n) => t + n, 0);
+    return {
+      count: values.filter((v) => v !== null && v !== "").length, numbers: nums.length,
+      sum: nums.length ? sum : null, average: nums.length ? sum / nums.length : null,
+      min: nums.length ? Math.min(...nums) : null, max: nums.length ? Math.max(...nums) : null,
+    };
+  }
+
   describe(key: string): string {
     return describe(key, this.sheet.input(key), this.sheet.value(key), this.notes.get(key).comment);
   }

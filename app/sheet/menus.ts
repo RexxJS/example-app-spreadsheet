@@ -103,7 +103,7 @@ export const NOT_IN_MENUS: Readonly<Record<string, string>> = {
   "pivot.create": "a script's", "pivot.update": "a script's", "pivot.delete": "a script's", "pivot.get": "a getter", "pivot.list": "a getter",
   "chart.list": "a getter", "chart.delete": "a chart's own button", "formulas.calculate": "a script's (EVALUATE)",
   "formulas.ignoreError": "a finding's own button", "setup.get": "a getter", "setup.set": "a script's",
-  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)",
+  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)", "range.stats": "the status bar shows it",
 };
 
 // Each item as a line: "File > Save | file.save | Ctrl+S".

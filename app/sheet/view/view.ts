@@ -11,6 +11,7 @@ import type { Problem } from "../sheet.ts";
 import { Workbook } from "../workbook.ts";
 import { COLUMN_WIDTH } from "./grid.ts";
 import type { ChartView, Watch } from "../workbook.ts";
+import { statsLine } from "../workbook.ts";
 import type { CellEditor } from "../editors.ts";
 
 export class SheetView {
@@ -20,6 +21,9 @@ export class SheetView {
   readonly address = state("A1");
   readonly input = state("");
   readonly status = state("");
+  // The status bar: the selection's figures, the sheet's cells, the bus.
+  readonly figures = state("");
+  bus = false;
   // What Undo and Redo would do: "Undo Merge Cells · Redo Paste".
   readonly history = state("");
   readonly comment = state("");
@@ -120,7 +124,12 @@ export class SheetView {
   // The selected cell's input, status line and notes in their fields.
   follow(key = this.here()): void {
     const note = this.wb.notes.get(key);
+    const sel = this.grid ? this.selection() : null;
+    const many = sel && (sel[0].col !== sel[1].col || sel[0].row !== sel[1].row);
+    const cells = this.wb.sheet.keys().length;
+    const bar = [many ? statsLine(this.wb.stats(sel!)) : "Ready", `${cells} cell${cells === 1 ? "" : "s"}`, this.wb.calculation.manual && this.wb.stale().length ? "Calculate" : "", this.bus ? "Control bus" : ""];
     batch(() => {
+      this.figures.set(bar.filter((x) => x).join("  ·  "));
       this.input.set(this.wb.shownInput(key));
       this.status.set(this.wb.describe(key));
       this.comment.set(note.comment ?? "");

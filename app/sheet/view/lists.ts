@@ -8,6 +8,14 @@ export function statusLine(v: SheetView): void {
   bind(ui.text(""), v.status);
 }
 
+// The status bar under the grid, as Excel's: Ready, or the selection's
+// average, count, numerical count, min, max and sum; the sheet's cells;
+// Calculate when manual calculation has left cells stale; the control bus
+// when it is on.
+export function statusBar(v: SheetView): void {
+  bind(ui.text(""), v.figures);
+}
+
 export function functionList(v: SheetView): void {
   bind(ui.text_wrapped("", 720), computed(() => {
     const own = v.formulas.value === "RexxJS" ? ", and RexxJS's own (UPPER, SUBSTR, WORD, LENGTH, ...)" : "";

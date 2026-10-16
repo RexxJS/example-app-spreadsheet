@@ -118,6 +118,16 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Calculate Sheet; the cells out of date; iterative calculation (0 off).
   SETCALCULATION: async (exec, m) => (await must(exec, "formulas.calculation", { mode: text(m) }), (await state(exec)).calculation),
   GETCALCULATION: async (exec) => (await state(exec)).calculation,
+  // The status bar's figures for a range: its line, or one figure (sum,
+  // average, count, numbers, min, max).
+  SELECTIONSTATS: async (exec, r, which) => {
+    const o = await must(exec, "range.stats", { range: text(r) });
+    const w = text(which).trim().toLowerCase();
+    if (!w) return o.message;
+    const st = o.output as Record<string, unknown>;
+    if (!(w in st)) throw new Error(`SELECTIONSTATS: ${which} is not a figure (sum, average, count, numbers, min, max)`);
+    return st[w] ?? "";
+  },
   // The panel open under the grid: SHOWPANEL("rules"), "none" to close.
   SHOWPANEL: async (exec, n) => (await must(exec, "view.panel", { name: text(n) })).output,
   GETPANEL: async (exec) => (await state(exec)).panel,

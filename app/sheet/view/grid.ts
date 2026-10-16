@@ -66,6 +66,8 @@ export function sheetGrid(v: SheetView): void {
         return;
       }
       if (key && key !== v.address.value) v.address.set(key);
+      // The status bar's figures follow the selection as it grows.
+      else if (key) v.follow(key);
     });
     on_cell_edit((r: number, c: number, t: string) => {
       const key = keyAt(r, c);
