@@ -101,6 +101,12 @@ export function sheetGrid(v: SheetView): void {
         v.run("cell.set", { cell: key, input: v.wb.enteredInput(key, t.trim()) });
       }
     });
+    // A column's header: the whole column; the corner over the row
+    // numbers: all of it, as Excel's.
+    ui.on_header_click((m: number) => {
+      v.select(m === 0 ? [{ col: 0, row: 0 }, { col: COLS - 1, row: ROWS - 1 }] : [{ col: m - 1, row: 0 }, { col: m - 1, row: ROWS - 1 }]);
+      v.follow();
+    });
     on_col_resize((c: number, w: number) => {
       const m = ui.datagrid_col_model(v.grid, c);
       if (m < 1) return;

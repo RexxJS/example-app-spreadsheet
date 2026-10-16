@@ -716,11 +716,11 @@ main() {
             spec.assert_true(g.wait_cell("M", 64, "2"), "and M64, one step")
             g.command("range.clear range=K62:M64")
         }
-        spec.it("a whole column selected, Delete clears it, and undo") callback {
+        spec.it("a column's header clicked selects it; Clear cells clears it, and undo") callback {
             g.enter("P5", "1")
             g.enter("P90", "2")
-            g.command("view.select range=P:P")
-            spec.assert_true(b.wait_for_console("sheet: selected P1:P100"), "selected")
+            g.goto("P5")
+            uidriver.post_ok("/widget/${g.header_id("P")}/drag?x=10&y=8&dx=0&dy=0", "a click on P's header")
             spec.assert_true(uidriver.wait_body_contains("/widgets", "Count: 2  Numerical Count: 2", 40), "the status bar sees the column")
             b.click("Clear cells")
             spec.assert_true(b.wait_for_console("sheet: cleared all of P1:P100"), "Clear cells cleared the column")
