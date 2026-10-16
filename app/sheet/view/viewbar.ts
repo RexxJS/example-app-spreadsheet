@@ -17,6 +17,7 @@ export function viewBar(v: SheetView): void {
     v.btn("Filter", () => v.run("data.filter", { range: v.range(), column: colName(addrOf(v.here())!.col), criterion: criterion.value }));
     v.btn("Clear filter", () => v.run("data.clearFilter"));
     v.btn("Freeze top row", () => v.run("view.freezeRows", { count: "1" }));
+    v.btn("Split", () => v.run("view.split", v.wb.split ? { off: "1" } : {}));
     v.btn("Freeze first column", () => v.run("view.freezeCols", { count: "1" }));
     v.btn("Freeze panes", () => v.run("view.freezePanes", { cell: v.here() }));
     v.btn("Unfreeze", async () => { await v.run("view.freezeRows", { count: "0" }); await v.run("view.freezeCols", { count: "0" }); });

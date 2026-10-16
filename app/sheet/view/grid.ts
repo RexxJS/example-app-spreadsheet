@@ -29,6 +29,52 @@ export const COLUMN_WIDTH = 80;
 // under it (view.ts gives it the rest of the height when none is).
 const SHOWN_ROWS = 36, SHOWN_COLS = 10;
 export const ROWS_WITH_PANEL = 22, ROW_PX = 24;
+// The split pane's rows, and the first grid's while it is split.
+const SPLIT_ROWS = 14;
+export const ROWS_WHEN_SPLIT = 16;
+
+// Split: a second grid over the same sheet under the first, scrolling on
+// its own, as Excel's View > Split shows two panes; editing a cell in it
+// is the sheet's as in the first. Its box is empty until split: the pane
+// is made then (buildPane) and dropped when the split goes, so one grid's
+// cells are all a page has the rest of the time.
+export function splitPane(v: SheetView): void {
+  v.paneBox = ui.vstack(() => {});
+}
+
+export function buildPane(v: SheetView): void {
+  const { cells, headers, edit_text, cell_style, on_cell_select, on_cell_edit, column_width } = ui;
+  const keyAt = (row: number, modelCol: number): string | null =>
+    modelCol >= 1 && modelCol <= COLS && row >= 0 && row < ROWS ? keyOf({ col: modelCol - 1, row }) : null;
+  ui.into(v.paneBox, () => {
+    ui.divider();
+    v.pane = ui.datagrid(ROWS, COLS + 1, SPLIT_ROWS, SHOWN_COLS, 1, () => {
+      column_width(COLUMN_WIDTH);
+      cells((r: number, c: number) => {
+        const key = keyAt(r, c);
+        return key ? v.wb.textOf(key) : String(r + 1);
+      });
+      headers((c: number) => (c === 0 ? "" : colName(c - 1)));
+      edit_text((r: number, c: number) => {
+        const key = keyAt(r, c);
+        return key ? v.wb.shownInput(key) : "";
+      });
+      cell_style((r: number, c: number) => {
+        const key = keyAt(r, c);
+        return key ? v.wb.styleOf(key) : "color: #6a6f7a; text-align: end";
+      });
+      on_cell_select((r: number, c: number) => {
+        const key = keyAt(r, ui.datagrid_col_model(v.pane, c));
+        if (key) print(`sheet: the split pane at ${key}`);
+      });
+      on_cell_edit((r: number, c: number, t: string) => {
+        const key = keyAt(r, c);
+        if (key) v.run("cell.set", { cell: key, input: v.wb.enteredInput(key, t.trim()) });
+      });
+    });
+    ui.datagrid_set_col_width(v.pane, 0, 34);
+  });
+}
 
 export function sheetGrid(v: SheetView): void {
   const { cells, headers, edit_text, cell_style, on_cell_select, on_cell_edit, on_col_resize, column_width } = ui;

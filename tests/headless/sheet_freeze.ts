@@ -17,6 +17,9 @@ eq("undone", [wb.frozenRows(), wb.frozenCols()], [0, 2]);
 eq("at A1 everything unfrozen; too many refused", [await msg("view.freezePanes", { cell: "A1" }), wb.frozenCols(), await msg("view.freezeCols", { count: "9" }), await msg("view.freezePanes", { cell: "K2" })],
   ["unfroze panes", 0, "9 is not a number of columns to freeze (0 to 8: the grid shows ten)", "K2: at most 8 columns freeze (the grid shows ten)"]);
 const said: string[] = [];
+const said2: string[] = [];
+eq("Split: two panes, one again, a view; SPLITWINDOW from REXX", [await msg("view.split", {}), wb.split, await msg("view.split", { off: "1" }), wb.split, (await cmds.script("SAY SPLITWINDOW(1) ISSPLIT()\nSAY SPLITWINDOW(0)", (l) => said2.push(l))).message, said2],
+  ["split in two panes", true, "one pane", false, "ran", ["1 1", "0"]]);
 eq("FREEZEPANES and GETFROZENPANES from REXX", [(await cmds.script('CALL FREEZEPANES 1, 3\nf = GETFROZENPANES()\nSAY f.ROWS f.COLUMNS\nCALL UNFREEZEPANES\nf = GETFROZENPANES()\nSAY f.ROWS f.COLUMNS', (l) => said.push(l))).message, said], ["ran", ["1 3", "0 0"]]);
 
 // expect: ok the first column frozen, then two
@@ -24,4 +27,5 @@ eq("FREEZEPANES and GETFROZENPANES from REXX", [(await cmds.script('CALL FREEZEP
 // expect: ok saved with the file
 // expect: ok undone
 // expect: ok at A1 everything unfrozen; too many refused
+// expect: ok Split: two panes, one again, a view; SPLITWINDOW from REXX
 // expect: ok FREEZEPANES and GETFROZENPANES from REXX

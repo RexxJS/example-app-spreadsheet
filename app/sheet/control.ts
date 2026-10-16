@@ -46,6 +46,7 @@ interface State {
   readonly language: string;
   readonly referenceStyle: string;
   readonly panel: string;
+  readonly split: number;
   readonly zoom: number;
   readonly hiddenSheets: readonly string[];
   readonly tabColors: Readonly<Record<string, string>>;
@@ -143,6 +144,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     if (!(w in st)) throw new Error(`SELECTIONSTATS: ${which} is not a figure (sum, average, count, numbers, min, max)`);
     return st[w] ?? "";
   },
+  // Split: SPLITWINDOW(1) two panes, SPLITWINDOW(0) one; ISSPLIT().
+  SPLITWINDOW: async (exec, on) => (await must(exec, "view.split", text(on).trim() === "0" ? { off: "1" } : {})).output,
+  ISSPLIT: async (exec) => (await state(exec)).split,
   // The panel open under the grid: SHOWPANEL("rules"), "none" to close.
   SHOWPANEL: async (exec, n) => (await must(exec, "view.panel", { name: text(n) })).output,
   GETPANEL: async (exec) => (await state(exec)).panel,

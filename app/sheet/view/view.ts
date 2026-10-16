@@ -9,7 +9,7 @@ import { Commands } from "../commands.ts";
 import type { Outcome, Params } from "../commands.ts";
 import type { Problem } from "../sheet.ts";
 import { Workbook } from "../workbook.ts";
-import { COLUMN_WIDTH, ROWS_WITH_PANEL, ROW_PX } from "./grid.ts";
+import { COLUMN_WIDTH, ROWS_WHEN_SPLIT, ROWS_WITH_PANEL, ROW_PX, buildPane } from "./grid.ts";
 
 // aether-ui's datagrid's own row height, which a zoom scales.
 const ROW_HEIGHT = 24;
@@ -43,6 +43,10 @@ export class SheetView {
   readonly watches = state<Watch[]>([]);
   readonly charts = state<(ChartView & { n: number })[]>([]);
   grid = 0;
+  // The split pane (grid.ts's splitPane), its box, and whether it shows.
+  pane = 0;
+  paneBox = 0;
+  #shownSplit = false;
   // What each panel button (and a few keys) does, by its label: the menus
   // run the same (menubar.ts).
   readonly actions = new Map<string, () => unknown>();
@@ -209,14 +213,25 @@ export class SheetView {
       this.history.set([u ? `Undo ${u}` : "", r ? `Redo ${r}` : ""].filter((x) => x).join(" · "));
       this.follow();
     });
-    if (this.wb.panel !== this.#shownPanel) {
+    if (this.wb.panel !== this.#shownPanel || this.wb.split !== this.#shownSplit) {
       for (const [n, h] of this.#panels) ui.set_visible(h, n === this.wb.panel);
-      // The grid takes the height back when no panel is open.
-      if (this.grid && (this.wb.panel === null) !== (this.#shownPanel === null)) {
-        ui.datagrid_set_height(this.grid, this.wb.panel ? ROWS_WITH_PANEL * ROW_PX : 0);
-        print(`sheet: the grid ${Math.round(ui.datagrid_height(this.grid) / ROW_PX)} rows high`);
+      if (this.paneBox && this.wb.split !== this.#shownSplit) {
+        if (this.wb.split) buildPane(this);
+        else {
+          ui.clear(this.paneBox);
+          this.pane = 0;
+        }
+      }
+      // The grid takes the height back when no panel is open (and gives
+      // the split pane room when split).
+      const rows = this.wb.split ? ROWS_WHEN_SPLIT : this.wb.panel ? ROWS_WITH_PANEL : 0;
+      if (this.grid) {
+        const was = ui.datagrid_height(this.grid);
+        ui.datagrid_set_height(this.grid, rows * ROW_PX);
+        if (ui.datagrid_height(this.grid) !== was) print(`sheet: the grid ${Math.round(ui.datagrid_height(this.grid) / ROW_PX)} rows high`);
       }
       this.#shownPanel = this.wb.panel;
+      this.#shownSplit = this.wb.split;
     }
     if (this.grid && this.wb.selecting) {
       this.wb.selecting = false;
@@ -235,6 +250,7 @@ export class SheetView {
     if (this.grid) {
       this.#showView();
       ui.datagrid_refresh(this.grid);
+      if (this.pane) ui.datagrid_refresh(this.pane);
       this.#fitRows();
       this.#sizeCols();
     }

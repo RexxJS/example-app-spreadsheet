@@ -1299,6 +1299,15 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Split: a second pane over the sheet under the first, each scrolling
+    // on its own (Excel's View > Split); off=1 removes it. A view.
+    id: "view.split", label: "Split", params: [], optional: ["off"], journaled: false,
+    run: async (wb, p) => {
+      wb.split = !flag(p.off);
+      return { ok: true, message: wb.split ? "split in two panes" : "one pane", changed: [], output: wb.split ? 1 : 0 };
+    },
+  },
+  {
     // Freeze the first columns (Freeze First Column, Freeze Panes' columns);
     // 0 frees them.
     id: "view.freezeCols", label: "Freeze Columns", params: ["count"], journaled: true,
@@ -1934,7 +1943,7 @@ const SPECS: readonly Spec[] = [
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
         language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
-        panel: wb.panel ?? "", zoom: wb.zoom, dateSystem: wb.dateSystem, calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
+        panel: wb.panel ?? "", split: wb.split ? 1 : 0, zoom: wb.zoom, dateSystem: wb.dateSystem, calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

@@ -240,6 +240,8 @@ export class Workbook {
   // command asked for (then `selecting`, for the page to make it so).
   selection = "A1";
   selecting = false;
+  // Split: a second pane over the sheet (a view).
+  split = false;
   // The zoom, in percent (10 to 400, as Excel's): a view of the sheet.
   zoom = 100;
   // The panel open under the grid (menus.ts's PANELS), or null: a view.

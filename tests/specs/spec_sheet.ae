@@ -772,6 +772,19 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: unfroze columns"), "unfrozen")
             g.goto("A1")
         }
+        spec.it("Split: a second pane over the sheet, the same cells in both") callback {
+            g.enter("B3", "11")
+            b.click("Split")
+            spec.assert_true(b.wait_for_console("sheet: split in two panes"), "split")
+            spec.assert_true(b.wait_for_console("sheet: the grid 16 rows high"), "the first pane gives room")
+            i = 0
+            while i < 40 && uidriver.count_occurrences(uidriver.get_body("/widgets"), "\"text\":\"11\"") < 2 { sleep(50); i = i + 1 }
+            spec.assert_true(uidriver.count_occurrences(uidriver.get_body("/widgets"), "\"text\":\"11\"") >= 2, "B3 shown in both panes")
+            b.click("Split")
+            spec.assert_true(b.wait_for_console("sheet: one pane"), "one pane again")
+            spec.assert_true(b.wait_for_console("sheet: the grid 36 rows high"), "and the grid its height back")
+            g.command("range.clear range=B3")
+        }
         spec.it("Zoom: the grid's columns scaled, and the status bar says it") callback {
             w0 = uidriver.widget_int_field_by_id(g.header_id("C"), "w")
             b.click("Zoom in")

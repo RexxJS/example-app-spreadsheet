@@ -219,6 +219,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   PASTE: fn([p("at", "cell")], "Pastes what was copied or cut, at a cell", "what it did"),
   PASTESPECIAL: fn([p("at", "cell"), p("what", "text", "all, formulas, values, formats or comments"), opt("operation", "text", "none, add, subtract, multiply or divide"), opt("skipBlanks", "flag"), opt("transpose", "flag")], "Paste Special: what was copied (COPY), at a cell", "what it did"),
   SELECTIONSTATS: fn([p("range", "range"), opt("figure", "text", "sum, average, count, numbers, min or max; none for the whole line")], "The status bar's figures for a range, as Excel's", "the line (\"Average: 2  Count: 3 ...\"), or the one figure"),
+  SPLITWINDOW: fn([opt("on", "flag", "0 removes the split")], "Split: a second pane over the sheet, scrolling on its own", "1 split, 0 not"),
+  ISSPLIT: fn([], "Whether the sheet is split in two panes", "1 or 0"),
   SHOWPANEL: fn([p("name", "text", "edit, looks, view, names, rules, validation, editors, data, find, audit, chart, file, script, lists, or none")], "Opens a panel under the grid, closing the one open", "the panel now, \"\" for none"),
   GETPANEL: fn([], "The panel open under the grid", "its name, \"\" for none"),
   CYCLEREFERENCE: fn([p("text", "text", "a formula as typed")], "F4: the reference at the end of a formula to its next form (A1, $A$1, A$1, $A1)", "the formula so"),
