@@ -202,6 +202,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const id = ascending === undefined || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
     return (await must(exec, id, { range: text(r), by: col(by, "SORTRANGE") }), "OK");
   },
+  // The toolbar's looks over a range.
+  SETALIGNMENT: async (exec, r, how) => (await must(exec, "format.align", { range: text(r), align: text(how) }), "OK"),
+  SETFILLCOLOR: async (exec, r, c) => (await must(exec, "format.fill", { range: text(r), color: text(c) }), "OK"),
+  SETTEXTCOLOR: async (exec, r, c) => (await must(exec, "format.color", { range: text(r), color: text(c) }), "OK"),
+  SETNUMBERFORMAT: async (exec, r, f) => (await must(exec, "format.number", { range: text(r), format: text(f) }), "OK"),
   SETWRAPTEXT: async (exec, c, on) => (await must(exec, "format.wrap", yes(on) ? { range: text(c) } : { range: text(c), off: "1" }), "OK"),
   GETWRAPTEXT: async (exec, c) => (await about(exec, c)).wrap,
   FIND: async (exec, t, matchCase, wholeCell, inFormulas) =>

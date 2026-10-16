@@ -64,7 +64,7 @@ export function formatted(v: Value, format: string): string | null {
   return null;
 }
 
-function colour(v: string): string | null {
+export function colour(v: string): string | null {
   const c = v.trim().toLowerCase();
   if (/^#[0-9a-f]{6}$/.test(c)) return c;
   if (/^#[0-9a-f]{3}$/.test(c)) return `#${[...c.slice(1)].map((h) => h + h).join("")}`;
@@ -136,6 +136,12 @@ export interface Look {
   readonly wrap?: boolean;
   readonly align?: "start" | "center" | "end";
   readonly borders?: { readonly top?: string; readonly right?: string; readonly bottom?: string; readonly left?: string };
+  // The toolbar's Fill Color and Font Color (#rrggbb), and its number
+  // format (an Excel pattern: "#,##0.00", "$#,##0.00", "0%"), under a
+  // format the cell's own field gives.
+  readonly fill?: string;
+  readonly color?: string;
+  readonly number?: string;
 }
 
 export function lookStyle(look: Look | undefined): string {
@@ -145,6 +151,7 @@ export function lookStyle(look: Look | undefined): string {
   return [
     look.bold ? "font-weight: bold" : "", look.italic ? "font-style: italic" : "", lines ? `text-decoration: ${lines}` : "",
     look.size ? `font-size: ${look.size}px` : "", look.wrap ? "white-space: normal" : "", look.align ? `text-align: ${look.align}` : "",
+    look.fill ? `background: ${look.fill}` : "", look.color ? `color: ${look.color}` : "",
     ...(["top", "right", "bottom", "left"] as const).map((e) => (b[e] ? `border-${e}: 1px solid ${b[e]}` : "")),
   ].filter((p) => p).join("; ");
 }

@@ -733,7 +733,7 @@ export class Workbook {
 
   #shown(page: Page, key: string): string {
     const v = page.sheet.value(key), note = page.notes.get(key);
-    const shown = formatted(v, note.format ?? "") ?? show(v);
+    const shown = formatted(v, note.format || note.look?.number || "") ?? show(v);
     return note.editor ? drawn(note.editor, v, shown) : shown;
   }
 

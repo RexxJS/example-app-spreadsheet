@@ -34,10 +34,12 @@ import { commandBar } from "./sheet/view/commandbar.ts";
 import { fileBar } from "./sheet/view/filebar.ts";
 import { functionList, problemList, setupScript, statusLine } from "./sheet/view/lists.ts";
 import { menuBar } from "./sheet/view/menubar.ts";
+import { toolBar } from "./sheet/view/toolbar.ts";
 
 const sheet = new SheetView();
 
 ui.text("Spreadsheet");
+toolBar(sheet);
 languageBar(sheet);
 formulaBar(sheet);
 notesBar(sheet);

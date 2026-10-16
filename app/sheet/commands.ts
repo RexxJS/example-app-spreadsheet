@@ -25,7 +25,7 @@ import { check, describeRule, ruleOf } from "./validation.ts";
 import { asApp, editorOf, refusal, toggled } from "./editors.ts";
 import { ICONS, describeRule as describeCf, rangeName } from "./rules.ts";
 import type { CfRule, Comparison, IconSet } from "./rules.ts";
-import { toStyle } from "./formats.ts";
+import { colour, toStyle } from "./formats.ts";
 import type { Look } from "./formats.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
@@ -486,6 +486,13 @@ function relook(wb: Workbook, r: [Addr, Addr], change: (look: Look, key: string)
     wb.notes.set(k, { look: Object.values(look).some((v) => v !== undefined && v !== false) ? look : undefined });
   }
   return keys;
+}
+
+// A colour over a range: the look's fill or text colour.
+function coloured(wb: Workbook, p: Params, part: "fill" | "color"): Promise<Outcome> {
+  const r = rangeOf(p.range), off = /^(none|auto|automatic)$/i.test(p.color.trim());
+  const c = off ? undefined : colour(p.color) ?? refuse(`${p.color} is not a colour (a name such as red, or #rrggbb)`);
+  return changedBy(wb, relook(wb, r, (look) => ({ ...look, [part]: c })), `${rangeName(r)}: ${part === "fill" ? "fill" : "text"} ${c ?? "none"}`);
 }
 
 const EDGES = ["outline", "all", "top", "right", "bottom", "left", "none"];
@@ -1131,6 +1138,38 @@ const SPECS: readonly Spec[] = [
         return { ...look, borders };
       });
       return changedBy(wb, keys, `${rangeName(r)}: ${edge === "none" ? "no" : edge} border${edge === "none" || edge === "all" || edge === "outline" ? "s" : ""}`);
+    },
+  },
+  {
+    // Align Left, Center and Right, as the toolbar's; general: by the value
+    // (numbers to the right), as Excel's default.
+    id: "format.align", label: "Alignment", params: ["range", "align"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range);
+      const align = ({ left: "start", center: "center", centre: "center", right: "end", general: undefined } as Record<string, "start" | "center" | "end" | undefined>);
+      if (!(p.align.toLowerCase() in align)) refuse(`${p.align} is not an alignment (left, center, right, general)`);
+      return changedBy(wb, relook(wb, r, (look) => ({ ...look, align: align[p.align.toLowerCase()] })), `${rangeName(r)}: aligned ${p.align.toLowerCase()}`);
+    },
+  },
+  {
+    // Fill Color and Font Color: a colour's name or #rrggbb; none takes it off.
+    id: "format.fill", label: "Fill Color", params: ["range", "color"], journaled: true,
+    run: async (wb, p) => coloured(wb, p, "fill"),
+  },
+  {
+    id: "format.color", label: "Font Color", params: ["range", "color"], journaled: true,
+    run: async (wb, p) => coloured(wb, p, "color"),
+  },
+  {
+    // Number format over the selection, as the toolbar's Comma, Currency
+    // and Percent Style: number, currency, percent, an Excel pattern, or
+    // general (none).
+    id: "format.number", label: "Number Format", params: ["range", "format"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range), f = p.format.trim();
+      const pattern = ({ general: "", number: "#,##0.00", comma: "#,##0.00", currency: "$#,##0.00", percent: "0%" } as Record<string, string>)[f.toLowerCase()] ?? f;
+      if (pattern && !/[#0?@]/.test(pattern)) refuse(`${p.format} is not a number format (number, currency, percent, general, or a pattern such as 0.00)`);
+      return changedBy(wb, relook(wb, r, (look) => ({ ...look, number: pattern || undefined })), `${rangeName(r)}: ${pattern || "general"}`);
     },
   },
   {
