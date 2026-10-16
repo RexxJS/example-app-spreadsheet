@@ -197,6 +197,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   RECALCULATE: fn([], "Works every formula out again", "how many there were"),
   SETCALCULATION: fn([p("mode", "text", "Automatic or Manual")], "Sets how formulas are worked out: on every change, or only when calculated (CALCULATE)", "the mode now"),
   GETCALCULATION: fn([], "How formulas are worked out", "Automatic or Manual"),
+  SHOWPANEL: fn([p("name", "text", "edit, looks, view, names, rules, validation, editors, data, find, audit, chart, file, script, lists, or none")], "Opens a panel under the grid, closing the one open", "the panel now, \"\" for none"),
+  GETPANEL: fn([], "The panel open under the grid", "its name, \"\" for none"),
   LISTMENUS: fn([], "The menu bar's items, for finding a command by where it is on the menus", "a stem of \"Menu > Item | command.id | shortcut\" lines"),
   ERRORCHECK: fn([], "Error Checking over the active sheet: formulas that come to an error, are inconsistent with those beside them or omit a number next to their range, and numbers stored as text", "a stem of \"cell check message\" lines, check one of error, inconsistent, text-number, omits"),
   IGNOREERROR: fn([p("cell", "cell"), opt("off", "flag", "1 to check it again")], "Error Checking passes over the cell", "\"\""),

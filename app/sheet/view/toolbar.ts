@@ -38,8 +38,7 @@ export function toolBar(v: SheetView): void {
   ui.hstack(() => {
     for (const [label, tip, action] of TOOLS) {
       ui.tooltip(ui.btn(label, () => {
-        const run = v.actions.get(action);
-        if (run) return run();
+        if (v.actions.has(action)) return v.perform(action);
         v.status.set(`${tip}: not here`);
       }), tip);
     }

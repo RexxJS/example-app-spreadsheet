@@ -37,6 +37,12 @@ export class SheetView {
   // What each panel button (and a few keys) does, by its label: the menus
   // run the same (menubar.ts).
   readonly actions = new Map<string, () => unknown>();
+  // The panels under the grid by name, the panel each action is on, the
+  // one being built, and the one shown.
+  readonly #panels = new Map<string, number>();
+  readonly #panelOf = new Map<string, string>();
+  #building: string | null = null;
+  #shownPanel: string | null = null;
   // The rows made as tall as their wrapped text; the rows, columns (model)
   // and frozen rows the grid was last given.
   #fitted = new Set<number>();
@@ -51,9 +57,29 @@ export class SheetView {
     return ui.btn(label, fn);
   }
 
-  // An action the menus may run, by its label (the first one kept).
+  // An action the menus may run, by its label (the first one kept), and
+  // the panel it is on.
   action(label: string, fn: () => unknown): void {
-    if (!this.actions.has(label)) this.actions.set(label, fn);
+    if (this.actions.has(label)) return;
+    this.actions.set(label, fn);
+    if (this.#building) this.#panelOf.set(label, this.#building);
+  }
+
+  // A panel under the grid: its bars, hidden until it is opened.
+  panel(name: string, build: () => void): void {
+    this.#building = name;
+    const h = ui.vstack(build);
+    this.#building = null;
+    ui.set_visible(h, false);
+    this.#panels.set(name, h);
+  }
+
+  // An action run from a menu or the toolbar: its panel opened first, so
+  // its fields are there to read and fill.
+  async perform(label: string): Promise<unknown> {
+    const panel = this.#panelOf.get(label);
+    if (panel && this.wb.panel !== panel) await this.run("view.panel", { name: panel });
+    return this.actions.get(label)?.();
   }
 
   // The selected cell's key (A1 when the address field names none).
@@ -144,6 +170,10 @@ export class SheetView {
       this.history.set([u ? `Undo ${u}` : "", r ? `Redo ${r}` : ""].filter((x) => x).join(" · "));
       this.follow();
     });
+    if (this.wb.panel !== this.#shownPanel) {
+      for (const [n, h] of this.#panels) ui.set_visible(h, n === this.wb.panel);
+      this.#shownPanel = this.wb.panel;
+    }
     if (this.grid) {
       this.#showView();
       ui.datagrid_refresh(this.grid);

@@ -1,9 +1,10 @@
 // The menu bar (menus.ts), on the window of an installed app: each item
 // runs the action of the panel button it is named for, or a key's (Copy,
-// Paste), so it does just what the panel does; one with neither runs its
+// Paste), so it does just what the panel does, its panel opened first; View
+// opens and closes each panel; one with neither runs its
 // command on the selection. In a web page there is no menu bar (sae
 // refuses ui.menu there): the panels are the way in.
-import { MENUS, shownLabel } from "../menus.ts";
+import { MENUS, PANELS, panelItem, shownLabel } from "../menus.ts";
 import type { MenuItem } from "../menus.ts";
 import type { SheetView } from "./view.ts";
 
@@ -12,8 +13,9 @@ export function menuBar(v: SheetView): void {
   // A command run on the selection: its range, cell or place from it.
   const fill: Record<string, () => string> = { range: () => v.range(), cell: () => v.here(), at: () => v.here() };
   const runOf = (e: MenuItem): (() => unknown) | null => {
-    const action = v.actions.get(e.label);
-    if (action) return action;
+    const panel = PANELS.find((p) => panelItem(p.label) === e.label);
+    if (panel) return () => v.run("view.panel", { name: v.wb.panel === panel.name ? "none" : panel.name });
+    if (v.actions.has(e.label)) return () => v.perform(e.label);
     const needs = (catalogue.get(e.id) ?? "").split(", ").filter((p) => p && !p.endsWith("?"));
     if (!catalogue.has(e.id) || needs.some((p) => !fill[p])) return null;
     return () => v.run(e.id, Object.fromEntries(needs.map((p) => [p, fill[p]()])));

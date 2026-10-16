@@ -35,6 +35,7 @@ import { fileBar } from "./sheet/view/filebar.ts";
 import { functionList, problemList, setupScript, statusLine } from "./sheet/view/lists.ts";
 import { menuBar } from "./sheet/view/menubar.ts";
 import { toolBar } from "./sheet/view/toolbar.ts";
+import { panelTabs } from "./sheet/view/paneltabs.ts";
 
 const sheet = new SheetView();
 
@@ -42,27 +43,25 @@ ui.text("Spreadsheet");
 toolBar(sheet);
 // The Name Box and the formula bar, one row under the toolbar.
 formulaBar(sheet);
-languageBar(sheet);
-notesBar(sheet);
-lookBar(sheet);
-viewBar(sheet);
-namesBar(sheet);
 statusLine(sheet);
 sheetGrid(sheet);
 sheetTabs(sheet);
-editBar(sheet);
-findBar(sheet);
-auditBar(sheet);
-rulesBar(sheet);
-validationBar(sheet);
-editorBar(sheet);
-dataBar(sheet);
-fileBar(sheet);
-commandBar(sheet);
-functionList(sheet);
-setupScript(sheet);
-problemList(sheet);
-chartPanel(sheet);
+// The bars, as panels under the grid, one open at a time (view.panel).
+panelTabs(sheet);
+sheet.panel("edit", () => editBar(sheet));
+sheet.panel("looks", () => { lookBar(sheet); notesBar(sheet); });
+sheet.panel("view", () => viewBar(sheet));
+sheet.panel("names", () => namesBar(sheet));
+sheet.panel("rules", () => rulesBar(sheet));
+sheet.panel("validation", () => validationBar(sheet));
+sheet.panel("editors", () => editorBar(sheet));
+sheet.panel("data", () => dataBar(sheet));
+sheet.panel("find", () => findBar(sheet));
+sheet.panel("audit", () => auditBar(sheet));
+sheet.panel("chart", () => chartPanel(sheet));
+sheet.panel("file", () => fileBar(sheet));
+sheet.panel("script", () => { languageBar(sheet); commandBar(sheet); setupScript(sheet); });
+sheet.panel("lists", () => { functionList(sheet); problemList(sheet); });
 // The menus run the panels' actions: made once the panels are.
 menuBar(sheet);
 sheet.refresh();

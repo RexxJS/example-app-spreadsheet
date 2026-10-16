@@ -204,6 +204,8 @@ export class Workbook {
   // Circle Invalid: on, the cells whose input breaks their rule are marked.
   circling = false;
   #circled = new Set<string>();
+  // The panel open under the grid (menus.ts's PANELS), or null: a view.
+  panel: string | null = null;
   // Show Formulas: the grid shows inputs rather than values.
   showFormulas = false;
   #traces: Trace[] = [];

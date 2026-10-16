@@ -18,6 +18,16 @@ export interface Menu {
 
 const i = (label: string, id: string, key?: string): MenuItem => (key ? { label, id, key } : { label, id });
 
+// The panels under the grid, one open at a time (view.panel), each with
+// its menu item on View. Their names are what SHOWPANEL takes.
+export const PANELS: readonly { readonly name: string; readonly label: string }[] = [
+  { name: "edit", label: "Edit" }, { name: "looks", label: "Looks" }, { name: "view", label: "View" }, { name: "names", label: "Names" },
+  { name: "rules", label: "Rules" }, { name: "validation", label: "Validation" }, { name: "editors", label: "Editors" },
+  { name: "data", label: "Data" }, { name: "find", label: "Find & replace" }, { name: "audit", label: "Audit" },
+  { name: "chart", label: "Charts" }, { name: "file", label: "File" }, { name: "script", label: "Script" }, { name: "lists", label: "Lists" },
+];
+export const panelItem = (label: string): string => `${label} panel`;
+
 export const MENUS: readonly Menu[] = [
   { label: "File", items: [
     i("New", "file.new"), i("Open", "file.open"), i("Open file", "file.import"), i("Save", "file.save", "Ctrl+S"), i("Save file", "file.export"), i("Delete file", "file.delete"), "-",
@@ -35,6 +45,7 @@ export const MENUS: readonly Menu[] = [
     i("Find", "edit.find"), i("Replace all", "edit.replace"),
   ] },
   { label: "View", items: [
+    ...PANELS.map((p) => i(panelItem(p.label), "view.panel")), "-",
     i("Show formulas", "formulas.showFormulas"), i("R1C1", "formulas.style"), "-",
     i("Hide rows", "rows.hide"), i("Unhide rows", "rows.unhide"), i("Hide columns", "columns.hide"), i("Unhide columns", "columns.unhide"), "-",
     i("Freeze top row", "view.freezeRows"), i("Unfreeze", "view.freezeRows"), i("Row height", "rows.height"),

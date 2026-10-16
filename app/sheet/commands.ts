@@ -37,7 +37,7 @@ import { found, rearranged, rearrangedMoves, replaced, sortedRows } from "./sort
 import { distinctRows, secant, splitText } from "./whatif.ts";
 import { criterion } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
-import { menuLines } from "./menus.ts";
+import { PANELS, menuLines } from "./menus.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
@@ -1530,6 +1530,17 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // The panel open under the grid, one at a time (Edit, Looks ... Lists:
+    // menus.ts's PANELS), or none. A view, not a step.
+    id: "view.panel", label: "Show Panel", params: ["name"], journaled: false,
+    run: async (wb, p) => {
+      const n = p.name.trim().toLowerCase();
+      const panel = n === "none" ? null : PANELS.find((x) => x.name === n || x.label.toLowerCase() === n)?.name ?? refuse(`${p.name} is not a panel (${PANELS.map((x) => x.name).join(", ")}, none)`);
+      wb.panel = panel;
+      return { ok: true, message: panel ? `the ${panel} panel` : "no panel", changed: [], output: panel ?? "" };
+    },
+  },
+  {
     // The menu bar's items, each "File > Save | file.save | Ctrl+S": for a
     // script to find a command by where it is on the menus.
     id: "menus.list", label: "Menus", params: [], journaled: false,
@@ -1662,7 +1673,7 @@ const SPECS: readonly Spec[] = [
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
         language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
-        calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
+        panel: wb.panel ?? "", calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

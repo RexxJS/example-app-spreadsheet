@@ -44,6 +44,7 @@ interface State {
   readonly autoId: { readonly column: string; readonly next: string } | null;
   readonly language: string;
   readonly referenceStyle: string;
+  readonly panel: string;
   readonly calculation: string;
   readonly iteration: { readonly max: number; readonly change: number } | null;
   readonly stale: readonly string[];
@@ -117,6 +118,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Calculate Sheet; the cells out of date; iterative calculation (0 off).
   SETCALCULATION: async (exec, m) => (await must(exec, "formulas.calculation", { mode: text(m) }), (await state(exec)).calculation),
   GETCALCULATION: async (exec) => (await state(exec)).calculation,
+  // The panel open under the grid: SHOWPANEL("rules"), "none" to close.
+  SHOWPANEL: async (exec, n) => (await must(exec, "view.panel", { name: text(n) })).output,
+  GETPANEL: async (exec) => (await state(exec)).panel,
   // The menu bar's items: a stem of "File > Save | file.save | Ctrl+S".
   LISTMENUS: async (exec) => stem((await must(exec, "menus.list")).output as string[]),
   // Error Checking: a stem of "cell check message" lines (check: error,
