@@ -5,7 +5,7 @@
 // Delete clears it, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (over
 // the selection: a cell copied fills each of its cells; with the system
 // clipboard, to and from other apps too), Ctrl+D and Ctrl+R
-// fill, Ctrl+E Flash Fill, Ctrl+Home and Ctrl+End, Shift+Space and Ctrl+Space,
+// fill, Ctrl+E Flash Fill, Ctrl+Home and Ctrl+End, Ctrl+Space,
 // Ctrl+Shift+$ and %, Ctrl+F/H and Ctrl+S (keys.ts has them all), Ctrl+Z and Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B, Ctrl+I and
 // Ctrl+U the look, F9 and Shift+F9 calculate (Ctrl+arrows, to the edge of the data, are the grid's
 // own); while an editor is open, or a field has the focus, keys
@@ -141,6 +141,11 @@ export function sheetGrid(v: SheetView): void {
       pointing = false;
       setTimeout(() => typed(null), 0);
     }
+    // F4 with the grid not focused: the formula bar's reference cycled.
+    if (key === "F4" && !ui.datagrid_has_focus(v.grid)) {
+      v.actions.get("Cycle reference")?.();
+      return;
+    }
     if (!ui.datagrid_has_focus(v.grid) || ui.datagrid_editor(v.grid) !== 0) return;
     if (!v.selection()) return;
     const range = v.range();
@@ -154,9 +159,9 @@ export function sheetGrid(v: SheetView): void {
       return;
     }
     const ctrl = (mods & (CTRL | SUPER)) !== 0, shift = (mods & SHIFT) !== 0, at = addrOf(v.here())!;
-    // Shift+Space the row, Ctrl+Space the column.
-    if (key === "space" && (shift || ctrl) && !(shift && ctrl)) {
-      v.select(shift ? [{ col: 0, row: at.row }, { col: COLS - 1, row: at.row }] : [{ col: at.col, row: 0 }, { col: at.col, row: ROWS - 1 }]);
+    // Ctrl+Space the column. (Shift+Space is the grid's: it types a space.)
+    if (key === "space" && ctrl && !shift) {
+      v.select([{ col: at.col, row: 0 }, { col: at.col, row: ROWS - 1 }]);
       v.follow();
       return;
     }

@@ -8,7 +8,7 @@ import { eq } from "./lib/check.ts";
 const cmds = new Commands(new Workbook());
 const ids = cmds.catalogue().map((c) => c.id);
 eq("each key runs a command there is, the grid's own, or the page's", KEYS.filter((k) => k.id !== "grid" && !k.id.startsWith("page.") && !ids.includes(k.id)).map((k) => k.combo), []);
-eq("Excel's: navigation, editing, formatting, undo, find, save", ["Ctrl+Home", "Ctrl+End", "Shift+Space", "Ctrl+Space", "F2", "Ctrl+B", "Ctrl+Shift+$", "Ctrl+Z", "Ctrl+F", "Ctrl+S"].filter((c) => !KEYS.some((k) => k.combo === c)), []);
+eq("Excel's: navigation, editing, formatting, undo, find, save", ["Ctrl+Home", "Ctrl+End", "Ctrl+Space", "F2", "Ctrl+B", "Ctrl+Shift+$", "Ctrl+Z", "Ctrl+F", "Ctrl+S"].filter((c) => !KEYS.some((k) => k.combo === c)), []);
 eq("an empty sheet's last cell is A1", (await cmds.execute("sheet.lastCell")).output, "A1");
 await cmds.execute("cell.set", { cell: "C9", input: "1" });
 await cmds.execute("cell.set", { cell: "F2", input: "1" });

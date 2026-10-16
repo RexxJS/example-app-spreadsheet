@@ -42,7 +42,8 @@ export function formulaBar(v: SheetView): void {
     each(computed(() => hints.value.names.map((n) => ({ n, prefix: hints.value.prefix })), hints), (h: { n: string }) => h.n,
       (h: { n: string; prefix: string }) => ui.btn(`${h.n}(`, () => v.input.set(completed(v.input.value, h.prefix, h.n))));
   });
-  ui.on_key((key: string) => {
-    if (key === "F4" && !ui.datagrid_has_focus(v.grid) && v.input.value.startsWith("=")) v.input.set(cycleRef(v.input.value).text);
+  // F4: the grid's on_key runs it (a page has one key handler).
+  v.action("Cycle reference", () => {
+    if (v.input.value.startsWith("=")) v.input.set(cycleRef(v.input.value).text);
   });
 }

@@ -20,6 +20,7 @@ export function lookBar(v: SheetView): void {
       if (painting === null) {
         painting = v.range();
         v.status.set(`Format painter: ${painting}'s format taken; select where to paint it, then Format painter again`);
+        print(`sheet: format painter took ${painting}`);
         return;
       }
       const from = painting;

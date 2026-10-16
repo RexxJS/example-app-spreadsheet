@@ -105,7 +105,8 @@ export class SheetView {
       return row >= 0 && m <= COLS ? { col: m - 1, row } : null;
     };
     const a = corner(ar, ac), b = corner(r, c);
-    return a && b ? [a, b] : null;
+    // Top-left first, however it was dragged.
+    return a && b ? [{ col: Math.min(a.col, b.col), row: Math.min(a.row, b.row) }, { col: Math.max(a.col, b.col), row: Math.max(a.row, b.row) }] : null;
   }
 
   // Where a sheet column is on screen now (columns can be dragged).
@@ -115,9 +116,12 @@ export class SheetView {
   }
 
   // A range selected, its first cell the address.
+  // The address first: following it selects its one cell, which the range
+  // then replaces, anchored at its far corner so the cursor (the address,
+  // what the grid scrolls to) is its first cell, as Excel's active cell.
   select([a, b]: [Addr, Addr]): void {
-    ui.datagrid_select_range(this.grid, a.row, this.viewCol(a.col + 1), b.row, this.viewCol(b.col + 1));
     this.address.set(keyOf(a));
+    ui.datagrid_select_range(this.grid, b.row, this.viewCol(b.col + 1), a.row, this.viewCol(a.col + 1));
   }
 
   // The selection as a command's range parameter: "F4:G7", or the cell.
@@ -199,6 +203,7 @@ export class SheetView {
       if (r) {
         this.select(r);
         try { ui.focus(this.grid); } catch { /* a grid sae cannot focus: the keys stay where they were */ }
+        this.follow();
       }
     }
     if (this.grid) {

@@ -13,7 +13,7 @@ export const KEYS: readonly Key[] = [
   { combo: "Page Up/Down", does: "a screen up or down", id: "grid" },
   { combo: "Ctrl+Home", does: "to A1", id: "page.select" },
   { combo: "Ctrl+End", does: "to the last cell used", id: "sheet.lastCell" },
-  { combo: "Shift+Space", does: "select the row", id: "page.select" },
+  { combo: "Click a row's number", does: "select the row", id: "page.select" },
   { combo: "Ctrl+Space", does: "select the column", id: "page.select" },
   { combo: "F2", does: "edit the cell", id: "grid" },
   { combo: "Delete", does: "clear the selection", id: "range.clear" },
