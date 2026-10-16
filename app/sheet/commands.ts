@@ -39,6 +39,7 @@ import { criterion } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
 import { PANELS, menuLines } from "./menus.ts";
 import { complete, cycleRef } from "./complete.ts";
+import { KEYS } from "./keys.ts";
 import { infer, run as runFill } from "./flashfill.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
@@ -1632,6 +1633,20 @@ const SPECS: readonly Spec[] = [
       const n = wb.pages().reduce((t, page) => t + page.sheet.keys().filter((k) => page.sheet.input(k).startsWith("=")).length, 0);
       return { ...await changedBy(wb, changed, `${n} formula${n === 1 ? "" : "s"} worked out`), output: n };
     },
+  },
+  {
+    // Ctrl+End's cell: the last row used and the last column used.
+    id: "sheet.lastCell", label: "Last Cell", params: [], journaled: false,
+    run: async (wb) => {
+      const at = wb.sheet.keys().map((k) => cellAddr(k)!);
+      const last = keyOf({ col: Math.max(0, ...at.map((a) => a.col)), row: Math.max(0, ...at.map((a) => a.row)) });
+      return { ok: true, message: last, changed: [], output: last };
+    },
+  },
+  {
+    // The keyboard map (keys.ts), for a script to read.
+    id: "keys.list", label: "Keyboard Shortcuts", params: [], journaled: false,
+    run: async () => ({ ok: true, message: `${KEYS.length} keys`, changed: [], output: KEYS.map((k) => `${k.combo} | ${k.does} | ${k.id}`) }),
   },
   {
     // The status bar's figures for a range: average, count, numerical

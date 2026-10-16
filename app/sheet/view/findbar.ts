@@ -15,7 +15,9 @@ export function findBar(v: SheetView): void {
     v.status.set(keys.length ? `${keys.length} found: ${keys.join(", ")}` : `"${text.value}" not found`);
   };
   ui.hstack(() => {
-    bind(ui.textfield("find", () => {}), text);
+    const field = bind(ui.textfield("find", () => {}), text);
+    // Ctrl+F and Ctrl+H: the panel opened, the field focused.
+    v.action("Find field", () => ui.focus(field));
     bind(ui.textfield("replace with", () => {}), by);
     v.btn("Find", find);
     v.btn("Replace all", () => v.run("edit.replace", { ...params(), with: by.value }));

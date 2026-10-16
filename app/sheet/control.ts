@@ -241,6 +241,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const r = rows ? `A${parts[0]}:A${parts[1] ?? parts[0]}` : `${parts[0]}1:${parts[1] ?? parts[0]}1`;
     return (await must(exec, rows ? "rows.autofit" : "columns.autofit", { range: r })).message;
   },
+  // Ctrl+End's cell, and the keyboard map ("Ctrl+C | copy | edit.copy").
+  GETLASTCELL: async (exec) => (await must(exec, "sheet.lastCell")).output,
+  LISTKEYS: async (exec) => stem((await must(exec, "keys.list")).output as string[]),
   // Flash Fill: FLASHFILL("B1:B9"), its first cells the examples.
   FLASHFILL: async (exec, r) => (await must(exec, "data.flashFill", { range: text(r) })).message,
   // Format Painter: COPYFORMAT("A1", "B1:B9").

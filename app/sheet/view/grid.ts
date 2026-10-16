@@ -5,7 +5,8 @@
 // Delete clears it, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (over
 // the selection: a cell copied fills each of its cells; with the system
 // clipboard, to and from other apps too), Ctrl+D and Ctrl+R
-// fill, Ctrl+E Flash Fill, Ctrl+Z and Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B, Ctrl+I and
+// fill, Ctrl+E Flash Fill, Ctrl+Home and Ctrl+End, Shift+Space and Ctrl+Space,
+// Ctrl+Shift+$ and %, Ctrl+F/H and Ctrl+S (keys.ts has them all), Ctrl+Z and Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B, Ctrl+I and
 // Ctrl+U the look, F9 and Shift+F9 calculate (Ctrl+arrows, to the edge of the data, are the grid's
 // own); while an editor is open, or a field has the focus, keys
 // are theirs. A cell's comment shows when the pointer rests on it.
@@ -146,8 +147,25 @@ export function sheetGrid(v: SheetView): void {
       v.run("range.clear", { range });
       return;
     }
-    if ((mods & (CTRL | SUPER)) === 0) return;
+    const ctrl = (mods & (CTRL | SUPER)) !== 0, shift = (mods & SHIFT) !== 0, at = addrOf(v.here())!;
+    // Shift+Space the row, Ctrl+Space the column.
+    if (key === "space" && (shift || ctrl) && !(shift && ctrl)) {
+      v.select(shift ? [{ col: 0, row: at.row }, { col: COLS - 1, row: at.row }] : [{ col: at.col, row: 0 }, { col: at.col, row: ROWS - 1 }]);
+      v.follow();
+      return;
+    }
+    if (!ctrl) return;
+    if (key === "Home") { v.select([{ col: 0, row: 0 }, { col: 0, row: 0 }]); return; }
+    if (key === "End") {
+      v.run("sheet.lastCell").then((o) => { const a = addrOf(String(o.output ?? "")); if (a) v.select([a, a]); });
+      return;
+    }
+    // Ctrl+Shift+$ and Ctrl+Shift+%: Currency and Percent.
+    if (shift && (key === "dollar" || key === "4")) { v.run("format.number", { range, format: "currency" }); return; }
+    if (shift && (key === "percent" || key === "5")) { v.run("format.number", { range, format: "percent" }); return; }
     switch (key.toLowerCase()) {
+      case "f": case "h": v.perform("Find field"); return;
+      case "s": v.perform("Save"); return;
       case "c": copyOut(v, "edit.copy", range); return;
       case "x": copyOut(v, "edit.cut", range); return;
       case "v": pasteIn(v, range); return;
