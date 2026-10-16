@@ -129,6 +129,7 @@ export class SheetView {
   // The selected cell's input, status line and notes in their fields.
   follow(key = this.here()): void {
     const note = this.wb.notes.get(key);
+    if (this.grid && !this.wb.selecting) this.wb.selection = this.range();
     const sel = this.grid ? this.selection() : null;
     const many = sel && (sel[0].col !== sel[1].col || sel[0].row !== sel[1].row);
     const cells = this.wb.sheet.keys().length;
@@ -188,6 +189,16 @@ export class SheetView {
     if (this.wb.panel !== this.#shownPanel) {
       for (const [n, h] of this.#panels) ui.set_visible(h, n === this.wb.panel);
       this.#shownPanel = this.wb.panel;
+    }
+    if (this.grid && this.wb.selecting) {
+      this.wb.selecting = false;
+      const r = parseRange(this.wb.selection);
+      // Selected, the grid has the keys (Delete clears it), as after the
+      // Name Box.
+      if (r) {
+        this.select(r);
+        try { ui.focus(this.grid); } catch { /* a grid sae cannot focus: the keys stay where they were */ }
+      }
     }
     if (this.grid) {
       this.#showView();

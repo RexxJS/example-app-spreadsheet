@@ -692,6 +692,21 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("a whole column selected, Delete clears it, and undo") callback {
+            g.enter("P5", "1")
+            g.enter("P90", "2")
+            g.pick("P", 5)
+            g.command("view.select range=P:P")
+            spec.assert_true(b.wait_for_console("sheet: selected P1:P100"), "selected")
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "Count: 2  Numerical Count: 2", 40), "the status bar sees the column")
+            g.key("Delete")
+            spec.assert_true(b.wait_for_console("sheet: cleared P1:P100"), "Delete cleared the column")
+            spec.assert_true(g.wait_cell("P", 5, ""), "P5 empty")
+            g.key("Ctrl+z")
+            spec.assert_true(g.wait_cell("P", 5, "1"), "undone")
+            g.command("range.clear range=P:P")
+            g.goto("A1")
+        }
         spec.it("Go To Special: the kind typed, its cells listed and the first selected") callback {
             g.command("formulas.use language=Excel")
             spec.assert_true(b.wait_for_console("sheet: Excel formulas"), "Excel formulas")

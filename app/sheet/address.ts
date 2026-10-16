@@ -64,10 +64,21 @@ export function span(from: string, to: string): { keys: string[]; cols: number }
   return { keys: [...range(a, b)].map((k) => (sheet === null ? k : `${sheet}!${k}`)), cols: Math.abs(a.col - b.col) + 1 };
 }
 
-// "B2:C4", "c4:b2" or "B2" (a range of one) as its two corners, or null.
+// "B2:C4", "c4:b2" or "B2" (a range of one) as its two corners, or null;
+// whole columns ("B:B", "B:D") and whole rows ("3:3", "3:5") as Excel
+// writes them.
 export function parseRange(s: string): [Addr, Addr] | null {
   const [from, to = from, extra] = String(s).split(":");
   if (extra !== undefined) return null;
+  const whole = /^\s*\$?([A-Za-z]{1,3})\s*:\s*\$?([A-Za-z]{1,3})\s*$/.exec(s) ?? /^\s*\$?(\d+)\s*:\s*\$?(\d+)\s*$/.exec(s);
+  if (whole) {
+    if (/\d/.test(whole[1])) {
+      const [r1, r2] = [Number(whole[1]) - 1, Number(whole[2]) - 1];
+      return r1 >= 0 && r2 >= 0 && r1 < ROWS && r2 < ROWS ? [{ col: 0, row: r1 }, { col: COLS - 1, row: r2 }] : null;
+    }
+    const [c1, c2] = [addrOf(`${whole[1]}1`), addrOf(`${whole[2]}1`)];
+    return c1 && c2 ? [{ col: c1.col, row: 0 }, { col: c2.col, row: ROWS - 1 }] : null;
+  }
   const a = addrOf(from), b = addrOf(to);
   return a && b ? [a, b] : null;
 }

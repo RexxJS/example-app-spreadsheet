@@ -235,6 +235,10 @@ export class Workbook {
     await this.#recalculate();
     await this.settle();
   }
+  // The selection as a range ("B2:C4"), as the page last had it or a
+  // command asked for (then `selecting`, for the page to make it so).
+  selection = "A1";
+  selecting = false;
   // The zoom, in percent (10 to 400, as Excel's): a view of the sheet.
   zoom = 100;
   // The panel open under the grid (menus.ts's PANELS), or null: a view.

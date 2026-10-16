@@ -58,6 +58,12 @@ export function sheetGrid(v: SheetView): void {
       return key ? v.wb.styleOf(key) : "color: #6a6f7a; text-align: end";
     });
     on_cell_select((r: number, c: number) => {
+      // A row's number: the whole row, as Excel's row header.
+      if (ui.datagrid_col_model(v.grid, c) === 0 && !held && r >= 0) {
+        v.select([{ col: 0, row: r }, { col: COLS - 1, row: r }]);
+        v.follow();
+        return;
+      }
       const key = keyAt(r, ui.datagrid_col_model(v.grid, c));
       if (key && held) {
         const { r: hr, c: hc } = held;

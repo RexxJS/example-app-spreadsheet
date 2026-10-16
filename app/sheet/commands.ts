@@ -1668,6 +1668,21 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    id: "view.selection", label: "Selection", params: [], journaled: false,
+    run: async (wb) => ({ ok: true, message: wb.selection, changed: [], output: wb.selection }),
+  },
+  {
+    // Select a range: a cell, a rectangle, whole columns ("B:B") or rows
+    // ("3:5"), or all ("all"); the page selects it. A view, not a step.
+    id: "view.select", label: "Select", params: ["range"], journaled: false,
+    run: async (wb, p) => {
+      const r = /^\s*all\s*$/i.test(p.range) ? [{ col: 0, row: 0 }, { col: COLS - 1, row: ROWS - 1 }] as [Addr, Addr] : rangeOf(p.range);
+      wb.selection = rangeName(r);
+      wb.selecting = true;
+      return { ok: true, message: `selected ${wb.selection}`, changed: [], output: wb.selection };
+    },
+  },
+  {
     // Go To Special: the cells of a kind, in sheet order, over a range or
     // the used range (A1 to Ctrl+End's cell): formulas, constants (either
     // narrowed by type=numbers|text|logicals|errors), blanks, errors,
