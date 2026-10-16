@@ -7,7 +7,7 @@ import { Workbook } from "./sheet/workbook.ts";
 import { writeSheetFile } from "./sheet/file.ts";
 import { MENUS } from "./sheet/menus.ts";
 import type { MenuItem } from "./sheet/menus.ts";
-import { TOOLS } from "./sheet/view/toolbar.ts";
+import { GROUPS, TOOLS } from "./sheet/view/toolbar.ts";
 import { eq } from "./lib/check.ts";
 
 const wb = new Workbook();
@@ -36,6 +36,7 @@ eq("from REXX", [(await cmds.script('CALL SETALIGNMENT "B1:B2", "right"\nCALL SE
 const items = new Set(MENUS.flatMap((m) => m.items.filter((e): e is MenuItem => e !== "-").map((e) => e.label)));
 eq("each toolbar button runs an action a menu item runs too", TOOLS.filter(([, , action]) => !items.has(action)).map(([l]) => l), []);
 eq("each has its tooltip", TOOLS.filter(([, tip]) => !tip).length, 0);
+eq("the groups start at tools there are, in order", GROUPS.map((g) => TOOLS.findIndex(([l]) => l === g)), [0, 2, 5, 8, 11, 14, 15, 17, 19]);
 
 // expect: ok Alignment over a range, and general again
 // expect: ok Fill Color and Font Color, by name or #rrggbb; none takes it off
@@ -46,3 +47,4 @@ eq("each has its tooltip", TOOLS.filter(([, tip]) => !tip).length, 0);
 // expect: ok from REXX
 // expect: ok each toolbar button runs an action a menu item runs too
 // expect: ok each has its tooltip
+// expect: ok the groups start at tools there are, in order

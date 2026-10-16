@@ -9,6 +9,9 @@
 import { toggleFont } from "./lookbar.ts";
 import type { SheetView } from "./view.ts";
 
+// The groups, by their first tool's label: a wider gap before each.
+export const GROUPS = ["Undo", "Cut", "B", "Left", ",", "Borders", "Fill", "A→Z", "Chart"];
+
 export const TOOLS: readonly (readonly [string, string, string])[] = [
   // [label, tooltip, the action it runs or the command]
   ["Undo", "Undo (Ctrl+Z)", "Undo"], ["Redo", "Redo (Ctrl+Y)", "Redo"],
@@ -35,12 +38,18 @@ export function toolBar(v: SheetView): void {
   v.action("Bold", () => toggleFont(v, "bold"));
   v.action("Italic", () => toggleFont(v, "italic"));
   v.action("Underline", () => toggleFont(v, "underline"));
-  ui.hstack(() => {
-    for (const [label, tip, action] of TOOLS) {
-      ui.tooltip(ui.btn(label, () => {
-        if (v.actions.has(action)) return v.perform(action);
-        v.status.set(`${tip}: not here`);
-      }), tip);
+  // Each group its own row, close set; the groups set apart.
+  const groups = GROUPS.map((first, i) => TOOLS.slice(TOOLS.findIndex(([l]) => l === first), i + 1 < GROUPS.length ? TOOLS.findIndex(([l]) => l === GROUPS[i + 1]) : TOOLS.length));
+  ui.hstack(14, () => {
+    for (const group of groups) {
+      ui.hstack(2, () => {
+        for (const [label, tip, action] of group) {
+          ui.tooltip(ui.btn(label, () => {
+            if (v.actions.has(action)) return v.perform(action);
+            v.status.set(`${tip}: not here`);
+          }), tip);
+        }
+      });
     }
   });
 }

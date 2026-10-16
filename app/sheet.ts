@@ -41,12 +41,15 @@ const sheet = new SheetView();
 
 ui.text("Spreadsheet");
 toolBar(sheet);
+ui.divider();
 // The Name Box and the formula bar, one row under the toolbar.
 formulaBar(sheet);
 statusLine(sheet);
+ui.divider();
 sheetGrid(sheet);
 sheetTabs(sheet);
 statusBar(sheet);
+ui.divider();
 // The bars, as panels under the grid, one open at a time (view.panel).
 panelTabs(sheet);
 sheet.panel("edit", () => editBar(sheet));
