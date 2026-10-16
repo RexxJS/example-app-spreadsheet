@@ -233,6 +233,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const id = ascending === undefined || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
     return (await must(exec, id, { range: text(r), by: col(by, "SORTRANGE") }), "OK");
   },
+  // Flash Fill: FLASHFILL("B1:B9"), its first cells the examples.
+  FLASHFILL: async (exec, r) => (await must(exec, "data.flashFill", { range: text(r) })).message,
   // Format Painter: COPYFORMAT("A1", "B1:B9").
   COPYFORMAT: async (exec, from, to) => (await must(exec, "format.painter", { from: text(from), to: text(to) })).message,
   // The toolbar's looks over a range.

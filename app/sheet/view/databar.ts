@@ -16,6 +16,7 @@ export function dataBar(v: SheetView): void {
     v.btn("Data table", () => v.run("data.table", { range: v.range(), ...given({ row: rowInput.value, column: columnInput.value }) }));
     v.btn("Remove duplicates", () => v.run("data.removeDuplicates", { range: v.range() }));
     bind(ui.textfield("delimiter", () => {}), delimiter);
+    v.btn("Flash fill", () => v.run("data.flashFill", { range: v.range() }));
     v.btn("Text to columns", () => v.run("data.textToColumns", { range: v.range(), ...given({ delimiter: delimiter.value }) }));
   });
 }

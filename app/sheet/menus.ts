@@ -72,7 +72,7 @@ export const MENUS: readonly Menu[] = [
     i("Sort A→Z", "data.sortAscending"), i("Sort Z→A", "data.sortDescending"), i("Filter", "data.filter"), i("Clear filter", "data.clearFilter"), "-",
     i("Allow list", "validation.set"), i("Allow whole numbers", "validation.set"), i("Allow decimals", "validation.set"), i("Allow length", "validation.set"),
     i("Clear rule", "validation.clear"), i("Circle invalid", "validation.circle"), "-",
-    i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"),
+    i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"), i("Flash fill", "data.flashFill", "Ctrl+E"),
   ] },
   { label: "Formulas", items: [
     i("AutoSum", "formulas.autoSum"), "-",

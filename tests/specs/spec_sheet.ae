@@ -651,6 +651,21 @@ main() {
             g.command("formulas.use language=RexxJS")
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
         }
+        spec.it("Flash fill: an example typed, the rest of the column follows it") callback {
+            g.enter("K100", "ada lovelace")
+            g.enter("K101", "alan turing")
+            g.enter("K102", "grace hopper")
+            g.enter("L100", "Lovelace, A.")
+            g.pick("L", 100)
+            g.key("Shift+Down")
+            g.key("Shift+Down")
+            b.click("Flash fill")
+            spec.assert_true(b.wait_for_console("sheet: flash filled L100:L102 from 1 example"), "filled")
+            spec.assert_true(g.wait_cell("L", 101, "Turing, A."), "L101")
+            spec.assert_true(g.wait_cell("L", 102, "Hopper, G."), "L102")
+            g.command("range.clear range=K100:L102")
+            g.goto("A1")
+        }
         spec.it("Paste Special adding, from the edit bar: each number added to what is there") callback {
             g.enter("K70", "5")
             g.enter("K71", "7")

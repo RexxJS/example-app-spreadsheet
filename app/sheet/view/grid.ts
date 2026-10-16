@@ -5,7 +5,7 @@
 // Delete clears it, Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste (over
 // the selection: a cell copied fills each of its cells; with the system
 // clipboard, to and from other apps too), Ctrl+D and Ctrl+R
-// fill, Ctrl+Z and Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B, Ctrl+I and
+// fill, Ctrl+E Flash Fill, Ctrl+Z and Ctrl+Y (Ctrl+Shift+Z) undo and redo, Ctrl+B, Ctrl+I and
 // Ctrl+U the look, F9 and Shift+F9 calculate (Ctrl+arrows, to the edge of the data, are the grid's
 // own); while an editor is open, or a field has the focus, keys
 // are theirs. A cell's comment shows when the pointer rests on it.
@@ -152,6 +152,7 @@ export function sheetGrid(v: SheetView): void {
       case "x": copyOut(v, "edit.cut", range); return;
       case "v": pasteIn(v, range); return;
       case "d": v.run("edit.fillDown", { range }); return;
+      case "e": v.run("data.flashFill", { range }); return;
       case "r": v.run("edit.fillRight", { range }); return;
       case "z": v.run((mods & SHIFT) !== 0 ? "edit.redo" : "edit.undo"); return;
       case "y": v.run("edit.redo"); return;

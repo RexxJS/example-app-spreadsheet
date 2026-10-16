@@ -39,6 +39,7 @@ import { criterion } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
 import { PANELS, menuLines } from "./menus.ts";
 import { complete, cycleRef } from "./complete.ts";
+import { infer, run as runFill } from "./flashfill.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
@@ -836,6 +837,32 @@ const SPECS: readonly Spec[] = [
       }));
       const how = [what, op !== "none" ? op : "", skip ? "skipping blanks" : "", turned ? "transposed" : ""].filter((x) => x).join(", ");
       return setting(wb, entries, `pasted ${how} at ${keyOf(at)}`);
+    },
+  },
+  {
+    // Flash Fill: a column's empty cells filled by the pattern its filled
+    // ones show (flashfill.ts), from the columns to its left that hold
+    // something on the first example's row.
+    id: "data.flashFill", label: "Flash Fill", params: ["range"], journaled: true,
+    run: (wb, p) => {
+      const r = rangeOf(p.range), tl = topLeft(r);
+      if (r[0].col !== r[1].col) refuse("Flash Fill fills one column");
+      const rows = Array.from({ length: Math.abs(r[0].row - r[1].row) + 1 }, (_, i) => tl.row + i);
+      const at = (col: number, row: number) => show(wb.sheet.value(keyOf({ col, row })));
+      const given = rows.filter((row) => wb.sheet.input(keyOf({ col: tl.col, row })) !== "");
+      if (!given.length) refuse(`type an example or two in ${rangeName(r)} first`);
+      const cols: number[] = [];
+      for (let c = tl.col - 1; c >= 0 && at(c, given[0]) !== ""; c--) cols.unshift(c);
+      if (!cols.length) refuse(`nothing to the left of ${colName(tl.col)} to fill from`);
+      const srcs = (row: number) => cols.map((c) => at(c, row));
+      const program = infer(given.map((row) => [srcs(row), at(tl.col, row)] as const)) ?? refuse(`no pattern found that gives every example in ${rangeName(r)}`);
+      const entries: [string, string][] = [];
+      for (const row of rows) {
+        if (given.includes(row) || srcs(row).every((x) => x === "")) continue;
+        const out = runFill(program, srcs(row));
+        if (out !== null) entries.push([keyOf({ col: tl.col, row }), out]);
+      }
+      return setting(wb, entries, `flash filled ${rangeName(r)} from ${given.length} example${given.length === 1 ? "" : "s"}`);
     },
   },
   {

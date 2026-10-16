@@ -64,6 +64,7 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   GETFORMAT: fn([CELL], "Reads a cell's format", "the format, or \"\""),
   SETCOMMENT: fn([CELL, p("text", "text")], "Sets a cell's comment", "the comment"),
   GETCOMMENT: fn([CELL], "Reads a cell's comment", "the comment, or \"\""),
+  FLASHFILL: fn([p("range", "range", "one column, its first cells typed as examples")], "Flash Fill: the column's empty cells filled by the pattern the examples show, from the columns to its left", "what it did"),
   COPYFORMAT: fn([p("from", "range"), p("to", "range")], "Format Painter: the cells' look, number format and style onto a range (tiled), not their values or comments", "what it did"),
   SETALIGNMENT: fn([p("range", "range"), p("align", "text", "left, center, right or general")], "Aligns the cells' text", "OK"),
   SETFILLCOLOR: fn([p("range", "range"), p("color", "text", "a colour's name or #rrggbb; none takes it off")], "The cells' fill colour", "OK"),
