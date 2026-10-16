@@ -39,6 +39,9 @@ import { panelTabs } from "./sheet/view/paneltabs.ts";
 
 const sheet = new SheetView();
 
+// The page in one column with the window's own padding round it.
+ui.vstack(() => {
+ui.margin(8, 12, 8, 12);
 ui.text("Spreadsheet");
 toolBar(sheet);
 ui.divider();
@@ -66,6 +69,7 @@ sheet.panel("chart", () => chartPanel(sheet));
 sheet.panel("file", () => fileBar(sheet));
 sheet.panel("script", () => { languageBar(sheet); commandBar(sheet); setupScript(sheet); });
 sheet.panel("lists", () => { functionList(sheet); problemList(sheet); });
+});
 // The menus run the panels' actions: made once the panels are.
 menuBar(sheet);
 sheet.refresh();

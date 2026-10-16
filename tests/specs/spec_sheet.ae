@@ -562,6 +562,15 @@ main() {
             spec.assert_true(uidriver.wait_body_contains("/widget/${nb}", "C3", 40), "the Name Box says the cell")
             g.goto("A1")
         }
+        spec.it("the window's own padding: the page set in from its edges") callback {
+            t = uidriver.widget_id_of("text", "Spreadsheet")
+            col = uidriver.widget_int_field_by_id(t, "parent")
+            outer = uidriver.widget_int_field_by_id(col, "parent")
+            dx = uidriver.widget_int_field_by_id(t, "x") - uidriver.widget_int_field_by_id(outer, "x")
+            dy = uidriver.widget_int_field_by_id(t, "y") - uidriver.widget_int_field_by_id(outer, "y")
+            spec.assert_true(dx >= 12, "the title 12 px in from the page's left (${dx})")
+            spec.assert_true(dy >= 8, "and 8 down from its top (${dy})")
+        }
         spec.it("the toolbar: one row of short buttons with tooltips, each running its command") callback {
             u = uidriver.widget_id_of("button", "Undo")
             f = uidriver.widget_id_of("button", "Fill")
