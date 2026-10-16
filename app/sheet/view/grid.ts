@@ -78,7 +78,10 @@ export function sheetGrid(v: SheetView): void {
     });
     on_cell_edit((r: number, c: number, t: string) => {
       const key = keyAt(r, c);
-      if (pointing && key) {
+      // Pointing, or the editor's text says so before its change was heard
+      // (on_edit_change comes a turn of the loop later: a quick click can
+      // beat it).
+      if ((pointing || pointable(t, t.length)) && key) {
         // A click to point: wait for the cell it selects (or, if none does,
         // store the formula as it was).
         held = { r, c, text: t };
