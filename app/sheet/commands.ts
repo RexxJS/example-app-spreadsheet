@@ -38,6 +38,7 @@ import { distinctRows, secant, splitText } from "./whatif.ts";
 import { criterion } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
 import { PANELS, menuLines } from "./menus.ts";
+import { complete, cycleRef } from "./complete.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
@@ -1582,6 +1583,25 @@ const SPECS: readonly Spec[] = [
       const panel = n === "none" ? null : PANELS.find((x) => x.name === n || x.label.toLowerCase() === n)?.name ?? refuse(`${p.name} is not a panel (${PANELS.map((x) => x.name).join(", ")}, none)`);
       wb.panel = panel;
       return { ok: true, message: panel ? `the ${panel} panel` : "no panel", changed: [], output: panel ?? "" };
+    },
+  },
+  {
+    // F4 on a formula being typed: the reference at the caret (the end by
+    // default) to its next form, A1, $A$1, A$1, $A1.
+    id: "formulas.cycleRef", label: "Cycle Reference", params: ["text"], optional: ["caret"], journaled: false,
+    run: async (_wb, p) => {
+      const r = cycleRef(p.text, p.caret === undefined ? p.text.length : Number(p.caret));
+      return { ok: true, message: r.text, changed: [], output: r.text };
+    },
+  },
+  {
+    // The function names that complete a formula typed so far, and the
+    // call its end is in (Formula AutoComplete and the argument hint).
+    id: "formulas.complete", label: "Formula AutoComplete", params: ["text"], journaled: false,
+    run: async (wb, p) => {
+      const c = complete(p.text, wb.sheet.language.functions());
+      const hint = c.call ? `${c.call}: argument ${c.arg}` : "";
+      return { ok: true, message: [c.names.join(", ") || "no names", hint].filter((x) => x).join("; "), changed: [], output: c };
     },
   },
   {

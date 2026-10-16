@@ -4,8 +4,11 @@
 // range's name selects it (going to its sheet, for a workbook's name of
 // another one); Return on a cell moves to the formula. Return in the
 // formula sets the cell. R1C1 switches how Excel formulas are shown and
-// typed (formulas.style), and back.
+// typed (formulas.style), and back. Under it, the function names that
+// complete what is typed (complete.ts) and the call it is in; F4 cycles
+// the last reference's $s.
 import { addrOf } from "../address.ts";
+import { complete, completed, cycleRef } from "../complete.ts";
 import type { SheetView } from "./view.ts";
 
 export function formulaBar(v: SheetView): void {
@@ -29,5 +32,17 @@ export function formulaBar(v: SheetView): void {
       await v.run("formulas.style", { style: v.wb.referenceStyle === "A1" ? "R1C1" : "A1" });
       v.follow();
     });
+  });
+  // As a formula is typed: the names that complete it, each a button that
+  // takes it, and the call its end is in; F4 (the grid not focused) cycles
+  // the reference at its end.
+  const hints = computed(() => complete(v.input.value, v.wb.sheet.language.functions()), v.input);
+  ui.hstack(() => {
+    bind(ui.text(""), computed(() => (hints.value.call ? `${hints.value.call}( argument ${hints.value.arg}` : ""), hints));
+    each(computed(() => hints.value.names.map((n) => ({ n, prefix: hints.value.prefix })), hints), (h: { n: string }) => h.n,
+      (h: { n: string; prefix: string }) => ui.btn(`${h.n}(`, () => v.input.set(completed(v.input.value, h.prefix, h.n))));
+  });
+  ui.on_key((key: string) => {
+    if (key === "F4" && !ui.datagrid_has_focus(v.grid) && v.input.value.startsWith("=")) v.input.set(cycleRef(v.input.value).text);
   });
 }

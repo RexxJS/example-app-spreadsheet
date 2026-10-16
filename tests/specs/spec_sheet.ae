@@ -629,6 +629,28 @@ main() {
             g.command("range.clearAll range=K80:L80")
             g.goto("A1")
         }
+        spec.it("typing a formula: the names completing it, a click taking one; F4 cycles the reference") callback {
+            g.command("formulas.use language=Excel")
+            spec.assert_true(b.wait_for_console("sheet: Excel formulas"), "Excel formulas")
+            g.goto("K90")
+            b.set_field_by("formula", "=SUMI")
+            i = 0
+            while i < 40 && b.button_exists("SUMIFS(") == 0 { sleep(50); i = i + 1 }
+            spec.assert_eq(b.button_exists("SUMIFS("), 1, "SUMIFS( offered")
+            spec.assert_eq(b.button_exists("SUM("), 0, "SUM( is not: it does not start SUMI")
+            b.click("SUMIF(")
+            spec.assert_true(wait_formula("=SUMIF("), "taken into the formula")
+            spec.assert_true(b.wait_for_text("SUMIF( argument 1"), "the call and its argument")
+            b.set_field_by("formula", "=K91+B2")
+            spec.assert_true(wait_formula("=K91+B2"), "typed")
+            g.key("F4")
+            spec.assert_true(wait_formula("=K91+$B$2"), "F4: $B$2")
+            g.key("F4")
+            spec.assert_true(wait_formula("=K91+B$2"), "F4 again: B$2")
+            g.goto("A1")
+            g.command("formulas.use language=RexxJS")
+            spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
+        }
         spec.it("Paste Special adding, from the edit bar: each number added to what is there") callback {
             g.enter("K70", "5")
             g.enter("K71", "7")

@@ -205,6 +205,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SELECTIONSTATS: fn([p("range", "range"), opt("figure", "text", "sum, average, count, numbers, min or max; none for the whole line")], "The status bar's figures for a range, as Excel's", "the line (\"Average: 2  Count: 3 ...\"), or the one figure"),
   SHOWPANEL: fn([p("name", "text", "edit, looks, view, names, rules, validation, editors, data, find, audit, chart, file, script, lists, or none")], "Opens a panel under the grid, closing the one open", "the panel now, \"\" for none"),
   GETPANEL: fn([], "The panel open under the grid", "its name, \"\" for none"),
+  CYCLEREFERENCE: fn([p("text", "text", "a formula as typed")], "F4: the reference at the end of a formula to its next form (A1, $A$1, A$1, $A1)", "the formula so"),
+  COMPLETEFORMULA: fn([p("text", "text", "a formula as typed so far, with its =")], "The function names that complete it, and the call its end is in", "a stem of names, with .CALL the function and .ARG which argument"),
   LISTMENUS: fn([], "The menu bar's items, for finding a command by where it is on the menus", "a stem of \"Menu > Item | command.id | shortcut\" lines"),
   ERRORCHECK: fn([], "Error Checking over the active sheet: formulas that come to an error, are inconsistent with those beside them or omit a number next to their range, and numbers stored as text", "a stem of \"cell check message\" lines, check one of error, inconsistent, text-number, omits"),
   IGNOREERROR: fn([p("cell", "cell"), opt("off", "flag", "1 to check it again")], "Error Checking passes over the cell", "\"\""),

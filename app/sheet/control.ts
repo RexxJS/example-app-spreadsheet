@@ -141,6 +141,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // The panel open under the grid: SHOWPANEL("rules"), "none" to close.
   SHOWPANEL: async (exec, n) => (await must(exec, "view.panel", { name: text(n) })).output,
   GETPANEL: async (exec) => (await state(exec)).panel,
+  // Help while typing: F4's next form of the reference at the end, and the
+  // function names completing a formula (a stem), with the call it is in.
+  CYCLEREFERENCE: async (exec, t) => (await must(exec, "formulas.cycleRef", { text: text(t) })).output,
+  COMPLETEFORMULA: async (exec, t) => {
+    const c = (await must(exec, "formulas.complete", { text: text(t) })).output as { names: string[]; call: string | null; arg: number };
+    return { ...stem(c.names), CALL: c.call ?? "", ARG: c.arg };
+  },
   // The menu bar's items: a stem of "File > Save | file.save | Ctrl+S".
   LISTMENUS: async (exec) => stem((await must(exec, "menus.list")).output as string[]),
   // Error Checking: a stem of "cell check message" lines (check: error,
