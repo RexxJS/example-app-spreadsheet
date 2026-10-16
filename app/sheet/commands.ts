@@ -1330,6 +1330,47 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // AutoFit Column Width: each column as wide as its widest shown text,
+    // by an estimate of the grid's font (7.5 px a character at 13 px, more
+    // for a larger size) and its padding; an empty column the grid's.
+    id: "columns.autofit", label: "AutoFit Column Width", params: ["range"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, { at, said } = spanOf(rangeOf(p.range), false), widths: number[] = [];
+      for (const col of at) {
+        let w = 0;
+        for (let row = 0; row < ROWS; row++) {
+          const key = keyOf({ col, row }), t = wb.textOf(key);
+          if (!t) continue;
+          const size = wb.notes.get(key).look?.size ?? 13;
+          w = Math.max(w, Math.ceil(Math.max(...t.split("\n").map((l) => l.length)) * 7.5 * size / 13) + 14);
+        }
+        if (w) page.widths.set(col, Math.min(600, Math.max(24, w))); else page.widths.delete(col);
+        widths.push(page.widths.get(col) ?? 0);
+      }
+      return { ...await changedBy(wb, [], `${said} fitted: ${widths.map((w) => w || "the grid's").join(", ")}`), output: widths };
+    },
+  },
+  {
+    // AutoFit Row Height: each row as tall as its tallest text, by its
+    // lines and font size; a row of one line at the grid's size the grid's.
+    id: "rows.autofit", label: "AutoFit Row Height", params: ["range"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, { at, said } = spanOf(rangeOf(p.range), true), heights: number[] = [];
+      for (const row of at) {
+        let h = 0;
+        for (let col = 0; col < COLS; col++) {
+          const key = keyOf({ col, row }), t = wb.textOf(key);
+          if (!t) continue;
+          const size = wb.notes.get(key).look?.size ?? 13, lines = t.split("\n").length;
+          if (lines > 1 || size > 13) h = Math.max(h, Math.ceil(lines * size * 1.45 + 8));
+        }
+        if (h) page.heights.set(row, Math.min(400, h)); else page.heights.delete(row);
+        heights.push(page.heights.get(row) ?? 0);
+      }
+      return { ...await changedBy(wb, [], `${said} fitted: ${heights.map((h) => h || "the grid's").join(", ")}`), output: heights };
+    },
+  },
+  {
     id: "table.define", label: "Define Table", params: ["name", "range"], optional: ["headers", "columns", "types", "descriptions"], journaled: true,
     run: async (wb, p) => {
       const name = p.name.trim();

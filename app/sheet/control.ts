@@ -233,6 +233,14 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const id = ascending === undefined || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
     return (await must(exec, id, { range: text(r), by: col(by, "SORTRANGE") }), "OK");
   },
+  // AutoFit: AUTOFIT("B") a column (or "B:D"), AUTOFIT(3) a row (or "3:5").
+  AUTOFIT: async (exec, what) => {
+    const t = text(what).trim();
+    const rows = /^\d+(:\d+)?$/.test(t), parts = t.split(":");
+    if (!rows && !/^[A-Za-z]{1,3}(:[A-Za-z]{1,3})?$/.test(t)) throw new Error(`AUTOFIT needs a column ("B", "B:D") or a row (3, "3:5")`);
+    const r = rows ? `A${parts[0]}:A${parts[1] ?? parts[0]}` : `${parts[0]}1:${parts[1] ?? parts[0]}1`;
+    return (await must(exec, rows ? "rows.autofit" : "columns.autofit", { range: r })).message;
+  },
   // Flash Fill: FLASHFILL("B1:B9"), its first cells the examples.
   FLASHFILL: async (exec, r) => (await must(exec, "data.flashFill", { range: text(r) })).message,
   // Format Painter: COPYFORMAT("A1", "B1:B9").
