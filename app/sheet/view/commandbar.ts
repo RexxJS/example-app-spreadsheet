@@ -14,7 +14,7 @@ export function commandBar(v: SheetView): void {
       said.set(o.output === undefined ? o.message : `${o.message} → ${JSON.stringify(o.output)}`);
     });
     bind(ui.textarea("RexxJS script"), script);
-    ui.btn("Run script", async () => {
+    v.btn("Run script", async () => {
       const lines: string[] = [];
       const o = await v.cmds.script(script.value, (l) => {
         lines.push(l);
@@ -23,7 +23,7 @@ export function commandBar(v: SheetView): void {
       v.refresh();
       said.set([...lines, o.ok ? "" : `script failed: ${o.message}`].filter((l) => l).join(" | "));
     });
-    ui.btn("Commands", () => said.set(v.cmds.catalogue().map((c) => c.id).join(", ")));
+    v.btn("Commands", () => said.set(v.cmds.catalogue().map((c) => c.id).join(", ")));
   });
   bind(ui.text_wrapped("", 720), said);
 }

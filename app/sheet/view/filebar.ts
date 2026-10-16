@@ -17,30 +17,30 @@ export function fileBar(v: SheetView): void {
   };
   ui.hstack(() => {
     bind(ui.textfield("file name", () => {}), name);
-    ui.btn("Save", async () => { await v.run("file.save", name.value.trim() ? { name: name.value } : {}); await listed(); });
-    ui.btn("Open", () => v.run("file.open", { name: name.value }));
-    ui.btn("Delete file", async () => { await v.run("file.delete", { name: name.value }); await listed(); });
-    ui.btn("New", () => v.run("file.new"));
+    v.btn("Save", async () => { await v.run("file.save", name.value.trim() ? { name: name.value } : {}); await listed(); });
+    v.btn("Open", () => v.run("file.open", { name: name.value }));
+    v.btn("Delete file", async () => { await v.run("file.delete", { name: name.value }); await listed(); });
+    v.btn("New", () => v.run("file.new"));
     bind(ui.text(""), saved);
   });
   ui.hstack(() => {
-    ui.btn("Export CSV", async () => {
+    v.btn("Export CSV", async () => {
       const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
       const o = await v.run("file.exportCsv", many ? { range: v.range() } : {});
       shown.set(String(o.output ?? ""));
     });
     bind(ui.textarea("CSV"), csv);
-    ui.btn("Import CSV", () => v.run("file.importCsv", { at: v.here(), text: csv.value }));
+    v.btn("Import CSV", () => v.run("file.importCsv", { at: v.here(), text: csv.value }));
   });
   bind(ui.text_wrapped("", 720), shown);
   if (typeof documents !== "undefined") documentsRow(v);
   ui.hstack(() => {
-    ui.btn("Paste example", () => v.run("example.paste"));
-    ui.btn("Budget (RexxJS)", () => v.run("file.open", { sample: "budget" }));
-    ui.btn("Test sheet (RexxJS)", () => v.run("file.open", { sample: "test" }));
-    ui.btn("Formatted (RexxJS)", () => v.run("file.open", { sample: "formatted" }));
-    ui.btn("Clear all", () => v.run("sheet.clear"));
-    ui.btn("Home", () => browserContext.changePage("/"));
+    v.btn("Paste example", () => v.run("example.paste"));
+    v.btn("Budget (RexxJS)", () => v.run("file.open", { sample: "budget" }));
+    v.btn("Test sheet (RexxJS)", () => v.run("file.open", { sample: "test" }));
+    v.btn("Formatted (RexxJS)", () => v.run("file.open", { sample: "formatted" }));
+    v.btn("Clear all", () => v.run("sheet.clear"));
+    v.btn("Home", () => browserContext.changePage("/"));
   });
   listed();
 }
@@ -56,14 +56,14 @@ function documentsRow(v: SheetView): void {
     }
   };
   ui.hstack(() => {
-    ui.btn("Open file", tried(async () => {
+    v.btn("Open file", tried(async () => {
       const d = await documents.pick_open("Open a workbook or a CSV file");
       if (!d) return;
       const text = await d.read_text();
       if (/\.csv$/i.test(d.name)) await v.run("file.importCsv", { at: v.here(), text });
       else await v.run("file.import", { text });
     }));
-    ui.btn("Save file", tried(async () => {
+    v.btn("Save file", tried(async () => {
       const d = await documents.pick_save(`${v.wb.name}.json`);
       if (!d) return;
       const o = await v.cmds.execute("file.export");
@@ -71,7 +71,7 @@ function documentsRow(v: SheetView): void {
       print(`sheet: saved ${d.name}`);
       v.status.set(`Saved ${d.name}`);
     }));
-    ui.btn("Export CSV file", tried(async () => {
+    v.btn("Export CSV file", tried(async () => {
       const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
       const d = await documents.pick_save(`${v.wb.name}.csv`);
       if (!d) return;

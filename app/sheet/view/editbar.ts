@@ -21,25 +21,25 @@ export function editBar(v: SheetView): void {
     v.run(id, { range: v.range(), by: colName(addrOf(v.here())!.col) });
   };
   ui.hstack(() => {
-    ui.btn("Undo", () => v.run("edit.undo"));
-    ui.btn("Redo", () => v.run("edit.redo"));
+    v.btn("Undo", () => v.run("edit.undo"));
+    v.btn("Redo", () => v.run("edit.redo"));
     bind(ui.text(""), v.history);
-    ui.btn("Sort A→Z", () => sort("data.sortAscending"));
-    ui.btn("Sort Z→A", () => sort("data.sortDescending"));
-    ui.btn("Insert row", () => v.run("rows.insert", span("row")));
-    ui.btn("Delete row", () => v.run("rows.delete", span("row")));
-    ui.btn("Insert column", () => v.run("columns.insert", span("col")));
-    ui.btn("Delete column", () => v.run("columns.delete", span("col")));
+    v.btn("Sort A→Z", () => sort("data.sortAscending"));
+    v.btn("Sort Z→A", () => sort("data.sortDescending"));
+    v.btn("Insert row", () => v.run("rows.insert", span("row")));
+    v.btn("Delete row", () => v.run("rows.delete", span("row")));
+    v.btn("Insert column", () => v.run("columns.insert", span("col")));
+    v.btn("Delete column", () => v.run("columns.delete", span("col")));
   });
   const at = () => v.range().split(":")[0];
   ui.hstack(() => {
-    ui.btn("Fill series", () => v.run("edit.fillSeries", { range: v.range() }));
-    ui.btn("AutoSum", () => v.run("formulas.autoSum", { cell: v.here() }));
-    ui.btn("Paste values", () => v.run("edit.pasteSpecial", { at: at(), what: "values" }));
-    ui.btn("Paste formats", () => v.run("edit.pasteSpecial", { at: at(), what: "formats" }));
-    ui.btn("Paste transposed", () => v.run("edit.pasteSpecial", { at: at(), what: "all", transpose: "true" }));
-    ui.btn("Clear formats", () => v.run("range.clearFormats", { range: v.range() }));
-    ui.btn("Clear comments", () => v.run("range.clearComments", { range: v.range() }));
-    ui.btn("Clear cells", () => v.run("range.clearAll", { range: v.range() }));
+    v.btn("Fill series", () => v.run("edit.fillSeries", { range: v.range() }));
+    v.btn("AutoSum", () => v.run("formulas.autoSum", { cell: v.here() }));
+    v.btn("Paste values", () => v.run("edit.pasteSpecial", { at: at(), what: "values" }));
+    v.btn("Paste formats", () => v.run("edit.pasteSpecial", { at: at(), what: "formats" }));
+    v.btn("Paste transposed", () => v.run("edit.pasteSpecial", { at: at(), what: "all", transpose: "true" }));
+    v.btn("Clear formats", () => v.run("range.clearFormats", { range: v.range() }));
+    v.btn("Clear comments", () => v.run("range.clearComments", { range: v.range() }));
+    v.btn("Clear cells", () => v.run("range.clearAll", { range: v.range() }));
   });
 }

@@ -13,16 +13,16 @@ export const toggleFont = (v: SheetView, part: FontPart) =>
 
 export function lookBar(v: SheetView): void {
   ui.hstack(() => {
-    ui.btn("Bold", () => toggleFont(v, "bold"));
-    ui.btn("Italic", () => toggleFont(v, "italic"));
-    ui.btn("Underline", () => toggleFont(v, "underline"));
-    ui.btn("Strikethrough", () => toggleFont(v, "strike"));
-    ui.btn("Outline borders", () => v.run("format.border", { range: v.range(), edge: "outline" }));
-    ui.btn("All borders", () => v.run("format.border", { range: v.range(), edge: "all" }));
-    ui.btn("No borders", () => v.run("format.border", { range: v.range(), edge: "none" }));
-    ui.btn("Wrap text", () => v.run("format.wrap", v.wb.notes.get(v.here()).look?.wrap ? { range: v.range(), off: "1" } : { range: v.range() }));
-    ui.btn("Merge & center", () => v.run("cells.merge", { range: v.range(), center: "1" }));
-    ui.btn("Merge", () => v.run("cells.merge", { range: v.range() }));
-    ui.btn("Unmerge", () => v.run("cells.unmerge", { range: v.range() }));
+    v.btn("Bold", () => toggleFont(v, "bold"));
+    v.btn("Italic", () => toggleFont(v, "italic"));
+    v.btn("Underline", () => toggleFont(v, "underline"));
+    v.btn("Strikethrough", () => toggleFont(v, "strike"));
+    v.btn("Outline borders", () => v.run("format.border", { range: v.range(), edge: "outline" }));
+    v.btn("All borders", () => v.run("format.border", { range: v.range(), edge: "all" }));
+    v.btn("No borders", () => v.run("format.border", { range: v.range(), edge: "none" }));
+    v.btn("Wrap text", () => v.run("format.wrap", v.wb.notes.get(v.here()).look?.wrap ? { range: v.range(), off: "1" } : { range: v.range() }));
+    v.btn("Merge & center", () => v.run("cells.merge", { range: v.range(), center: "1" }));
+    v.btn("Merge", () => v.run("cells.merge", { range: v.range() }));
+    v.btn("Unmerge", () => v.run("cells.unmerge", { range: v.range() }));
   });
 }

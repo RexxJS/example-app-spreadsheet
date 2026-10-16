@@ -18,10 +18,10 @@ export function sheetTabs(v: SheetView): void {
       (from: number, to: number) => v.run("sheet.move", { name: v.sheets.value[from], to: String(to + 1) }),
     );
     bind(ui.textfield("sheet", () => {}), name);
-    ui.btn("Add sheet", () => v.run("sheet.add", name.value.trim() ? { name: name.value } : {}));
-    ui.btn("Rename sheet", () => v.run("sheet.rename", { name: v.active.value, to: name.value }));
-    ui.btn("Move left", () => v.run("sheet.move", { name: v.active.value, way: "left" }));
-    ui.btn("Move right", () => v.run("sheet.move", { name: v.active.value, way: "right" }));
-    ui.btn("Delete sheet", () => v.run("sheet.delete", { name: v.active.value }));
+    v.btn("Add sheet", () => v.run("sheet.add", name.value.trim() ? { name: name.value } : {}));
+    v.btn("Rename sheet", () => v.run("sheet.rename", { name: v.active.value, to: name.value }));
+    v.btn("Move left", () => v.run("sheet.move", { name: v.active.value, way: "left" }));
+    v.btn("Move right", () => v.run("sheet.move", { name: v.active.value, way: "right" }));
+    v.btn("Delete sheet", () => v.run("sheet.delete", { name: v.active.value }));
   });
 }

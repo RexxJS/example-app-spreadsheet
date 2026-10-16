@@ -116,6 +116,16 @@ export function sheetGrid(v: SheetView): void {
     v.follow(keyOf(at));
   });
 
+  // The keys' actions, for the menus too.
+  v.action("Cut", () => copyOut(v, "edit.cut", v.range()));
+  v.action("Copy", () => copyOut(v, "edit.copy", v.range()));
+  v.action("Paste", () => pasteIn(v, v.range()));
+  v.action("Clear contents", () => v.run("range.clear", { range: v.range() }));
+  v.action("Fill Down", () => v.run("edit.fillDown", { range: v.range() }));
+  v.action("Fill Right", () => v.run("edit.fillRight", { range: v.range() }));
+  v.action("Fill Up", () => v.run("edit.fillUp", { range: v.range() }));
+  v.action("Fill Left", () => v.run("edit.fillLeft", { range: v.range() }));
+
   ui.on_key((key: string, mods: number) => {
     // Escape closes the editor without a commit: the outlines go with it.
     if (key === "Escape") {

@@ -33,6 +33,7 @@ import { dataBar } from "./sheet/view/databar.ts";
 import { commandBar } from "./sheet/view/commandbar.ts";
 import { fileBar } from "./sheet/view/filebar.ts";
 import { functionList, problemList, setupScript, statusLine } from "./sheet/view/lists.ts";
+import { menuBar } from "./sheet/view/menubar.ts";
 
 const sheet = new SheetView();
 
@@ -59,6 +60,8 @@ functionList(sheet);
 setupScript(sheet);
 problemList(sheet);
 chartPanel(sheet);
+// The menus run the panels' actions: made once the panels are.
+menuBar(sheet);
 sheet.refresh();
 
 // The control bus (an installed app started with --control-bus): another

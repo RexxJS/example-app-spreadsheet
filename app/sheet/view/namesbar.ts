@@ -16,10 +16,10 @@ export function namesBar(v: SheetView): void {
   };
   ui.hstack(() => {
     bind(ui.textfield("name", () => {}), name);
-    ui.btn("Name the selection", () => listed(v.run("names.define", { name: name.value, range: v.range() })));
+    v.btn("Name the selection", () => listed(v.run("names.define", { name: name.value, range: v.range() })));
     bind(ui.textfield("refers to =LAMBDA(...)", () => {}), refers);
-    ui.btn("Name the formula", () => listed(v.run("names.define", { name: name.value, formula: refers.value })));
-    ui.btn("Delete name", () => listed(v.run("names.delete", { name: name.value })));
+    v.btn("Name the formula", () => listed(v.run("names.define", { name: name.value, formula: refers.value })));
+    v.btn("Delete name", () => listed(v.run("names.delete", { name: name.value })));
     bind(ui.text(""), list);
   });
 }

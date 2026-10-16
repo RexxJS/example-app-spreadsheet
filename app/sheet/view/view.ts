@@ -34,6 +34,9 @@ export class SheetView {
   readonly watches = state<Watch[]>([]);
   readonly charts = state<(ChartView & { n: number })[]>([]);
   grid = 0;
+  // What each panel button (and a few keys) does, by its label: the menus
+  // run the same (menubar.ts).
+  readonly actions = new Map<string, () => unknown>();
   // The rows made as tall as their wrapped text; the rows, columns (model)
   // and frozen rows the grid was last given.
   #fitted = new Set<number>();
@@ -41,6 +44,17 @@ export class SheetView {
   #frozen = 0;
   #merged: string[] = [];
   #sized = new Map<number, number>();
+
+  // A panel's button, its action kept by its label for the menus.
+  btn(label: string, fn: () => unknown): number {
+    this.action(label, fn);
+    return ui.btn(label, fn);
+  }
+
+  // An action the menus may run, by its label (the first one kept).
+  action(label: string, fn: () => unknown): void {
+    if (!this.actions.has(label)) this.actions.set(label, fn);
+  }
 
   // The selected cell's key (A1 when the address field names none).
   here(): string {

@@ -17,8 +17,8 @@ export function findBar(v: SheetView): void {
   ui.hstack(() => {
     bind(ui.textfield("find", () => {}), text);
     bind(ui.textfield("replace with", () => {}), by);
-    ui.btn("Find", find);
-    ui.btn("Replace all", () => v.run("edit.replace", { ...params(), with: by.value }));
+    v.btn("Find", find);
+    v.btn("Replace all", () => v.run("edit.replace", { ...params(), with: by.value }));
     ui.toggle("Match case", (on: boolean) => { options.matchCase = !!on; });
     ui.toggle("Whole cell", (on: boolean) => { options.wholeCell = !!on; });
     ui.toggle("In formulas", (on: boolean) => { options.inFormulas = !!on; });

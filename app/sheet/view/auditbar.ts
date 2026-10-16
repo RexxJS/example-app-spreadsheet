@@ -18,22 +18,22 @@ export function auditBar(v: SheetView): void {
     findings.set(o.ok ? o.output as Finding[] : []);
   };
   ui.hstack(() => {
-    ui.btn("Trace precedents", () => v.run("formulas.tracePrecedents", { cell: v.here() }));
-    ui.btn("Trace dependents", () => v.run("formulas.traceDependents", { cell: v.here() }));
-    ui.btn("Remove arrows", () => v.run("formulas.removeArrows"));
-    ui.btn("Show formulas", () => v.run("formulas.showFormulas", v.wb.showFormulas ? { off: "1" } : {}));
-    ui.btn("Evaluate formula", async () => {
+    v.btn("Trace precedents", () => v.run("formulas.tracePrecedents", { cell: v.here() }));
+    v.btn("Trace dependents", () => v.run("formulas.traceDependents", { cell: v.here() }));
+    v.btn("Remove arrows", () => v.run("formulas.removeArrows"));
+    v.btn("Show formulas", () => v.run("formulas.showFormulas", v.wb.showFormulas ? { off: "1" } : {}));
+    v.btn("Evaluate formula", async () => {
       const o = await v.run("formulas.evaluate", { cell: v.here() });
       steps.set(o.ok ? o.message : "");
     });
-    ui.btn("Add watch", () => v.run("formulas.watch", { cell: v.here() }));
+    v.btn("Add watch", () => v.run("formulas.watch", { cell: v.here() }));
   });
   ui.hstack(() => {
-    ui.btn("Manual calculation", () => v.run("formulas.calculation", { mode: v.wb.calculation.manual ? "automatic" : "manual" }));
-    ui.btn("Calculate now", () => v.run("formulas.recalculate"));
-    ui.btn("Calculate sheet", () => v.run("formulas.calculateSheet"));
-    ui.btn("Iterative calculation", () => v.run("formulas.iteration", v.wb.calculation.iterate ? { off: "1" } : {}));
-    ui.btn("Error checking", check);
+    v.btn("Manual calculation", () => v.run("formulas.calculation", { mode: v.wb.calculation.manual ? "automatic" : "manual" }));
+    v.btn("Calculate now", () => v.run("formulas.recalculate"));
+    v.btn("Calculate sheet", () => v.run("formulas.calculateSheet"));
+    v.btn("Iterative calculation", () => v.run("formulas.iteration", v.wb.calculation.iterate ? { off: "1" } : {}));
+    v.btn("Error checking", check);
   });
   each(findings, (f: Finding) => `${f.cell} ${f.check}`, (f: Finding) => ui.hstack(() => {
     ui.text(`${f.cell} ${f.check}: ${f.message}`);

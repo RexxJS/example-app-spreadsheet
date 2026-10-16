@@ -61,5 +61,29 @@ main() {
             spec.assert_true(g.wait_cell("B", 1, "42"), "still the same workbook")
         }
     }
+    spec.describe(fw, "the menu bar (an installed app's)") {
+        spec.it("old Excel's menus, each item a panel's command, with its shortcut") callback {
+            spec.assert_true(b.wait_for_console("sheet: menus: 9 menus, "), "made")
+            body = uidriver.menus_body()
+            spec.assert_contains(body, "\"Undo (Ctrl+Z)\",\"Redo (Ctrl+Y)\",\"Cut (Ctrl+X)\",\"Copy (Ctrl+C)\",\"Paste (Ctrl+V)\"", "Edit's first items, in order")
+            spec.assert_true(uidriver.menu_handle_with("Calculate now (F9)") > 0, "Formulas has Calculate now")
+            spec.assert_true(uidriver.menu_handle_with("Bold (Ctrl+B)") > 0, "Format has Bold")
+        }
+        spec.it("an item runs what its panel button runs") callback {
+            g.goto("B1")
+            uidriver.menu_activate_item("Bold (Ctrl+B)")
+            spec.assert_true(b.wait_for_console("sheet: B1: bold"), "Format > Bold made B1 bold")
+            uidriver.menu_activate_item("Undo (Ctrl+Z)")
+            spec.assert_true(b.wait_for_console("sheet: undid"), "Edit > Undo took it back")
+            uidriver.menu_activate_item("Manual calculation")
+            spec.assert_true(b.wait_for_console("sheet: manual calculation"), "Formulas > Manual calculation")
+            uidriver.menu_activate_item("Calculate now (F9)")
+            spec.assert_true(b.wait_for_console("formulas worked out"), "Formulas > Calculate now")
+            uidriver.menu_activate_item("Manual calculation")
+            spec.assert_true(b.wait_for_console("sheet: automatic calculation"), "and back")
+            uidriver.menu_activate_item("Run the setup script")
+            spec.assert_true(b.wait_for_console("sheet: ran the setup script"), "a command with no button runs too")
+        }
+    }
     return spec.run_summary(fw)
 }

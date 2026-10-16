@@ -11,12 +11,12 @@ export function validationBar(v: SheetView): void {
     v.run("validation.set", { range: v.range(), kind, mode: warn ? "warn" : "stop", ...extra });
   ui.hstack(() => {
     bind(ui.textfield("allowed", () => {}), allowed);
-    ui.btn("Allow list", () => rule("list", { values: allowed.value }));
-    ui.btn("Allow whole numbers", () => rule("whole", limitsOf(allowed.value)));
-    ui.btn("Allow decimals", () => rule("decimal", limitsOf(allowed.value)));
-    ui.btn("Allow length", () => rule("length", limitsOf(allowed.value)));
+    v.btn("Allow list", () => rule("list", { values: allowed.value }));
+    v.btn("Allow whole numbers", () => rule("whole", limitsOf(allowed.value)));
+    v.btn("Allow decimals", () => rule("decimal", limitsOf(allowed.value)));
+    v.btn("Allow length", () => rule("length", limitsOf(allowed.value)));
     ui.toggle("Warn only", (on: boolean) => { warn = !!on; });
-    ui.btn("Clear rule", () => v.run("validation.clear", { range: v.range() }));
-    ui.btn("Circle invalid", () => v.run("validation.circle"));
+    v.btn("Clear rule", () => v.run("validation.clear", { range: v.range() }));
+    v.btn("Circle invalid", () => v.run("validation.circle"));
   });
 }

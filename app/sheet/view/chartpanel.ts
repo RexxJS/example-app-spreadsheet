@@ -22,10 +22,10 @@ function draw(s: Shape): void {
 export function chartPanel(v: SheetView): void {
   const insert = (kind: string) => () => v.run("chart.insert", { kind, range: v.range() });
   ui.hstack(() => {
-    ui.btn("Bar chart", insert("bar"));
-    ui.btn("Line chart", insert("line"));
-    ui.btn("Pie chart", insert("pie"));
-    ui.btn("Sparkline", () => {
+    v.btn("Bar chart", insert("bar"));
+    v.btn("Line chart", insert("line"));
+    v.btn("Pie chart", insert("pie"));
+    v.btn("Sparkline", () => {
       const s = v.selection();
       if (!s) return;
       const right = Math.max(s[0].col, s[1].col) + 1, top = Math.min(s[0].row, s[1].row);

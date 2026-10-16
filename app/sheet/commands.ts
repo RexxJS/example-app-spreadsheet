@@ -37,6 +37,7 @@ import { found, rearranged, rearrangedMoves, replaced, sortedRows } from "./sort
 import { distinctRows, secant, splitText } from "./whatif.ts";
 import { criterion } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
+import { menuLines } from "./menus.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
@@ -1487,6 +1488,15 @@ const SPECS: readonly Spec[] = [
       const changed = await recalculated(wb);
       const n = wb.pages().reduce((t, page) => t + page.sheet.keys().filter((k) => page.sheet.input(k).startsWith("=")).length, 0);
       return { ...await changedBy(wb, changed, `${n} formula${n === 1 ? "" : "s"} worked out`), output: n };
+    },
+  },
+  {
+    // The menu bar's items, each "File > Save | file.save | Ctrl+S": for a
+    // script to find a command by where it is on the menus.
+    id: "menus.list", label: "Menus", params: [], journaled: false,
+    run: async () => {
+      const lines = menuLines();
+      return { ok: true, message: `${lines.length} menu items`, changed: [], output: lines };
     },
   },
   {

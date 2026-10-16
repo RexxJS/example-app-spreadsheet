@@ -23,7 +23,7 @@ export function formulaBar(v: SheetView): void {
       if (addrOf(v.address.value)) v.run("cell.set", { cell: v.here(), input: v.wb.enteredInput(v.here(), v.input.value.trim()) });
       else v.status.set(`${v.address.value}: not a cell on this sheet`);
     });
-    ui.btn("R1C1", async () => {
+    v.btn("R1C1", async () => {
       await v.run("formulas.style", { style: v.wb.referenceStyle === "A1" ? "R1C1" : "A1" });
       v.follow();
     });
