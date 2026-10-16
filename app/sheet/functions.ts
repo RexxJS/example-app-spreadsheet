@@ -10,6 +10,7 @@ import { sortOrder } from "./sortfind.ts";
 import { sparkline } from "./charts.ts";
 import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
 import { fv, irr, nper, npv, pmt, pv, rate } from "./finance.ts";
+import * as D from "./distributions.ts";
 import { colName, sheetPrefix } from "./address.ts";
 
 export interface Arg {
@@ -977,6 +978,362 @@ def("STANDARDIZE", 3, 3, (args) => {
   const sd = num(args, 2);
   return sd <= 0 ? fail("#NUM!", `STANDARDIZE's standard deviation is ${sd}: not positive`) : (num(args, 0) - num(args, 1)) / sd;
 });
+
+// --- statistics, distributions (2.8: distributions.ts) ---
+
+// A distribution's function: a RangeError from distributions.ts, or an
+// argument outside its domain (`need`), is #NUM!.
+const defDist = (name: string, min: number, max: number, fn: Fn): void => {
+  def(name, min, max, (args) => {
+    try {
+      return fn(args);
+    } catch (e) {
+      if (e instanceof RangeError) return fail("#NUM!", `${name}: ${e.message}`);
+      throw e;
+    }
+  });
+};
+const need = (ok: boolean, what: string): void => {
+  if (!ok) throw new RangeError(what);
+};
+const flag = (args: readonly Arg[], i: number): boolean => toNumber(val(args, i)) !== 0;
+const probability = (p: number, open = true): void => need(open ? p > 0 && p < 1 : p >= 0 && p <= 1, `a probability is between 0 and 1, not ${p}`);
+const positive = (x: number, what: string): void => need(x > 0, `${what} must be positive, not ${x}`);
+const degrees = (args: readonly Arg[], i: number, least = 1): number => {
+  const df = Math.trunc(num(args, i));
+  need(df >= least && df <= 1e10, `degrees of freedom ${df}: ${least} or more`);
+  return df;
+};
+
+// The normal: NORM.DIST(x, mean, sd, cumulative), its inverse, the
+// standard one, and the lognormal (the log of x normal).
+const normal = (x: number, mean: number, sd: number, cumulative: boolean): number => {
+  positive(sd, "the standard deviation");
+  const z = (x - mean) / sd;
+  return cumulative ? D.normalCdf(z) : D.normalDensity(z) / sd;
+};
+defDist("NORM.DIST", 4, 4, (args) => normal(num(args, 0), num(args, 1), num(args, 2), flag(args, 3)));
+defDist("NORM.INV", 3, 3, (args) => {
+  const p = num(args, 0), sd = num(args, 2);
+  probability(p);
+  positive(sd, "the standard deviation");
+  return num(args, 1) + sd * D.normalInverse(p);
+});
+defDist("NORM.S.DIST", 2, 2, (args) => normal(num(args, 0), 0, 1, flag(args, 1)));
+defDist("NORM.S.INV", 1, 1, (args) => { const p = num(args, 0); probability(p); return D.normalInverse(p); });
+defDist("LOGNORM.DIST", 4, 4, (args) => {
+  const x = num(args, 0), mean = num(args, 1), sd = num(args, 2);
+  positive(x, "x");
+  positive(sd, "the standard deviation");
+  const z = (Math.log(x) - mean) / sd;
+  return flag(args, 3) ? D.normalCdf(z) : D.normalDensity(z) / (x * sd);
+});
+defDist("LOGNORM.INV", 3, 3, (args) => {
+  const p = num(args, 0), sd = num(args, 2);
+  probability(p);
+  positive(sd, "the standard deviation");
+  return Math.exp(num(args, 1) + sd * D.normalInverse(p));
+});
+defDist("GAUSS", 1, 1, (args) => D.normalCdf(num(args, 0)) - 0.5);
+defDist("PHI", 1, 1, (args) => D.normalDensity(num(args, 0)));
+
+// Student's t: left tail (or density), right tail, both tails; inverses
+// of the left tail and of both.
+defDist("T.DIST", 3, 3, (args) => {
+  const t = num(args, 0), df = degrees(args, 1);
+  return flag(args, 2) ? D.tCdf(t, df) : D.tDensity(t, df);
+});
+defDist("T.DIST.RT", 2, 2, (args) => 1 - D.tCdf(num(args, 0), degrees(args, 1)));
+defDist("T.DIST.2T", 2, 2, (args) => {
+  const t = num(args, 0);
+  need(t >= 0, `T.DIST.2T's x is 0 or more, not ${t}`);
+  return 2 * (1 - D.tCdf(t, degrees(args, 1)));
+});
+defDist("T.INV", 2, 2, (args) => { const p = num(args, 0); probability(p); return D.tInverse(p, degrees(args, 1)); });
+defDist("T.INV.2T", 2, 2, (args) => {
+  const p = num(args, 0);
+  need(p > 0 && p <= 1, `a probability is above 0, up to 1, not ${p}`);
+  return D.tInverse(1 - p / 2, degrees(args, 1));
+});
+
+// χ²: left tail (or density), right tail, and their inverses.
+defDist("CHISQ.DIST", 3, 3, (args) => {
+  const x = num(args, 0), df = degrees(args, 1);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  return flag(args, 2) ? D.chiCdf(x, df) : D.chiDensity(x, df);
+});
+defDist("CHISQ.DIST.RT", 2, 2, (args) => {
+  const x = num(args, 0);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  return 1 - D.chiCdf(x, degrees(args, 1));
+});
+const chiInverse = (p: number, df: number): number => {
+  const f = (x: number) => D.chiCdf(x, df);
+  return D.inverse(f, p, 0, D.upTo(f, p, df + 1));
+};
+defDist("CHISQ.INV", 2, 2, (args) => { const p = num(args, 0); probability(p, false); return chiInverse(p, degrees(args, 1)); });
+defDist("CHISQ.INV.RT", 2, 2, (args) => { const p = num(args, 0); probability(p, false); return chiInverse(1 - p, degrees(args, 1)); });
+
+// F: left tail (or density), right tail, and their inverses.
+const fArgs = (args: readonly Arg[], i: number): [number, number] => [degrees(args, i), degrees(args, i + 1)];
+defDist("F.DIST", 4, 4, (args) => {
+  const x = num(args, 0), [d1, d2] = fArgs(args, 1);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  return flag(args, 3) ? D.fCdf(x, d1, d2) : D.fDensity(x, d1, d2);
+});
+defDist("F.DIST.RT", 3, 3, (args) => {
+  const x = num(args, 0), [d1, d2] = fArgs(args, 1);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  return 1 - D.fCdf(x, d1, d2);
+});
+const fInverse = (p: number, d1: number, d2: number): number => {
+  const f = (x: number) => D.fCdf(x, d1, d2);
+  return D.inverse(f, p, 0, D.upTo(f, p));
+};
+defDist("F.INV", 3, 3, (args) => { const p = num(args, 0), [d1, d2] = fArgs(args, 1); probability(p, false); return fInverse(p, d1, d2); });
+defDist("F.INV.RT", 3, 3, (args) => { const p = num(args, 0), [d1, d2] = fArgs(args, 1); probability(p, false); return fInverse(1 - p, d1, d2); });
+
+// Discrete ones: the binomial (and the smallest k whose cumulative reaches
+// alpha), Poisson, hypergeometric, negative binomial.
+defDist("BINOM.DIST", 4, 4, (args) => {
+  const k = Math.trunc(num(args, 0)), n = Math.trunc(num(args, 1)), p = num(args, 2);
+  need(n >= 0 && k >= 0 && k <= n, `${k} successes of ${n} trials`);
+  probability(p, false);
+  return flag(args, 3) ? D.binomialCdf(k, n, p) : D.binomialMass(k, n, p);
+});
+defDist("BINOM.DIST.RANGE", 3, 4, (args) => {
+  const n = Math.trunc(num(args, 0)), p = num(args, 1), lo = Math.trunc(num(args, 2)), hi = absent(args, 3) ? lo : Math.trunc(num(args, 3));
+  probability(p, false);
+  need(lo >= 0 && lo <= hi && hi <= n, `successes ${lo} to ${hi} of ${n}`);
+  let total = 0;
+  for (let k = lo; k <= hi; k++) total += D.binomialMass(k, n, p);
+  return total;
+});
+defDist("BINOM.INV", 3, 3, (args) => {
+  const n = Math.trunc(num(args, 0)), p = num(args, 1), alpha = num(args, 2);
+  need(n >= 0, `trials ${n}`);
+  probability(p, false);
+  probability(alpha);
+  let total = 0;
+  for (let k = 0; k <= n; k++) {
+    total += D.binomialMass(k, n, p);
+    if (total >= alpha - 1e-12) return k;
+  }
+  return n;
+});
+defDist("POISSON.DIST", 3, 3, (args) => {
+  const k = Math.trunc(num(args, 0)), mean = num(args, 1);
+  need(k >= 0 && mean >= 0, `x ${k} and mean ${mean} are 0 or more`);
+  return flag(args, 2) ? D.poissonCdf(k, mean) : D.poissonMass(k, mean);
+});
+defDist("EXPON.DIST", 3, 3, (args) => {
+  const x = num(args, 0), lambda = num(args, 1);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  positive(lambda, "lambda");
+  return flag(args, 2) ? 1 - Math.exp(-lambda * x) : lambda * Math.exp(-lambda * x);
+});
+defDist("HYPGEOM.DIST", 5, 5, (args) => {
+  const [s, n, m, pop] = [0, 1, 2, 3].map((i) => Math.trunc(num(args, i)));
+  need(s >= 0 && n > 0 && m > 0 && pop > 0 && n <= pop && m <= pop && s <= Math.min(n, m) && s >= Math.max(0, n - pop + m), `${s} of a sample of ${n}, ${m} of ${pop}`);
+  if (!flag(args, 4)) return D.hypergeometricMass(s, n, m, pop);
+  let total = 0;
+  for (let i = Math.max(0, n - pop + m); i <= s; i++) total += D.hypergeometricMass(i, n, m, pop);
+  return Math.min(1, total);
+});
+defDist("NEGBINOM.DIST", 4, 4, (args) => {
+  const f = Math.trunc(num(args, 0)), s = Math.trunc(num(args, 1)), p = num(args, 2);
+  need(f >= 0 && s >= 1, `${f} failures, ${s} successes`);
+  probability(p);
+  if (!flag(args, 3)) return D.negativeBinomialMass(f, s, p);
+  let total = 0;
+  for (let i = 0; i <= f; i++) total += D.negativeBinomialMass(i, s, p);
+  return Math.min(1, total);
+});
+
+// Gamma, beta and Weibull; the gamma function and its log.
+defDist("GAMMA", 1, 1, (args) => D.gamma(num(args, 0)));
+defDist("GAMMALN", 1, 1, (args) => D.lnGamma(num(args, 0)));
+defDist("GAMMALN.PRECISE", 1, 1, (args) => D.lnGamma(num(args, 0)));
+defDist("GAMMA.DIST", 4, 4, (args) => {
+  const x = num(args, 0), a = num(args, 1), b = num(args, 2);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  positive(a, "alpha");
+  positive(b, "beta");
+  return flag(args, 3) ? D.gammaCdf(x, a, b) : D.gammaDensity(x, a, b);
+});
+defDist("GAMMA.INV", 3, 3, (args) => {
+  const p = num(args, 0), a = num(args, 1), b = num(args, 2);
+  probability(p, false);
+  positive(a, "alpha");
+  positive(b, "beta");
+  const f = (x: number) => D.gammaCdf(x, a, b);
+  return D.inverse(f, p, 0, D.upTo(f, p, a * b + 1));
+});
+// BETA.DIST(x, α, β, cumulative, [A], [B]): on [A, B], 0 to 1 unless told.
+const bounds = (args: readonly Arg[], i: number): [number, number] => {
+  const lo = num(args, i, 0), hi = num(args, i + 1, 1);
+  need(lo < hi, `the bounds ${lo} and ${hi}`);
+  return [lo, hi];
+};
+defDist("BETA.DIST", 4, 6, (args) => {
+  const x = num(args, 0), a = num(args, 1), b = num(args, 2), [lo, hi] = bounds(args, 4);
+  positive(a, "alpha");
+  positive(b, "beta");
+  need(x >= lo && x <= hi, `x ${x} lies outside ${lo} to ${hi}`);
+  const t = (x - lo) / (hi - lo);
+  return flag(args, 3) ? D.incompleteBeta(t, a, b) : D.betaDensity(t, a, b) / (hi - lo);
+});
+defDist("BETA.INV", 3, 5, (args) => {
+  const p = num(args, 0), a = num(args, 1), b = num(args, 2), [lo, hi] = bounds(args, 3);
+  probability(p, false);
+  positive(a, "alpha");
+  positive(b, "beta");
+  return lo + (hi - lo) * D.inverse((t) => D.incompleteBeta(t, a, b), p, 0, 1);
+});
+defDist("WEIBULL.DIST", 4, 4, (args) => {
+  const x = num(args, 0), a = num(args, 1), b = num(args, 2);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  positive(a, "alpha");
+  positive(b, "beta");
+  return flag(args, 3) ? 1 - Math.exp(-((x / b) ** a)) : (a / b ** a) * x ** (a - 1) * Math.exp(-((x / b) ** a));
+});
+
+// Fisher's transformation and its inverse.
+defDist("FISHER", 1, 1, (args) => { const x = num(args, 0); need(x > -1 && x < 1, `x is between -1 and 1, not ${x}`); return Math.atanh(x); });
+defDist("FISHERINV", 1, 1, (args) => Math.tanh(num(args, 0)));
+
+// Confidence intervals' half widths, by the normal or by t.
+defDist("CONFIDENCE.NORM", 3, 3, (args) => {
+  const alpha = num(args, 0), sd = num(args, 1), n = Math.trunc(num(args, 2));
+  probability(alpha);
+  positive(sd, "the standard deviation");
+  need(n >= 1, `size ${n}`);
+  return (D.normalInverse(1 - alpha / 2) * sd) / Math.sqrt(n);
+});
+defDist("CONFIDENCE.T", 3, 3, (args) => {
+  const alpha = num(args, 0), sd = num(args, 1), n = Math.trunc(num(args, 2));
+  probability(alpha);
+  positive(sd, "the standard deviation");
+  if (n === 1) return fail("#DIV/0!", "CONFIDENCE.T of a sample of 1");
+  need(n >= 1, `size ${n}`);
+  return (D.tInverse(1 - alpha / 2, n - 1) * sd) / Math.sqrt(n);
+});
+
+// Tests. Z.TEST(array, x, [sigma]): the one-tailed probability of a mean
+// this far above x. T.TEST(a, b, tails, type): type 1 paired, 2 equal
+// variance, 3 unequal (Welch). F.TEST: two-tailed, of the variances.
+// CHISQ.TEST(actual, expected): χ² on (rows - 1)(cols - 1) degrees, or
+// n - 1 for a single row or column.
+const variance = (ns: readonly number[]): number => squares(ns) / (ns.length - 1);
+defDist("Z.TEST", 2, 3, (args) => {
+  const ns = numbersIn(args[0].values), x = num(args, 1);
+  if (ns.length < (absent(args, 2) ? 2 : 1)) return fail("#N/A", "Z.TEST needs numbers");
+  const sigma = absent(args, 2) ? Math.sqrt(variance(ns)) : num(args, 2);
+  positive(sigma, "sigma");
+  return 1 - D.normalCdf((mean(ns) - x) / (sigma / Math.sqrt(ns.length)));
+});
+defDist("T.TEST", 4, 4, (args) => {
+  const tails = Math.trunc(num(args, 2)), type = Math.trunc(num(args, 3));
+  need(tails === 1 || tails === 2, `tails is 1 or 2, not ${tails}`);
+  need(type >= 1 && type <= 3, `type is 1, 2 or 3, not ${type}`);
+  let t: number, df: number;
+  if (type === 1) {
+    if (args[0].values.length !== args[1].values.length) return fail("#N/A", "T.TEST's paired arrays differ in size");
+    const [y, x] = pairs("T.TEST", args, 0, 1, 2), d = y.map((v, i) => v - x[i]);
+    t = mean(d) / Math.sqrt(variance(d) / d.length);
+    df = d.length - 1;
+  } else {
+    const a = numbersIn(args[0].values), b = numbersIn(args[1].values);
+    if (a.length < 2 || b.length < 2) return fail("#DIV/0!", "T.TEST needs two numbers or more on each side");
+    const va = variance(a), vb = variance(b), na = a.length, nb = b.length;
+    if (type === 2) {
+      const pooled = ((na - 1) * va + (nb - 1) * vb) / (na + nb - 2);
+      t = (mean(a) - mean(b)) / Math.sqrt(pooled * (1 / na + 1 / nb));
+      df = na + nb - 2;
+    } else {
+      const sa = va / na, sb = vb / nb;
+      t = (mean(a) - mean(b)) / Math.sqrt(sa + sb);
+      df = (sa + sb) ** 2 / (sa ** 2 / (na - 1) + sb ** 2 / (nb - 1));
+    }
+  }
+  const one = 1 - D.tCdf(Math.abs(t), df);
+  return tails === 1 ? one : 2 * one;
+});
+defDist("F.TEST", 2, 2, (args) => {
+  const a = numbersIn(args[0].values), b = numbersIn(args[1].values);
+  if (a.length < 2 || b.length < 2) return fail("#DIV/0!", "F.TEST needs two numbers or more on each side");
+  const va = variance(a), vb = variance(b);
+  if (va === 0 || vb === 0) return fail("#DIV/0!", "F.TEST of a variance of 0");
+  const left = D.fCdf(va / vb, a.length - 1, b.length - 1);
+  return 2 * Math.min(left, 1 - left);
+});
+defDist("CHISQ.TEST", 2, 2, (args) => {
+  const actual = args[0], expected = args[1];
+  if (actual.values.length !== expected.values.length || actual.cols !== expected.cols) return fail("#N/A", "CHISQ.TEST's ranges differ in size");
+  const rows = actual.values.length / actual.cols, cols = actual.cols;
+  let chi = 0;
+  for (let i = 0; i < actual.values.length; i++) {
+    const a = toNumber(actual.values[i]), e = toNumber(expected.values[i]);
+    if (e === 0) return fail("#DIV/0!", "CHISQ.TEST of an expected 0");
+    chi += (a - e) ** 2 / e;
+  }
+  const df = rows > 1 && cols > 1 ? (rows - 1) * (cols - 1) : rows * cols - 1;
+  need(df >= 1, "CHISQ.TEST of one value");
+  return 1 - D.chiCdf(chi, df);
+});
+// PROB(values, probabilities, lower, [upper]): the probability of a value
+// from lower to upper (of exactly lower, with no upper).
+defDist("PROB", 3, 4, (args) => {
+  const xs = args[0].values, ps = args[1].values;
+  if (xs.length !== ps.length) return fail("#N/A", "PROB's ranges differ in size");
+  const probs = ps.map(toNumber);
+  need(probs.every((p) => p >= 0 && p <= 1), "a probability lies outside 0 to 1");
+  need(Math.abs(sum(probs) - 1) < 1e-9, `the probabilities sum to ${sum(probs)}, not 1`);
+  const lo = num(args, 2), hi = absent(args, 3) ? lo : num(args, 3);
+  return sum(xs.map((x, i) => { const v = toNumber(x); return v >= lo && v <= hi ? probs[i] : 0; }));
+});
+
+// The compatibility names, as Excel keeps them (the old argument orders
+// and tails: TDIST takes tails, CHIDIST and FDIST are the right tail,
+// TINV two-tailed, HYPGEOMDIST and NEGBINOMDIST the mass).
+const alias = (old: string, now: string, map: (args: readonly Arg[]) => readonly Arg[] = (a) => a): void => {
+  const spec = library.get(now)!;
+  def(old, spec.min, spec.max, (args) => call(now, map(args)));
+};
+const withFlag = (on: boolean) => (args: readonly Arg[]): readonly Arg[] => [...args, single(on)];
+alias("NORMDIST", "NORM.DIST");
+alias("NORMINV", "NORM.INV");
+def("NORMSDIST", 1, 1, (args) => call("NORM.S.DIST", withFlag(true)(args)));
+alias("NORMSINV", "NORM.S.INV");
+def("LOGNORMDIST", 3, 3, (args) => call("LOGNORM.DIST", withFlag(true)(args)));
+alias("LOGINV", "LOGNORM.INV");
+defDist("TDIST", 3, 3, (args) => {
+  const tails = Math.trunc(num(args, 2)), x = num(args, 0);
+  need(tails === 1 || tails === 2, `tails is 1 or 2, not ${tails}`);
+  need(x >= 0, `x is 0 or more, not ${x}`);
+  return tails * (1 - D.tCdf(x, degrees(args, 1)));
+});
+alias("TINV", "T.INV.2T");
+alias("CHIDIST", "CHISQ.DIST.RT");
+alias("CHIINV", "CHISQ.INV.RT");
+alias("FDIST", "F.DIST.RT");
+alias("FINV", "F.INV.RT");
+alias("BINOMDIST", "BINOM.DIST");
+alias("CRITBINOM", "BINOM.INV");
+alias("POISSON", "POISSON.DIST");
+alias("EXPONDIST", "EXPON.DIST");
+alias("GAMMADIST", "GAMMA.DIST");
+alias("GAMMAINV", "GAMMA.INV");
+def("BETADIST", 3, 5, (args) => call("BETA.DIST", [...args.slice(0, 3), single(true), ...args.slice(3)]));
+alias("BETAINV", "BETA.INV");
+alias("WEIBULL", "WEIBULL.DIST");
+def("HYPGEOMDIST", 4, 4, (args) => call("HYPGEOM.DIST", withFlag(false)(args)));
+def("NEGBINOMDIST", 3, 3, (args) => call("NEGBINOM.DIST", withFlag(false)(args)));
+alias("CONFIDENCE", "CONFIDENCE.NORM");
+alias("ZTEST", "Z.TEST");
+alias("TTEST", "T.TEST");
+alias("FTEST", "F.TEST");
+alias("CHITEST", "CHISQ.TEST");
 
 // --- dates and times (dates.ts) ---
 
