@@ -9370,14 +9370,14 @@ async function executeIfStatement(ifCommand, evaluateConditionFn, runCommandsFn)
   if (conditionResult) {
     // Execute THEN branch
     const result = await runCommandsFn(ifCommand.thenCommands);
-    if (result && result.terminated) {
+    if (result && (result.terminated || result.loopControl)) {
       return result;
     }
   } else {
     // Execute ELSE branch (if it exists)
     if (ifCommand.elseCommands.length > 0) {
       const result = await runCommandsFn(ifCommand.elseCommands);
-      if (result && result.terminated) {
+      if (result && (result.terminated || result.loopControl)) {
         return result;
       }
     }
@@ -9410,6 +9410,9 @@ async function executeDoStatement(doCommand, resolveValueFn, evaluateConditionFn
 
     case 'UNTIL':
       return await executeUntilLoop(loopSpec, doCommand.bodyCommands, evaluateConditionFn, runCommandsFn);
+
+    case 'FOREVER':
+      return await executeForeverLoop(doCommand.bodyCommands, runCommandsFn);
 
     case 'REPEAT':
       return await executeRepeatLoop(loopSpec, doCommand.bodyCommands, runCommandsFn);
@@ -9462,37 +9465,44 @@ async function executeRangeLoop(loopSpec, bodyCommands, resolveValueFn, runComma
   
   const step = startNum <= endNum ? 1 : -1;
   
-  // Store original value if variable already exists
+  return await runControlledLoop(variable, startNum, endNum, step, bodyCommands, runCommandsFn, variables);
+}
+
+/**
+ * The controlled repetitive loop of DO var = start TO end [BY step]: the
+ * control variable is set, the body run, the variable stepped and tested
+ * against the end value, until it passes it. The variable is then left
+ * with the value that ended the loop (TRL 4.2): 3 after DO i = 1 TO 2. A
+ * LEAVE leaves it as it was in that iteration.
+ *
+ * RexxJS's own rule, kept (interpreter.spec.js "should preserve loop
+ * variable scope"): a value the variable had before the loop is put back
+ * after it, where classic REXX keeps the loop's value (TODO.md).
+ * @returns {Object|null} Result object if terminated, null otherwise
+ */
+async function runControlledLoop(variable, startNum, endNum, stepNum, bodyCommands, runCommandsFn, variables) {
   const originalValue = variables.get(variable);
-  
+  const past = stepNum > 0 ? (i) => i > endNum : (i) => i < endNum;
+  let i = startNum;
   try {
-    if (step > 0) {
-      for (let i = startNum; i <= endNum; i += step) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
+    for (; !past(i); i += stepNum) {
+      variables.set(variable, i);
+      const result = await runCommandsFn(bodyCommands);
+      if (result && result.terminated) {
+        return result;
       }
-    } else {
-      for (let i = startNum; i >= endNum; i += step) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
+      if (result && result.loopControl === 'LEAVE') {
+        return null;
       }
+      // ITERATE: on to the next iteration
     }
+    variables.set(variable, i);
+    return null;
   } finally {
-    // In Rexx, DO loop variables persist after the loop completes
-    // Only restore the original value if one existed before the loop
     if (originalValue !== undefined) {
       variables.set(variable, originalValue);
     }
-    // If no original value existed, keep the loop variable with its final value
   }
-  
-  return null;
 }
 
 /**
@@ -9522,37 +9532,7 @@ async function executeRangeLoopWithStep(loopSpec, bodyCommands, resolveValueFn, 
     throw new Error('DO loop step cannot be zero');
   }
   
-  // Store original value if variable already exists
-  const originalValue = variables.get(variable);
-  
-  try {
-    if (stepNum > 0) {
-      for (let i = startNum; i <= endNum; i += stepNum) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
-      }
-    } else {
-      for (let i = startNum; i >= endNum; i += stepNum) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
-      }
-    }
-  } finally {
-    // In Rexx, DO loop variables persist after the loop completes
-    // Only restore the original value if one existed before the loop
-    if (originalValue !== undefined) {
-      variables.set(variable, originalValue);
-    }
-    // If no original value existed, keep the loop variable with its final value
-  }
-  
-  return null;
+  return await runControlledLoop(variable, startNum, endNum, stepNum, bodyCommands, runCommandsFn, variables);
 }
 
 /**
@@ -9576,6 +9556,10 @@ async function executeWhileLoop(loopSpec, bodyCommands, evaluateConditionFn, run
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
 
   return null;
@@ -9603,6 +9587,39 @@ async function executeUntilLoop(loopSpec, bodyCommands, evaluateConditionFn, run
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
+  }
+
+  return null;
+}
+
+/**
+ * Execute DO FOREVER: until LEAVE, RETURN or EXIT, within the same
+ * iteration safety limit as DO WHILE
+ * @param {Array} bodyCommands - Commands to execute in loop body
+ * @param {Function} runCommandsFn - Function to execute command lists
+ * @returns {Object|null} Result object if terminated, null otherwise
+ */
+async function executeForeverLoop(bodyCommands, runCommandsFn) {
+  const maxIterations = 10000; // Safety limit
+  let iterations = 0;
+
+  while (true) {
+    if (iterations++ > maxIterations) {
+      throw new Error('DO FOREVER loop exceeded maximum iterations (safety limit)');
+    }
+
+    const result = await runCommandsFn(bodyCommands);
+    if (result && result.terminated) {
+      return result;
+    }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
 
   return null;
@@ -9627,6 +9644,10 @@ async function executeRepeatLoop(loopSpec, bodyCommands, runCommandsFn) {
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
   
   return null;
@@ -9669,6 +9690,10 @@ async function executeOverLoop(loopSpec, bodyCommands, resolveValueFn, runComman
         if (result && result.terminated) {
           return result;
         }
+        if (result && result.loopControl === 'LEAVE') {
+          break;
+        }
+        // ITERATE: on to the next iteration
       }
     } finally {
       // Restore original variable value or remove if it didn't exist
@@ -9721,6 +9746,10 @@ async function executeOverLoop(loopSpec, bodyCommands, resolveValueFn, runComman
       if (result && result.terminated) {
         return result;
       }
+      if (result && result.loopControl === 'LEAVE') {
+        break;
+      }
+      // ITERATE: on to the next iteration
     }
   } finally {
     // In REXX, loop variables typically persist after the loop
@@ -9763,7 +9792,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       if (this && Array.isArray(whenClause.commands)) {
         for (let i = 0; i < whenClause.commands.length; i++) {
           const result = await this.executeCommand(whenClause.commands[i]);
-          if (result && result.terminated) {
+          if (result && (result.terminated || result.loopControl)) {
             return result;
           }
           if (result && result.jump) {
@@ -9776,7 +9805,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       } else {
         // Fallback to provided runner if context not bound (shouldn't happen in interpreter usage)
         const result = await runCommandsFn(whenClause.commands);
-        if (result && result.terminated) return result;
+        if (result && (result.terminated || result.loopControl)) return result;
       }
       return null; // Exit SELECT after executing a WHEN clause
     }
@@ -9801,7 +9830,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
     if (this && Array.isArray(selectCommand.otherwiseCommands)) {
       for (let i = 0; i < selectCommand.otherwiseCommands.length; i++) {
         const result = await this.executeCommand(selectCommand.otherwiseCommands[i]);
-        if (result && result.terminated) {
+        if (result && (result.terminated || result.loopControl)) {
           return result;
         }
         if (result && result.jump) {
@@ -9813,7 +9842,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       }
     } else {
       const result = await runCommandsFn(selectCommand.otherwiseCommands);
-      if (result && result.terminated) return result;
+      if (result && (result.terminated || result.loopControl)) return result;
     }
   }
   
@@ -9830,6 +9859,7 @@ if (typeof module !== 'undefined' && module.exports) {
         executeRangeLoopWithStep,
         executeWhileLoop,
         executeUntilLoop,
+        executeForeverLoop,
         executeRepeatLoop,
         executeOverLoop,
         executeSelectStatement
@@ -9847,6 +9877,7 @@ if (typeof module !== 'undefined' && module.exports) {
             executeRangeLoopWithStep,
             executeWhileLoop,
             executeUntilLoop,
+            executeForeverLoop,
             executeRepeatLoop,
             executeOverLoop,
             executeSelectStatement
@@ -11042,6 +11073,24 @@ if (typeof module !== 'undefined' && module.exports) {
  * that work with the interpreter's variable resolution and function calling systems.
  */
 
+// escape-sequence-processor.js: one pass over a literal's escapes (Node by
+// require; in a browser it registers itself on window)
+const processEscapeSequences = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./escape-sequence-processor.js').processEscapeSequences
+  : window.processEscapeSequences;
+
+// interpreter-variable-stack.js's derivedName: a compound symbol's tail
+// substituted (Node by require; in a browser from the module registry)
+const derivedName = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./interpreter-variable-stack.js').derivedName
+  : (name, has, get) => window.rexxModuleRegistry.get('variableStack').derivedName(name, has, get);
+
+// ... and its unsetSymbolValue: a symbol no variable is set for is its own
+// name in uppercase (TRL 3.1)
+const unsetSymbolValue = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./interpreter-variable-stack.js').unsetSymbolValue
+  : (name, has, get) => window.rexxModuleRegistry.get('variableStack').unsetSymbolValue(name, has, get);
+
 /**
  * Resolve values from various sources (literals, variables, expressions)
  * @param {*} value - Value to resolve (can be string, number, object, etc.)
@@ -11107,11 +11156,13 @@ async function resolveValue(value, variableGetFn, variableHasFn, evaluateExpress
       if (!unquoted.split(q + q).join('').includes(q)) {
         unquoted = unquoted.split(q + q).join(q);
       }
-      // Process escape sequences
-      unquoted = unquoted.replace(/\\n/g, '\n');
-      unquoted = unquoted.replace(/\\t/g, '\t');
-      unquoted = unquoted.replace(/\\r/g, '\r');
-      unquoted = unquoted.replace(/\\\\/g, '\\');
+      // A double-quoted literal's escape sequences, in one pass that takes
+      // \\ first (so the second backslash of a \\ never starts a \t):
+      // escape-sequence-processor.js. A single-quoted literal has none, as
+      // in SAY and evaluateConcatenation.
+      if (value[0] === '"') {
+        unquoted = processEscapeSequences(unquoted);
+      }
       return unquoted;
     }
     // Handle escaped quotes
@@ -11139,7 +11190,11 @@ async function resolveValue(value, variableGetFn, variableHasFn, evaluateExpress
   
   // If value is a string that looks like a variable reference (e.g., "myVar.x")
   if (typeof value === 'string' && value.includes('.')) {
-    const parts = value.split('.');
+    if (variableHasFn(value)) {
+      return variableGetFn(value);
+    }
+    // A compound symbol's tail is substituted first (list.i is list.2)
+    const parts = derivedName(value, variableHasFn, variableGetFn).split('.');
     const varName = parts[0];
 
     // Check if this is a variable reference
@@ -11281,7 +11336,9 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
         }
       }
       
-      return await resolveValueFn(varName);
+      // A symbol that is no variable is its own name in uppercase (TRL 3.1)
+      const resolved = await resolveValueFn(varName);
+      return resolved === varName ? unsetSymbolValue(varName, variableHasFn, variableGetFn) : resolved;
       
     case 'PIPE_OP':
       // Pipe operator: left |> right
@@ -11496,6 +11553,17 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
         }
         const builtInFunc = getBuiltinFunctionFn(method);
 
+        // A function that declares it needs parameters (requiresParameters,
+        // or a required entry in its parameterMetadata), called with none,
+        // says so, as interpreter-function-execution does for a call
+        // statement. Only a declaration counts here: a function with no
+        // metadata (PS(), GETPID()) may well take nothing.
+        if (Object.keys(expr.params || {}).length === 0 && builtInFunc &&
+            (builtInFunc.requiresParameters === true ||
+             (Array.isArray(builtInFunc.parameterMetadata) && builtInFunc.parameterMetadata.some(p => !p.optional)))) {
+          throw new Error(`${expr.command} function requires parameters`);
+        }
+
         // DOM functions receive params object directly
         if (method.startsWith('DOM_')) {
           return await builtInFunc(resolvedParams);
@@ -11580,11 +11648,17 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
  * @param {Function} isTruthyFn - Function to check truthiness
  * @returns {Promise<boolean>} Condition evaluation result
  */
-async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isTruthyFn) {
+async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn) {
+  // A side that is a symbol no variable is set for is its uppercase name
+  // (TRL 3.1): x = active then IF x = active compares ACTIVE with ACTIVE
+  const sideValue = async (side) => {
+    const resolved = await resolveValueFn(side);
+    return unsetSymbolValueFn && resolved === side ? unsetSymbolValueFn(side) : resolved;
+  };
   switch (condition.type) {
     case 'COMPARISON':
-      const leftValue = await resolveValueFn(condition.left);
-      const rightValue = await resolveValueFn(condition.right);
+      const leftValue = await sideValue(condition.left);
+      const rightValue = await sideValue(condition.right);
 
       switch (condition.operator) {
         case '>':
@@ -11615,7 +11689,7 @@ async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isT
     case 'LOGICAL_AND':
       // Evaluate all parts and return true only if all are true
       for (const part of condition.parts) {
-        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn);
+        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn);
         if (!partResult) {
           return false;
         }
@@ -11625,7 +11699,7 @@ async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isT
     case 'LOGICAL_OR':
       // Evaluate all parts and return true if any is true
       for (const part of condition.parts) {
-        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn);
+        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn);
         if (partResult) {
           return true;
         }
@@ -13913,12 +13987,21 @@ function discoverSubroutines(commands, subroutines) {
     if (command.type === 'LABEL') {
       const subroutineName = command.name;
       const subroutineCommands = [];
-      
+      // PROCEDURE as the routine's first instruction, on the label's line
+      // (NAME: PROCEDURE) or the next: the routine has a generation of
+      // variables of its own per CALL, sharing only what EXPOSE names
+      let procedure = command.statement && command.statement.type === 'PROCEDURE'
+        ? command.statement : null;
+
       // Collect commands until next label, end of script, or RETURN
       i++; // Skip the label itself
+      if (!procedure && i < commands.length && commands[i].type === 'PROCEDURE') {
+        procedure = commands[i];
+        i++;
+      }
       while (i < commands.length) {
         const cmd = commands[i];
-        
+
         // Stop at next label or RETURN
         if (cmd.type === 'LABEL' || cmd.type === 'RETURN') {
           if (cmd.type === 'RETURN') {
@@ -13927,14 +14010,16 @@ function discoverSubroutines(commands, subroutines) {
           }
           break;
         }
-        
+
         subroutineCommands.push(cmd);
         i++;
       }
-      
+
       // Register the subroutine (store in uppercase for case-insensitive lookup)
       subroutines.set(subroutineName.toUpperCase(), {
-        commands: subroutineCommands
+        commands: subroutineCommands,
+        procedure: !!procedure,
+        expose: procedure ? procedure.expose : []
       });
       
       // Continue from current position (don't increment i again)
@@ -13960,11 +14045,90 @@ function discoverSubroutines(commands, subroutines) {
  * @param {Function} executeExternalScriptFn - Function to execute external scripts
  * @param {string} sourceFilename - Current source filename
  * @param {*} currentReturnValue - Current return value from interpreter
+ * @param {Object} externalFunctions - Functions the host supplies (and REQUIRE'd libraries register)
+ * @param {Function} resolveValueFn - Function to resolve a value (a literal, a variable, an expression), as a function call's arguments are
  * @returns {Object} Execution result with terminated flag and returnValue
  */
+/**
+ * One argument of a CALL, as a function call's would be: a quoted literal
+ * unquoted (with its escape sequences), an expression (n + 1) worked out, a
+ * variable's value, a function call's result.
+ * @param {string|Object} arg - The argument as the parser left it
+ * @param {Function} resolveValueFn - Resolves a literal, a variable
+ * @param {Function} evaluateExpressionFn - Evaluates an expression object
+ * @returns {*} The argument's value
+ */
+async function resolveCallArgument(arg, resolveValueFn, evaluateExpressionFn) {
+  if (typeof arg !== 'string') {
+    return await evaluateExpressionFn(arg);
+  }
+  const quoted = (arg.startsWith('"') && arg.endsWith('"')) || (arg.startsWith("'") && arg.endsWith("'"));
+  if (!quoted) {
+    const parseExpression = (typeof require !== 'undefined' && typeof module !== 'undefined')
+      ? require('./parser').parseExpression
+      : window.parseExpression;
+    const expression = parseExpression(arg);
+    if (expression) {
+      return await evaluateExpressionFn(expression);
+    }
+  }
+  return await resolveValueFn(arg);
+}
+
+/**
+ * A PROCEDURE routine's own generation of variables (TRL section 3,
+ * PROCEDURE): the caller's are set aside and the routine starts with only
+ * what EXPOSE names, a stem by its root ("stem." shares every stem.x, which
+ * live under the root's entry). What the interpreter records about the
+ * runtime itself (RUNTIME.*) is not a script variable and stays visible.
+ * @param {Map} variables - The interpreter's variables, emptied for the routine
+ * @param {Array<string>} expose - The names PROCEDURE EXPOSE listed
+ * @returns {Object} What leaveProcedureGeneration needs to restore the caller's
+ */
+function enterProcedureGeneration(variables, expose) {
+  const callerVariables = new Map(variables);
+  const shared = expose.map((name) => name.endsWith('.') ? name.slice(0, -1) : name);
+  variables.clear();
+  for (const [name, value] of callerVariables) {
+    if (name.startsWith('RUNTIME.')) {
+      variables.set(name, value);
+    }
+  }
+  for (const name of shared) {
+    if (callerVariables.has(name)) {
+      variables.set(name, callerVariables.get(name));
+    }
+  }
+  return { callerVariables, shared };
+}
+
+/**
+ * The end of a PROCEDURE routine's generation: the caller's variables come
+ * back as they were, except the EXPOSEd ones, which are as the routine
+ * left them (set, changed, or dropped).
+ * @param {Map} variables - The interpreter's variables, holding the routine's
+ * @param {Object} generation - What enterProcedureGeneration returned
+ */
+function leaveProcedureGeneration(variables, generation) {
+  const { callerVariables, shared } = generation;
+  const sharedNow = shared.map((name) => [name, variables.has(name), variables.get(name)]);
+  variables.clear();
+  for (const [name, value] of callerVariables) {
+    variables.set(name, value);
+  }
+  for (const [name, isSet, value] of sharedNow) {
+    if (isSet) {
+      variables.set(name, value);
+    } else {
+      variables.delete(name);
+    }
+  }
+}
+
 async function executeCall(command, variables, subroutines, callStack, evaluateExpressionFn,
                           pushExecutionContextFn, popExecutionContextFn, getCurrentExecutionContextFn,
-                          executeCommandsFn, isExternalScriptCallFn, executeExternalScriptFn, sourceFilename, currentReturnValue, builtInFunctions, callConvertParamsToArgsFn, argv) {
+                          executeCommandsFn, isExternalScriptCallFn, executeExternalScriptFn, sourceFilename, currentReturnValue, builtInFunctions, callConvertParamsToArgsFn, argv,
+                          externalFunctions, resolveValueFn) {
   const { subroutine, arguments: args, isVariableCall } = command;
   
   // Push subroutine call context onto execution stack immediately
@@ -13990,24 +14154,10 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
     
     // Check if this is an external script call (contains .rexx or path separators)
     if (isExternalScriptCallFn(actualSubroutineName)) {
-      // Evaluate arguments before passing to external script (same logic as internal subroutines)
+      // Its arguments worked out as a routine's own are
       const evaluatedArgs = [];
       for (let i = 0; i < args.length; i++) {
-        let argValue;
-        
-        // Evaluate argument value
-        if (typeof args[i] === 'string') {
-          if ((args[i].startsWith('"') && args[i].endsWith('"')) ||
-              (args[i].startsWith("'") && args[i].endsWith("'"))) {
-            argValue = args[i].slice(1, -1); // Remove quotes
-          } else {
-            argValue = variables.get(args[i]) || args[i];
-          }
-        } else {
-          argValue = await evaluateExpressionFn(args[i]);  // AWAIT the evaluation of COPY() calls!
-        }
-        
-        evaluatedArgs.push(argValue);
+        evaluatedArgs.push(await resolveCallArgument(args[i], resolveValueFn, evaluateExpressionFn));
       }
       
       const result = await executeExternalScriptFn(actualSubroutineName, evaluatedArgs);
@@ -14022,26 +14172,16 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
         // Execute built-in function and set RESULT variable
         const builtInFunc = builtInFunctions[actualSubroutineName];
         
-        // Resolve arguments for built-in function - simplified approach
+        // Its arguments worked out as a function call's are: a quoted
+        // literal with its escapes, an expression (n + 1), a variable's
+        // value (0 included)
         const convertedArgs = [];
         for (let i = 0; i < args.length; i++) {
-          let argValue;
-          if (typeof args[i] === 'string') {
-            if ((args[i].startsWith('"') && args[i].endsWith('"')) ||
-                (args[i].startsWith("'") && args[i].endsWith("'"))) {
-              argValue = args[i].slice(1, -1); // Remove quotes
-            } else {
-              // Try to get variable value first, then fallback to literal
-              argValue = variables.get(args[i]) || args[i];
-            }
-          } else {
-            argValue = args[i];
-          }
-          convertedArgs.push(argValue);
+          convertedArgs.push(await resolveCallArgument(args[i], resolveValueFn, evaluateExpressionFn));
         }
         
         // Execute the built-in function
-        const result = builtInFunc(...convertedArgs);
+        const result = await builtInFunc(...convertedArgs);
         
         // Set RESULT variable for CALL syntax
         variables.set('RESULT', result);
@@ -14050,28 +14190,36 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
         return;
       }
       
+      // A function the host supplies (externalFunctions), reachable by CALL as
+      // by SETCELL(...): its arguments resolved as a function call's are, its
+      // value in RESULT
+      const hostFunc = externalFunctions && (externalFunctions[actualSubroutineName] || externalFunctions[subroutine]);
+      if (hostFunc) {
+        const hostArgs = [];
+        for (let i = 0; i < args.length; i++) {
+          hostArgs.push(await resolveCallArgument(args[i], resolveValueFn, evaluateExpressionFn));
+        }
+        const result = await hostFunc(...hostArgs);
+        variables.set('RESULT', result);
+        popExecutionContextFn();
+        return { terminated: false, returnValue: result };
+      }
+
       throw new Error(`Subroutine '${actualSubroutineName}' not found`);
     }
     
-    // Evaluate and populate argv array for subroutine
+    // The routine's arguments, each worked out as a function call's are
+    // (a literal, an expression such as n - 1, a variable's value, 0 included)
     const evaluatedArgs = [];
     for (let i = 0; i < args.length; i++) {
-      let argValue;
-
-    // Evaluate argument value
-    if (typeof args[i] === 'string') {
-      if ((args[i].startsWith('"') && args[i].endsWith('"')) ||
-          (args[i].startsWith("'") && args[i].endsWith("'"))) {
-        argValue = args[i].slice(1, -1); // Remove quotes
-      } else {
-        argValue = variables.get(args[i]) || args[i];
-      }
-    } else {
-      argValue = evaluateExpressionFn(args[i]);
+      evaluatedArgs.push(await resolveCallArgument(args[i], resolveValueFn, evaluateExpressionFn));
     }
 
-    evaluatedArgs.push(argValue);
-  }
+  const subroutineData = subroutines.get(actualSubroutineName);
+
+  // A PROCEDURE routine keeps the caller's arguments too: its ARG and the
+  // caller's are each of their own generation
+  const callerArgv = subroutineData.procedure && argv ? argv.slice() : null;
 
   // Update argv array for subroutine arguments
   if (argv) {
@@ -14079,35 +14227,21 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
     argv.push(...evaluatedArgs); // Populate with new arguments
   }
   
-  // Push call context for tracking (variables are shared in REXX)
+  // Push call context for tracking (variables are shared in REXX, unless
+  // the routine starts with PROCEDURE)
   callStack.push({
     subroutine: actualSubroutineName
   });
   
+  const generation = subroutineData.procedure
+    ? enterProcedureGeneration(variables, subroutineData.expose) : null;
   
   try {
-    const subroutineData = subroutines.get(actualSubroutineName);
     
     // Check if this is a built-in function
     if (subroutineData.isBuiltIn && subroutineData.func) {
-      // Call the built-in function directly with evaluated arguments
-      const evaluatedArgs = [];
-      for (let i = 0; i < args.length; i++) {
-        let argValue;
-        if (typeof args[i] === 'string') {
-          if ((args[i].startsWith('"') && args[i].endsWith('"')) ||
-              (args[i].startsWith("'") && args[i].endsWith("'"))) {
-            argValue = args[i].slice(1, -1); // Remove quotes
-          } else {
-            argValue = variables.get(args[i]) || args[i];
-          }
-        } else {
-          argValue = evaluateExpressionFn(args[i]);
-        }
-        evaluatedArgs.push(argValue);
-      }
-      
-      // Call the built-in function
+      // Call the built-in function with its arguments worked out as a
+      // routine's own are (they were resolved above)
       const result = await subroutineData.func.apply(this, evaluatedArgs);
       
       // Pop execution and call contexts
@@ -14130,8 +14264,8 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
         popExecutionContextFn();
         callStack.pop();
         
-        // Variables are shared between main and subroutines in REXX
-        // So no variable restoration needed - changes persist
+        // A routine without PROCEDURE shares the caller's variables, so its
+        // changes persist; a PROCEDURE routine's generation ends in finally
         return { terminated: false, returnValue: result.value };
       }
       
@@ -14148,6 +14282,14 @@ async function executeCall(command, variables, subroutines, callStack, evaluateE
     // Only pop the call stack (which is separate from execution stack)
     callStack.pop();
     throw error;
+  } finally {
+    if (generation) {
+      leaveProcedureGeneration(variables, generation);
+    }
+    if (callerArgv) {
+      argv.length = 0;
+      argv.push(...callerArgv);
+    }
   }
 }
 
@@ -14762,7 +14904,7 @@ const interpolateString = async function(template, resolveValueFn) {
     return result;
 }
 
-const evaluateConcatenation = async function(expression, resolveValueFn, evaluateExpressionFn) {
+const evaluateConcatenation = async function(expression, resolveValueFn, evaluateExpressionFn, unsetSymbolValueFn) {
     // Split the expression by || operators while preserving quoted strings and parentheses
     const parts = [];
     let current = '';
@@ -14854,9 +14996,10 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
             return String(resolved);
           }
         } else {
-          // No operators, treat as variable
+          // No operators, treat as variable; a symbol no variable is set
+          // for is its uppercase name (TRL 3.1)
           const resolved = await resolveValueFn(part);
-          return String(resolved);
+          return String(unsetSymbolValueFn && resolved === part ? unsetSymbolValueFn(part) : resolved);
         }
       } else {
         // No expression evaluator - treat as variable reference
@@ -14865,23 +15008,22 @@ const evaluateConcatenation = async function(expression, resolveValueFn, evaluat
       }
     };
 
-    // Each side of || is terms joined by blanks, as in classic REXX
-    // (SAY "(RC" rc || ")"): a side of several terms, none of them an
-    // operator or an operand of one, is each term worked out and joined
-    // with one blank.
-    const OPERATOR = /[+\-*\/%<>=]/;
+    // Each side of || is terms joined by blanks or abutted, as in classic
+    // REXX (SAY "(RC" rc || ")", v"text"): parser.js's concatenationTerms
+    // reads the side's terms, arithmetic among them bound tighter, and each
+    // is worked out and joined with one blank, or none when abutted. A side
+    // that is not such a list (one with = in it) is one term.
+    const concatenationTerms = (typeof require !== 'undefined' && typeof module !== 'undefined')
+      ? require('./parser').concatenationTerms
+      : window.concatenationTerms;
     const results = [];
     for (const part of parts) {
-      const terms = isSingleLiteral(part) ? [part] : parseQuotedParts(part);
-      const blankJoined = terms.length > 1 &&
-        terms.every((t) => isSingleLiteral(t) || !OPERATOR.test(t));
-      if (blankJoined) {
-        const values = [];
-        for (const t of terms) values.push(await term(t));
-        results.push(values.join(' '));
-      } else {
-        results.push(await term(part));
+      const groups = concatenationTerms(part) || [{ text: part, abut: false }];
+      let joined = '';
+      for (let g = 0; g < groups.length; g++) {
+        joined += (g === 0 || groups[g].abut ? '' : ' ') + await term(groups[g].text);
       }
+      results.push(joined);
     }
 
     return results.join('');
@@ -15273,6 +15415,12 @@ if (typeof require !== 'undefined') {
   interpolateString = stringProcessing.interpolateString;
 }
 
+// escape-sequence-processor.js: one pass over a literal's escapes (Node by
+// require; in a browser it registers itself on window)
+const processEscapeSequences = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./escape-sequence-processor.js').processEscapeSequences
+  : window.processEscapeSequences;
+
 /**
  * Resolve a value by checking variables, handling literals, and processing expressions
  * @param {*} value - Value to resolve (could be string, number, object, etc.)
@@ -15323,11 +15471,13 @@ async function resolveVariableValue(value, variables, evaluateExpressionFn, vari
     if ((value.startsWith("'") && value.endsWith("'")) || 
         (value.startsWith('"') && value.endsWith('"'))) {
       let unquoted = value.substring(1, value.length - 1);
-      // Process escape sequences
-      unquoted = unquoted.replace(/\\n/g, '\n');
-      unquoted = unquoted.replace(/\\t/g, '\t');
-      unquoted = unquoted.replace(/\\r/g, '\r');
-      unquoted = unquoted.replace(/\\\\/g, '\\');
+      // A double-quoted literal's escape sequences, in one pass that takes
+      // \\ first (so the second backslash of a \\ never starts a \t):
+      // escape-sequence-processor.js. A single-quoted literal has none, as
+      // in SAY and evaluateConcatenation.
+      if (value[0] === '"') {
+        unquoted = processEscapeSequences(unquoted);
+      }
       return unquoted;
     }
     // Handle escaped quotes
@@ -15355,7 +15505,10 @@ async function resolveVariableValue(value, variables, evaluateExpressionFn, vari
   
   // If value is a string that looks like a variable reference (e.g., "myVar.x")
   if (typeof value === 'string' && value.includes('.')) {
-    const parts = value.split('.');
+    if (variables.has(value)) {
+      return variables.get(value);
+    }
+    const parts = derivedName(value, (n) => variables.has(n), (n) => variables.get(n)).split('.');
     const varName = parts[0];
     
     // Check if this is a variable reference
@@ -15416,6 +15569,39 @@ async function interpolateStringWithVars(template, variables, variableResolver) 
     interpolateFn = window.interpolateString;
   }
   return await interpolateFn(template, (varName) => resolveVariableValue(varName, variables, null, variableResolver));
+}
+
+/**
+ * A compound symbol's derived name (TRL 3.4): the stem, then each tail part
+ * replaced by the value of the variable of that name when one is set. A
+ * tail part that is a number, or an unset symbol, stays as it is. A name
+ * with no tail, or one set as a whole (RUNTIME.TYPE), is returned as given.
+ * @param {string} name - The symbol as written, e.g. list.i
+ * @param {Function} has - name -> whether that variable is set
+ * @param {Function} get - name -> that variable's value
+ * @returns {string} The derived name, e.g. list.2
+ */
+function derivedName(name, has, get) {
+  if (typeof name !== 'string' || !name.includes('.') || has(name)) return name;
+  const parts = name.split('.');
+  if (!/^[A-Za-z_]\w*$/.test(parts[0])) return name;
+  const tail = parts.slice(1).map((part) =>
+    /^[A-Za-z_]\w*$/.test(part) && has(part) ? String(get(part)) : part);
+  return [parts[0], ...tail].join('.');
+}
+
+/**
+ * The value of a symbol that is no set variable (TRL 3.1): its own name in
+ * uppercase, a compound symbol's tail derived first (list.i is LIST.2 when
+ * i = 2, TRL 3.4). Anything that is not a symbol is returned as given.
+ * @param {string} name - The symbol as written
+ * @param {Function} has - name -> whether that variable is set
+ * @param {Function} get - name -> that variable's value
+ * @returns {string}
+ */
+function unsetSymbolValue(name, has, get) {
+  if (typeof name !== 'string' || !/^[A-Za-z_]\w*(\.\w*)*$/.test(name)) return name;
+  return derivedName(name, has, get).toUpperCase();
 }
 
 /**
@@ -15578,6 +15764,8 @@ async function executeQueue(command, stack, variables, evaluateExpressionFn) {
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js environment
     module.exports = { 
+        derivedName,
+        unsetSymbolValue,
         resolveVariableValue,
         interpolateStringWithVars,
         getVariable,
@@ -15599,6 +15787,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (!window.rexxModuleRegistry.has('variableStack')) {
         window.rexxModuleRegistry.set('variableStack', {
+            derivedName,
+            unsetSymbolValue,
             resolveVariableValue,
             interpolateStringWithVars,
             getVariable,
@@ -16654,6 +16844,16 @@ class RexxInterpreter {
     return variableStackUtils.getVariable(name, this.variables, this.variableResolver);
   }
 
+  // A compound symbol's derived name (TRL 3.4): list.i is list.2 when i = 2
+  derivedName(name) {
+    return variableStackUtils.derivedName(name, (n) => this.variables.has(n), (n) => this.variables.get(n));
+  }
+
+  // A symbol no variable is set for is its own name in uppercase (TRL 3.1)
+  unsetSymbolValue(name) {
+    return variableStackUtils.unsetSymbolValue(name, (n) => this.variables.has(n), (n) => this.variables.get(n));
+  }
+
   isExternalScriptCall(subroutineName) {
     return parseSubroutineUtils.isExternalScriptCall(subroutineName);
   }
@@ -16797,6 +16997,10 @@ class RexxInterpreter {
           if (result.type === 'RETURN') {
             return result;
           }
+        }
+        if (result && result.loopControl) {
+          // LEAVE or ITERATE: out to the innermost DO loop
+          return result;
         }
         if (result && result.skipCommands) {
           // Handle LINES command skipping - skip the next N commands
@@ -16959,7 +17163,9 @@ class RexxInterpreter {
             this.returnValue,
             this.builtInFunctions,
             callConvertParamsToArgs,
-            this.argv  // Pass argv array reference for efficient argument storage
+            this.argv,  // Pass argv array reference for efficient argument storage
+            this.externalFunctions,
+            this.resolveValue.bind(this)
           );
           if (callResult && callResult.terminated) {
             return callResult;
@@ -16972,6 +17178,11 @@ class RexxInterpreter {
           
         case 'RETURN':
           return await this.executeReturn(command);
+          
+        case 'PROCEDURE':
+          // Reached only by falling or jumping into a routine: a CALLed
+          // routine's PROCEDURE is taken by discoverSubroutines (TRL error 17)
+          throw new Error('Unexpected PROCEDURE: it is valid only as the first instruction of a routine reached by CALL');
           
         case 'TRACE':
           this.traceMode = traceFormattingUtils.executeTrace(command, this.traceOutput, this.addTraceOutput.bind(this));
@@ -17002,7 +17213,9 @@ class RexxInterpreter {
                 this.returnValue,
                 this.builtInFunctions,
                 callConvertParamsToArgs,
-                this.argv  // Pass argv array reference for efficient argument storage
+                this.argv,  // Pass argv array reference for efficient argument storage
+                this.externalFunctions,
+                this.resolveValue.bind(this)
               );
               const variableName = await this.interpolateString(command.variable);
               
@@ -17079,7 +17292,7 @@ class RexxInterpreter {
               result = await this.evaluateExpression(command.expression);
             }
             
-            const variableName = await this.interpolateString(command.variable);
+            const variableName = this.derivedName(await this.interpolateString(command.variable));
 
             // Handle compound variable assignment (e.g., RESULT.message = value)
             if (variableName.includes('.')) {
@@ -17173,7 +17386,7 @@ class RexxInterpreter {
               }
             }
             
-            const variableName = await this.interpolateString(command.variable);
+            const variableName = this.derivedName(await this.interpolateString(command.variable));
 
             // Handle compound variable assignment (e.g., RESULT.message = value)
             if (variableName.includes('.')) {
@@ -17205,6 +17418,9 @@ class RexxInterpreter {
         
         case 'IF':
           const ifResult = await controlFlowUtils.executeIfStatement(command, this.evaluateCondition.bind(this), this.run.bind(this));
+          if (ifResult && ifResult.loopControl) {
+            return ifResult;
+          }
           if (ifResult && ifResult.terminated) {
             if (ifResult.type === 'RETURN') {
               // RETURN inside IF should bubble up to caller
@@ -17244,6 +17460,9 @@ class RexxInterpreter {
         
         case 'SELECT':
           const selectResult = await controlFlowUtils.executeSelectStatement.call(this, command, this.evaluateCondition.bind(this), this.run.bind(this));
+          if (selectResult && selectResult.loopControl) {
+            return selectResult;
+          }
           if (selectResult && selectResult.terminated) {
             if (selectResult.type === 'RETURN') {
               // RETURN inside SELECT should bubble up to caller
@@ -17261,6 +17480,12 @@ class RexxInterpreter {
         case 'EXIT':
           await this.executeExitStatement(command);
           break;
+
+        case 'LEAVE':
+        case 'ITERATE':
+          // The innermost DO loop takes it (interpreter-control-flow.js); the
+          // statements after it in the block do not run
+          return { loopControl: command.type };
 
         case 'EXIT_UNLESS':
           await this.executeExitUnlessStatement(command);
@@ -17580,8 +17805,12 @@ class RexxInterpreter {
   async executeSayStatement(sayCommand) {
     const expression = sayCommand.expression;
     
-    // Check if the expression contains concatenation operators (||)
-    if (expression.includes('||')) {
+    // Check if the expression contains concatenation operators (||), or a
+    // term abutting a literal (v"text"), which evaluateConcatenation joins
+    const concatenationTerms = (typeof require !== 'undefined' && typeof module !== 'undefined')
+      ? require('./parser').concatenationTerms
+      : window.concatenationTerms;
+    if (expression.includes('||') || (concatenationTerms(expression) || []).some((t) => t.abut)) {
       // Handle as a concatenation expression
       const result = await this.evaluateConcatenation(expression);
       this.outputHandler.output(String(result));
@@ -17622,9 +17851,10 @@ class RexxInterpreter {
         // Single quoted string (no interpolation)
         outputParts.push(unquoteLiteral(part));
       } else {
-        // Variable reference or literal
+        // Variable reference or literal; a symbol no variable is set for
+        // is its uppercase name (TRL 3.1)
         const resolved = await this.resolveValue(part);
-        outputParts.push(String(resolved));
+        outputParts.push(String(resolved === part ? this.unsetSymbolValue(part) : resolved));
       }
     }
     
@@ -17683,8 +17913,16 @@ class RexxInterpreter {
       condition,
       this.resolveValue.bind(this),
       compareValues,
-      isTruthy
+      isTruthy,
+      (name) => this.unsetSymbolValue(name)
     );
+  }
+
+  // A name that is a function here: built in, an operation, or REQUIREd
+  isKnownFunctionName(name) {
+    const upper = name.toUpperCase();
+    return !!(this.builtInFunctions[upper] || this.operations[upper] ||
+      (this.externalFunctions && (this.externalFunctions[name] || this.externalFunctions[upper])));
   }
 
   isLikelyFunctionName(name) {
@@ -17735,7 +17973,20 @@ class RexxInterpreter {
   async evaluateConcatenation(expression) {
     // Use the extracted evaluateConcatenation function, passing resolveValue, evaluateExpression, and parseExpression
     // This allows proper evaluation of expressions like (a + b) in concatenation contexts
-    const { parseExpression } = require('./parser');
+    const { parseExpression, parseFunctionCall, concatenationTerms } = require('./parser');
+
+    // RexxJS's call without parentheses (LET x = UPPER str1, LET d = DATE
+    // 'S'): the first of blank-separated terms is a function's name, and no
+    // variable's, so the rest are its arguments, not a concatenation.
+    const terms = concatenationTerms(expression);
+    if (terms && terms.length > 1 && !terms[1].abut && !expression.includes('||') &&
+        /^[A-Za-z_]\w*$/.test(terms[0].text) && !this.variables.has(terms[0].text) &&
+        this.isKnownFunctionName(terms[0].text)) {
+      const call = parseFunctionCall(expression);
+      if (call) {
+        return await this.executeFunctionCall(call);
+      }
+    }
     return await evaluateConcatenation(
       expression,
       (variableName) => this.resolveValue(variableName),
@@ -17748,7 +17999,8 @@ class RexxInterpreter {
           // If parsing fails, try resolving as a variable
           return await this.resolveValue(exprStr);
         }
-      }
+      },
+      (name) => this.unsetSymbolValue(name)
     );
   }
   
@@ -22876,6 +23128,39 @@ function removeCommentsPreservingStrings(line) {
 }
 
 // Import function parsing strategies
+// True when the blank-separated pieces of a CALL's arguments (outside quotes
+// and parentheses) include a bare binary operator, so that the whole is one
+// expression.
+const CALL_BINARY_OPERATORS = new Set(['+', '-', '*', '/', '//', '%', '**', '||', '=', '==', '<', '>', '<=', '>=', '<>', '\\=', '\\==', '¬=', '&', '|', '&&']);
+function callArgsHoldAnOperator(argsString) {
+  let piece = '';
+  let inQuotes = false;
+  let quoteChar = '';
+  let parenLevel = 0;
+  const pieces = [];
+  for (let i = 0; i < argsString.length; i++) {
+    const char = argsString[i];
+    if ((char === '"' || char === "'") && !inQuotes) {
+      inQuotes = true;
+      quoteChar = char;
+    } else if (char === quoteChar && inQuotes) {
+      inQuotes = false;
+      quoteChar = '';
+    } else if (char === '(' && !inQuotes) {
+      parenLevel++;
+    } else if (char === ')' && !inQuotes) {
+      parenLevel--;
+    } else if (char === ' ' && !inQuotes && parenLevel === 0) {
+      if (piece) pieces.push(piece);
+      piece = '';
+      continue;
+    }
+    piece += char;
+  }
+  if (piece) pieces.push(piece);
+  return pieces.some((p) => CALL_BINARY_OPERATORS.has(p));
+}
+
 function callIsFunctionCallExpression(expression) {
   if (typeof require !== 'undefined' && typeof module !== 'undefined') {
     // Node.js environment
@@ -23388,7 +23673,11 @@ function parseStatement(tokens, startIndex) {
         }
       }
       
-      const separator = hasCommas ? ',' : ' ';
+      // With no commas, the arguments are split at blanks (CALL PAIR 1 2).
+      // But CALL DOWN n - 1 is one argument, the expression n - 1, as in
+      // REXX: when any blank-separated piece is a bare operator, the whole
+      // is one expression. (-5 is a number, not an operator.)
+      const separator = hasCommas ? ',' : (callArgsHoldAnOperator(argsString) ? '\0' : ' ');
       
       let parenLevel = 0;
       
@@ -23459,6 +23748,18 @@ function parseStatement(tokens, startIndex) {
     };
   }
   
+  // PROCEDURE statement: the routine it starts gets a generation of
+  // variables of its own per CALL; PROCEDURE EXPOSE a b stem. shares those
+  // with the caller (a trailing period names a whole stem)
+  const procedureMatch = line.match(/^PROCEDURE(?:\s+EXPOSE\s+(.+))?\s*$/i);
+  if (procedureMatch) {
+    const expose = procedureMatch[1] ? procedureMatch[1].trim().split(/\s+/) : [];
+    return {
+      command: addLineNumber({ type: 'PROCEDURE', expose }, token),
+      nextIndex: startIndex + 1
+    };
+  }
+
   // RETURN statement
   const returnMatch = line.match(/^RETURN(?:\s+(.*))?/i);
   if (returnMatch) {
@@ -23729,34 +24030,9 @@ function parseStatement(tokens, startIndex) {
       };
     }
 
-    // Check if it's a concatenation expression with || FIRST
-    // But only if the || is not inside quoted strings or parentheses
-    const hasUnquotedPipe = (() => {
-      let inQuotes = false;
-      let quoteChar = '';
-      let parenDepth = 0;
-      for (let i = 0; i < expression.length - 1; i++) {
-        const char = expression[i];
-        const nextChar = expression[i + 1];
-
-        if ((char === '"' || char === "'") && !inQuotes) {
-          inQuotes = true;
-          quoteChar = char;
-        } else if (char === quoteChar && inQuotes) {
-          inQuotes = false;
-          quoteChar = '';
-        } else if (!inQuotes && char === '(') {
-          parenDepth++;
-        } else if (!inQuotes && char === ')') {
-          parenDepth--;
-        } else if (!inQuotes && parenDepth === 0 && char === '|' && nextChar === '|') {
-          return true;
-        }
-      }
-      return false;
-    })();
-
-    if (hasUnquotedPipe) {
+    // Check if it's a concatenation expression with || FIRST, or of terms
+    // joined by blanks or abuttal (v "text", v"text")
+    if (hasTopLevelConcatenation(expression) || isTermConcatenation(expression)) {
       return {
         command: addLineNumber({
           type: 'ASSIGNMENT',
@@ -23998,6 +24274,19 @@ function parseStatement(tokens, startIndex) {
     throw new Error(`EXIT UNLESS syntax error: unexpected ${separator === '.' ? 'period' : 'semicolon'} after condition. Expected comma (,) to separate condition from message. Use: EXIT UNLESS condition, 'message'`);
   }
 
+  // LEAVE and ITERATE: the innermost DO loop ends, or goes to its next
+  // iteration (a named loop is not supported)
+  const loopControlMatch = line.match(/^(LEAVE|ITERATE)(?:\s+(\w+))?\s*$/i);
+  if (loopControlMatch) {
+    if (loopControlMatch[2]) {
+      throw new Error(`${loopControlMatch[1].toUpperCase()} ${loopControlMatch[2]}: a named loop is not supported, only the innermost DO loop`);
+    }
+    return {
+      command: addLineNumber({ type: loopControlMatch[1].toUpperCase() }, token),
+      nextIndex: startIndex + 1
+    };
+  }
+
   // EXIT statement
   const exitMatch = line.match(/^EXIT(?:\s+(.+))?/i);
   if (exitMatch) {
@@ -24066,6 +24355,21 @@ function parseStatement(tokens, startIndex) {
   if (simpleAssignMatch) {
     const variableName = simpleAssignMatch[1];
     const expression = simpleAssignMatch[2];
+
+    // A concatenation (a || b, v "text", v"text") first, as the LET path has it
+    if (hasTopLevelConcatenation(expression) || isTermConcatenation(expression)) {
+      return {
+        command: addLineNumber({
+          type: 'ASSIGNMENT',
+          variable: variableName,
+          expression: {
+            type: 'CONCATENATION',
+            value: expression
+          }
+        }, token),
+        nextIndex: startIndex + 1
+      };
+    }
     
     // Check if it's a quoted string
     if (expression.match(/^(['"`]).*\1$/)) {
@@ -24117,6 +24421,144 @@ function parseStatement(tokens, startIndex) {
   
   // Skip unrecognized lines
   return { command: null, nextIndex: startIndex + 1 };
+}
+
+/**
+ * Whether an expression has a || outside quotes and parentheses: a
+ * concatenation, for LET and for an assignment without LET alike.
+ * @param {string} expression - The right-hand side as written
+ * @returns {boolean}
+ */
+function hasTopLevelConcatenation(expression) {
+  let inQuotes = false;
+  let quoteChar = '';
+  let parenDepth = 0;
+  for (let i = 0; i < expression.length - 1; i++) {
+    const char = expression[i];
+    const nextChar = expression[i + 1];
+
+    if ((char === '"' || char === "'") && !inQuotes) {
+      inQuotes = true;
+      quoteChar = char;
+    } else if (char === quoteChar && inQuotes) {
+      inQuotes = false;
+      quoteChar = '';
+    } else if (!inQuotes && char === '(') {
+      parenDepth++;
+    } else if (!inQuotes && char === ')') {
+      parenDepth--;
+    } else if (!inQuotes && parenDepth === 0 && char === '|' && nextChar === '|') {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The operator characters: a term made only of these (+, ||, |>), or one
+// that starts or ends with one (-1, a+), links to its neighbour.
+const OPERATOR_TERM = /^[+\-*\/%=<>\\¬&|!]+$/;
+const OPERATOR_START = /^[+\-*\/%=<>\\¬&|!]/;
+const OPERATOR_END = /[+\-*\/%=<>\\¬&|!]$/;
+
+/**
+ * The terms of a concatenation, as classic REXX reads an expression (TRL
+ * 6.1): blank-separated terms are joined with one blank; a term abutting a
+ * quoted literal (v"text", "a"'b') with nothing between. Arithmetic binds
+ * tighter, so a run of terms linked by operators (n + 1, a*2, x |> f) is
+ * one term here. Each term is {text, abut}, abut true when it follows the
+ * one before with no blank.
+ *
+ * null when the expression is not a list of terms to concatenate: a
+ * literal array or object; an unterminated literal; or a term with = in
+ * it, a call's named parameter (execute command="ls") or a comparison.
+ * @param {string} expression - The right-hand side as written
+ * @returns {Array<{text: string, abut: boolean}>|null}
+ */
+function concatenationTerms(expression) {
+  const expr = expression.trim();
+  if (expr[0] === '[' || expr[0] === '{') return null;
+  const terms = [];
+  let current = '';
+  let abut = false;
+  let depth = 0;
+  const end = (nextAbut) => {
+    if (current !== '') terms.push({ text: current, abut });
+    current = '';
+    abut = nextAbut;
+  };
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (c === '"' || c === "'") {
+      // A literal to its closing quote: a doubled quote is one quote of
+      // it, and in a double-quoted one a backslash escapes the next char
+      let literal = c;
+      let j = i + 1;
+      for (; j < expr.length; j++) {
+        if (c === '"' && expr[j] === '\\' && j + 1 < expr.length) {
+          literal += expr[j] + expr[j + 1];
+          j++;
+          continue;
+        }
+        literal += expr[j];
+        if (expr[j] === c) {
+          if (expr[j + 1] === c) {
+            literal += c;
+            j++;
+            continue;
+          }
+          break;
+        }
+      }
+      if (j >= expr.length) return null;
+      if (depth === 0) {
+        if (current !== '' && !OPERATOR_END.test(current)) end(true);
+        current += literal;
+        if (/[A-Za-z0-9_.(]/.test(expr[j + 1] || '')) end(true);
+      } else {
+        current += literal;
+      }
+      i = j;
+    } else if (c === '(') {
+      depth++;
+      current += c;
+    } else if (c === ')') {
+      depth--;
+      current += c;
+    } else if (c === ' ' && depth === 0) {
+      end(false);
+    } else {
+      current += c;
+    }
+  }
+  end(false);
+
+  const groups = [];
+  for (const term of terms) {
+    const prev = groups[groups.length - 1];
+    const quoted = term.text[0] === '"' || term.text[0] === "'";
+    const linked = prev && !term.abut &&
+      (OPERATOR_TERM.test(prev.text) || OPERATOR_END.test(prev.text) ||
+       (!quoted && (OPERATOR_TERM.test(term.text) || OPERATOR_START.test(term.text))));
+    if (linked) {
+      prev.text += ' ' + term.text;
+    } else {
+      groups.push({ text: term.text, abut: term.abut });
+    }
+  }
+  if (groups.some((g) => g.text.replace(/"[^"]*"|'[^']*'/g, '').includes('='))) return null;
+  return groups;
+}
+
+/**
+ * Whether an expression is two or more terms to concatenate (v "text",
+ * v"text"), which a CONCATENATION node has evaluateConcatenation work out,
+ * as || does.
+ * @param {string} expression - The right-hand side as written
+ * @returns {boolean}
+ */
+function isTermConcatenation(expression) {
+  const groups = concatenationTerms(expression);
+  return groups !== null && groups.length > 1;
 }
 
 function parseSingleLineIfStatement(tokens, startIndex, match) {
@@ -24418,6 +24860,12 @@ function parseLoopSpecification(specStr) {
   // DO variable OVER array
   const overMatch = spec.match(/^(\w+)\s+OVER\s+(.+)$/i);
   if (overMatch) {
+    // A stem written with its trailing period (DO v OVER stem., TRL 3.4)
+    // names the stem, as DO v OVER stem does
+    const stemMatch = overMatch[2].trim().match(/^([a-zA-Z_]\w*)\.$/);
+    if (stemMatch) {
+      return { type: 'OVER', variable: overMatch[1], array: { type: 'VARIABLE', name: stemMatch[1] } };
+    }
     const arrayExpr = parseExpression(overMatch[2].trim());
     return {
       type: 'OVER',
@@ -24433,6 +24881,11 @@ function parseLoopSpecification(specStr) {
       type: 'WHILE',
       condition: parseCondition(whileMatch[1])
     };
+  }
+
+  // DO FOREVER: until LEAVE, RETURN or EXIT (and the iteration safety limit)
+  if (/^FOREVER$/i.test(spec)) {
+    return { type: 'FOREVER' };
   }
 
   // DO UNTIL condition - loops until condition becomes true
@@ -24490,6 +24943,8 @@ function parseCondition(conditionStr) {
 function argumentOf(arg) {
   // An arrow function, a number, or a named argument (delimiter=",").
   if (arg.includes('=>') || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(arg) || /^\w+=(?!=)/.test(arg)) return arg;
+  // Terms joined by blanks or abuttal (a "yz", a"yz") are a concatenation
+  if (isTermConcatenation(arg)) return { type: 'CONCATENATION', value: arg };
   const unquoted = arg.replace(/"[^"]*"|'[^']*'/g, '""');
   if (!/[+\-*/%<>=¬|]/.test(unquoted)) return arg;
   // || is concatenation, worked out as LET's is.
@@ -24508,11 +24963,23 @@ function parseFunctionCall(line) {
   if (!parts) return null;
 
   const command = parts[1];
-  const argsStr = parts[2];
+  let argsStr = parts[2];
   
   // Debug logging removed
   
   const params = {};
+
+  // REQUIRE "library" AS pattern: the AS clause is not part of the
+  // library argument (which would otherwise read as a concatenation of
+  // the three terms)
+  let asClause = null;
+  if (command.toUpperCase() === 'REQUIRE' && argsStr) {
+    const asMatch = argsStr.match(/^(.*\S)\s+AS\s+(\S+)\s*$/i);
+    if (asMatch) {
+      argsStr = asMatch[1];
+      asClause = asMatch[2];
+    }
+  }
 
   if (argsStr && argsStr.trim().length > 0) {
     // Handle parentheses syntax: FUNC(param=value) or FUNC param=value
@@ -24568,10 +25035,11 @@ function parseFunctionCall(line) {
             } else if (!inQuotes && parenCount === 0 && char === ',') {
               // End of this argument
               break;
-            } else if (!inQuotes && parenCount === 0 && char === ' ' && !inArrowFunction) {
-              // End of this argument (space separator) - but only if not in quotes or arrow function!
-              break;
             } else {
+              // A blank does not end the argument: only a comma does. Terms
+              // with blanks between (a "yz") are the one argument, their
+              // concatenation (TRL 6.1), as argumentOf reads it; a blank
+              // beside an operator (5 + 3, a || b) is that expression.
               argValue += char;
             }
 
@@ -24614,12 +25082,13 @@ function parseFunctionCall(line) {
         } else if (inQuotes && char === quoteChar) {
           inQuotes = false;
           quoteChar = '';
-        } else if (!inQuotes && char === '(') {
+        } else if (!inQuotes && (char === '(' || char === '[' || char === '{')) {
           parenCount++;
-        } else if (!inQuotes && char === ')') {
+        } else if (!inQuotes && (char === ')' || char === ']' || char === '}')) {
           parenCount--;
         } else if (!inQuotes && parenCount === 0 && char === ' ') {
-          // End of this parameter value (space separator)
+          // End of this parameter value (space separator); a blank inside
+          // parentheses, a literal array or a literal object is not one
           break;
         } else if (!inQuotes && parenCount === 0 && char === ',') {
           // Check if comma is followed by a parameter name (name=)
@@ -24703,13 +25172,8 @@ function parseFunctionCall(line) {
     }
   }
 
-  // Special handling for REQUIRE with AS clause
-  // REQUIRE "library" AS pattern
-  if (command.toUpperCase() === 'REQUIRE' && argsStr) {
-    const asMatch = argsStr.match(/\bAS\s+(\S+)/i);
-    if (asMatch) {
-      params.asClause = asMatch[1];
-    }
+  if (asClause) {
+    params.asClause = asClause;
   }
 
   return {
@@ -24949,6 +25413,15 @@ function parseExpression(exprStr) {
     }
   }
 
+  // Terms joined by blanks or abuttal (v "text", v"text") are a
+  // concatenation, as || is; arithmetic among them binds tighter
+  if (isTermConcatenation(expr)) {
+    return {
+      type: 'CONCATENATION',
+      value: expr
+    };
+  }
+
   // First check if this looks like a mathematical expression (contains operators or parentheses)
   // But exclude function calls with named parameters like FUNC(name=value)
   // Those should be handled as function calls, not arithmetic expressions
@@ -25008,8 +25481,9 @@ function parseExpression(exprStr) {
       }
     }
     
-    // Check if it's a variable reference (with or without property access)
-    if (expr.match(/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/)) {
+    // Check if it's a variable reference (with or without property access),
+    // a compound symbol's tail part being a number too (list.2, stem.0)
+    if (expr.match(/^[a-zA-Z_]\w*(\.\w*)*$/)) {
       return {
         type: 'VARIABLE',
         name: expr
@@ -25021,10 +25495,17 @@ function parseExpression(exprStr) {
   return null;
 }
 
+// Blanks are dropped outside quoted literals and outside a call's
+// parentheses. Inside a call's parentheses they stay: a blank between two
+// terms there is their concatenation (LENGTH(a "yz") is 4, TRL 6.1), which
+// parseFunctionCall's argument reading works out; a grouping parenthesis
+// (one not after a name) is arithmetic, and loses its blanks.
 function removeSpacesExceptInQuotes(expr) {
   let result = '';
   let inQuotes = false;
   let quoteChar = '';
+  const parens = []; // for each open parenthesis, whether it is a call's
+  let callDepth = 0;
   
   for (let i = 0; i < expr.length; i++) {
     const char = expr[i];
@@ -25042,8 +25523,17 @@ function removeSpacesExceptInQuotes(expr) {
     } else if (inQuotes) {
       // Inside quotes - preserve all characters including spaces
       result += char;
+    } else if (char === '(') {
+      const isCall = /\w$/.test(result);
+      parens.push(isCall);
+      if (isCall) callDepth++;
+      result += char;
+    } else if (char === ')') {
+      if (parens.pop()) callDepth--;
+      result += char;
     } else if (char === ' ') {
-      // Outside quotes - skip spaces
+      // Outside quotes - skip spaces, unless inside a call's parentheses
+      if (callDepth > 0) result += char;
       continue;
     } else {
       // Outside quotes - keep non-space characters
@@ -25443,12 +25933,13 @@ function parseFactor(expr) {
 
 // Export for both Node.js and browser environments
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parse, parseFunctionCall, parseExpression };
+  module.exports = { parse, parseFunctionCall, parseExpression, concatenationTerms };
 } else {
   // Browser environment - attach to window
   window.parse = parse;
   window.parseFunctionCall = parseFunctionCall;
   window.parseExpression = parseExpression;
+  window.concatenationTerms = concatenationTerms;
 }
 
 },

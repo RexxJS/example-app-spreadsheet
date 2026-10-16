@@ -43,14 +43,14 @@ async function executeIfStatement(ifCommand, evaluateConditionFn, runCommandsFn)
   if (conditionResult) {
     // Execute THEN branch
     const result = await runCommandsFn(ifCommand.thenCommands);
-    if (result && result.terminated) {
+    if (result && (result.terminated || result.loopControl)) {
       return result;
     }
   } else {
     // Execute ELSE branch (if it exists)
     if (ifCommand.elseCommands.length > 0) {
       const result = await runCommandsFn(ifCommand.elseCommands);
-      if (result && result.terminated) {
+      if (result && (result.terminated || result.loopControl)) {
         return result;
       }
     }
@@ -83,6 +83,9 @@ async function executeDoStatement(doCommand, resolveValueFn, evaluateConditionFn
 
     case 'UNTIL':
       return await executeUntilLoop(loopSpec, doCommand.bodyCommands, evaluateConditionFn, runCommandsFn);
+
+    case 'FOREVER':
+      return await executeForeverLoop(doCommand.bodyCommands, runCommandsFn);
 
     case 'REPEAT':
       return await executeRepeatLoop(loopSpec, doCommand.bodyCommands, runCommandsFn);
@@ -135,37 +138,44 @@ async function executeRangeLoop(loopSpec, bodyCommands, resolveValueFn, runComma
   
   const step = startNum <= endNum ? 1 : -1;
   
-  // Store original value if variable already exists
+  return await runControlledLoop(variable, startNum, endNum, step, bodyCommands, runCommandsFn, variables);
+}
+
+/**
+ * The controlled repetitive loop of DO var = start TO end [BY step]: the
+ * control variable is set, the body run, the variable stepped and tested
+ * against the end value, until it passes it. The variable is then left
+ * with the value that ended the loop (TRL 4.2): 3 after DO i = 1 TO 2. A
+ * LEAVE leaves it as it was in that iteration.
+ *
+ * RexxJS's own rule, kept (interpreter.spec.js "should preserve loop
+ * variable scope"): a value the variable had before the loop is put back
+ * after it, where classic REXX keeps the loop's value (TODO.md).
+ * @returns {Object|null} Result object if terminated, null otherwise
+ */
+async function runControlledLoop(variable, startNum, endNum, stepNum, bodyCommands, runCommandsFn, variables) {
   const originalValue = variables.get(variable);
-  
+  const past = stepNum > 0 ? (i) => i > endNum : (i) => i < endNum;
+  let i = startNum;
   try {
-    if (step > 0) {
-      for (let i = startNum; i <= endNum; i += step) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
+    for (; !past(i); i += stepNum) {
+      variables.set(variable, i);
+      const result = await runCommandsFn(bodyCommands);
+      if (result && result.terminated) {
+        return result;
       }
-    } else {
-      for (let i = startNum; i >= endNum; i += step) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
+      if (result && result.loopControl === 'LEAVE') {
+        return null;
       }
+      // ITERATE: on to the next iteration
     }
+    variables.set(variable, i);
+    return null;
   } finally {
-    // In Rexx, DO loop variables persist after the loop completes
-    // Only restore the original value if one existed before the loop
     if (originalValue !== undefined) {
       variables.set(variable, originalValue);
     }
-    // If no original value existed, keep the loop variable with its final value
   }
-  
-  return null;
 }
 
 /**
@@ -195,37 +205,7 @@ async function executeRangeLoopWithStep(loopSpec, bodyCommands, resolveValueFn, 
     throw new Error('DO loop step cannot be zero');
   }
   
-  // Store original value if variable already exists
-  const originalValue = variables.get(variable);
-  
-  try {
-    if (stepNum > 0) {
-      for (let i = startNum; i <= endNum; i += stepNum) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
-      }
-    } else {
-      for (let i = startNum; i >= endNum; i += stepNum) {
-        variables.set(variable, i);
-        const result = await runCommandsFn(bodyCommands);
-        if (result && result.terminated) {
-          return result;
-        }
-      }
-    }
-  } finally {
-    // In Rexx, DO loop variables persist after the loop completes
-    // Only restore the original value if one existed before the loop
-    if (originalValue !== undefined) {
-      variables.set(variable, originalValue);
-    }
-    // If no original value existed, keep the loop variable with its final value
-  }
-  
-  return null;
+  return await runControlledLoop(variable, startNum, endNum, stepNum, bodyCommands, runCommandsFn, variables);
 }
 
 /**
@@ -249,6 +229,10 @@ async function executeWhileLoop(loopSpec, bodyCommands, evaluateConditionFn, run
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
 
   return null;
@@ -276,6 +260,39 @@ async function executeUntilLoop(loopSpec, bodyCommands, evaluateConditionFn, run
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
+  }
+
+  return null;
+}
+
+/**
+ * Execute DO FOREVER: until LEAVE, RETURN or EXIT, within the same
+ * iteration safety limit as DO WHILE
+ * @param {Array} bodyCommands - Commands to execute in loop body
+ * @param {Function} runCommandsFn - Function to execute command lists
+ * @returns {Object|null} Result object if terminated, null otherwise
+ */
+async function executeForeverLoop(bodyCommands, runCommandsFn) {
+  const maxIterations = 10000; // Safety limit
+  let iterations = 0;
+
+  while (true) {
+    if (iterations++ > maxIterations) {
+      throw new Error('DO FOREVER loop exceeded maximum iterations (safety limit)');
+    }
+
+    const result = await runCommandsFn(bodyCommands);
+    if (result && result.terminated) {
+      return result;
+    }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
 
   return null;
@@ -300,6 +317,10 @@ async function executeRepeatLoop(loopSpec, bodyCommands, runCommandsFn) {
     if (result && result.terminated) {
       return result;
     }
+    if (result && result.loopControl === 'LEAVE') {
+      break;
+    }
+    // ITERATE: on to the next iteration
   }
   
   return null;
@@ -342,6 +363,10 @@ async function executeOverLoop(loopSpec, bodyCommands, resolveValueFn, runComman
         if (result && result.terminated) {
           return result;
         }
+        if (result && result.loopControl === 'LEAVE') {
+          break;
+        }
+        // ITERATE: on to the next iteration
       }
     } finally {
       // Restore original variable value or remove if it didn't exist
@@ -394,6 +419,10 @@ async function executeOverLoop(loopSpec, bodyCommands, resolveValueFn, runComman
       if (result && result.terminated) {
         return result;
       }
+      if (result && result.loopControl === 'LEAVE') {
+        break;
+      }
+      // ITERATE: on to the next iteration
     }
   } finally {
     // In REXX, loop variables typically persist after the loop
@@ -436,7 +465,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       if (this && Array.isArray(whenClause.commands)) {
         for (let i = 0; i < whenClause.commands.length; i++) {
           const result = await this.executeCommand(whenClause.commands[i]);
-          if (result && result.terminated) {
+          if (result && (result.terminated || result.loopControl)) {
             return result;
           }
           if (result && result.jump) {
@@ -449,7 +478,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       } else {
         // Fallback to provided runner if context not bound (shouldn't happen in interpreter usage)
         const result = await runCommandsFn(whenClause.commands);
-        if (result && result.terminated) return result;
+        if (result && (result.terminated || result.loopControl)) return result;
       }
       return null; // Exit SELECT after executing a WHEN clause
     }
@@ -474,7 +503,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
     if (this && Array.isArray(selectCommand.otherwiseCommands)) {
       for (let i = 0; i < selectCommand.otherwiseCommands.length; i++) {
         const result = await this.executeCommand(selectCommand.otherwiseCommands[i]);
-        if (result && result.terminated) {
+        if (result && (result.terminated || result.loopControl)) {
           return result;
         }
         if (result && result.jump) {
@@ -486,7 +515,7 @@ async function executeSelectStatement(selectCommand, evaluateConditionFn, runCom
       }
     } else {
       const result = await runCommandsFn(selectCommand.otherwiseCommands);
-      if (result && result.terminated) return result;
+      if (result && (result.terminated || result.loopControl)) return result;
     }
   }
   
@@ -503,6 +532,7 @@ if (typeof module !== 'undefined' && module.exports) {
         executeRangeLoopWithStep,
         executeWhileLoop,
         executeUntilLoop,
+        executeForeverLoop,
         executeRepeatLoop,
         executeOverLoop,
         executeSelectStatement
@@ -520,6 +550,7 @@ if (typeof module !== 'undefined' && module.exports) {
             executeRangeLoopWithStep,
             executeWhileLoop,
             executeUntilLoop,
+            executeForeverLoop,
             executeRepeatLoop,
             executeOverLoop,
             executeSelectStatement

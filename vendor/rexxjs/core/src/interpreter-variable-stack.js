@@ -38,6 +38,12 @@ if (typeof require !== 'undefined') {
   interpolateString = stringProcessing.interpolateString;
 }
 
+// escape-sequence-processor.js: one pass over a literal's escapes (Node by
+// require; in a browser it registers itself on window)
+const processEscapeSequences = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./escape-sequence-processor.js').processEscapeSequences
+  : window.processEscapeSequences;
+
 /**
  * Resolve a value by checking variables, handling literals, and processing expressions
  * @param {*} value - Value to resolve (could be string, number, object, etc.)
@@ -88,11 +94,13 @@ async function resolveVariableValue(value, variables, evaluateExpressionFn, vari
     if ((value.startsWith("'") && value.endsWith("'")) || 
         (value.startsWith('"') && value.endsWith('"'))) {
       let unquoted = value.substring(1, value.length - 1);
-      // Process escape sequences
-      unquoted = unquoted.replace(/\\n/g, '\n');
-      unquoted = unquoted.replace(/\\t/g, '\t');
-      unquoted = unquoted.replace(/\\r/g, '\r');
-      unquoted = unquoted.replace(/\\\\/g, '\\');
+      // A double-quoted literal's escape sequences, in one pass that takes
+      // \\ first (so the second backslash of a \\ never starts a \t):
+      // escape-sequence-processor.js. A single-quoted literal has none, as
+      // in SAY and evaluateConcatenation.
+      if (value[0] === '"') {
+        unquoted = processEscapeSequences(unquoted);
+      }
       return unquoted;
     }
     // Handle escaped quotes
@@ -120,7 +128,10 @@ async function resolveVariableValue(value, variables, evaluateExpressionFn, vari
   
   // If value is a string that looks like a variable reference (e.g., "myVar.x")
   if (typeof value === 'string' && value.includes('.')) {
-    const parts = value.split('.');
+    if (variables.has(value)) {
+      return variables.get(value);
+    }
+    const parts = derivedName(value, (n) => variables.has(n), (n) => variables.get(n)).split('.');
     const varName = parts[0];
     
     // Check if this is a variable reference
@@ -181,6 +192,39 @@ async function interpolateStringWithVars(template, variables, variableResolver) 
     interpolateFn = window.interpolateString;
   }
   return await interpolateFn(template, (varName) => resolveVariableValue(varName, variables, null, variableResolver));
+}
+
+/**
+ * A compound symbol's derived name (TRL 3.4): the stem, then each tail part
+ * replaced by the value of the variable of that name when one is set. A
+ * tail part that is a number, or an unset symbol, stays as it is. A name
+ * with no tail, or one set as a whole (RUNTIME.TYPE), is returned as given.
+ * @param {string} name - The symbol as written, e.g. list.i
+ * @param {Function} has - name -> whether that variable is set
+ * @param {Function} get - name -> that variable's value
+ * @returns {string} The derived name, e.g. list.2
+ */
+function derivedName(name, has, get) {
+  if (typeof name !== 'string' || !name.includes('.') || has(name)) return name;
+  const parts = name.split('.');
+  if (!/^[A-Za-z_]\w*$/.test(parts[0])) return name;
+  const tail = parts.slice(1).map((part) =>
+    /^[A-Za-z_]\w*$/.test(part) && has(part) ? String(get(part)) : part);
+  return [parts[0], ...tail].join('.');
+}
+
+/**
+ * The value of a symbol that is no set variable (TRL 3.1): its own name in
+ * uppercase, a compound symbol's tail derived first (list.i is LIST.2 when
+ * i = 2, TRL 3.4). Anything that is not a symbol is returned as given.
+ * @param {string} name - The symbol as written
+ * @param {Function} has - name -> whether that variable is set
+ * @param {Function} get - name -> that variable's value
+ * @returns {string}
+ */
+function unsetSymbolValue(name, has, get) {
+  if (typeof name !== 'string' || !/^[A-Za-z_]\w*(\.\w*)*$/.test(name)) return name;
+  return derivedName(name, has, get).toUpperCase();
 }
 
 /**
@@ -343,6 +387,8 @@ async function executeQueue(command, stack, variables, evaluateExpressionFn) {
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js environment
     module.exports = { 
+        derivedName,
+        unsetSymbolValue,
         resolveVariableValue,
         interpolateStringWithVars,
         getVariable,
@@ -364,6 +410,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (!window.rexxModuleRegistry.has('variableStack')) {
         window.rexxModuleRegistry.set('variableStack', {
+            derivedName,
+            unsetSymbolValue,
             resolveVariableValue,
             interpolateStringWithVars,
             getVariable,

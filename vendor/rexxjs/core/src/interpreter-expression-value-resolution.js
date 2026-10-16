@@ -30,6 +30,24 @@
  * that work with the interpreter's variable resolution and function calling systems.
  */
 
+// escape-sequence-processor.js: one pass over a literal's escapes (Node by
+// require; in a browser it registers itself on window)
+const processEscapeSequences = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./escape-sequence-processor.js').processEscapeSequences
+  : window.processEscapeSequences;
+
+// interpreter-variable-stack.js's derivedName: a compound symbol's tail
+// substituted (Node by require; in a browser from the module registry)
+const derivedName = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./interpreter-variable-stack.js').derivedName
+  : (name, has, get) => window.rexxModuleRegistry.get('variableStack').derivedName(name, has, get);
+
+// ... and its unsetSymbolValue: a symbol no variable is set for is its own
+// name in uppercase (TRL 3.1)
+const unsetSymbolValue = (typeof require !== 'undefined' && typeof module !== 'undefined')
+  ? require('./interpreter-variable-stack.js').unsetSymbolValue
+  : (name, has, get) => window.rexxModuleRegistry.get('variableStack').unsetSymbolValue(name, has, get);
+
 /**
  * Resolve values from various sources (literals, variables, expressions)
  * @param {*} value - Value to resolve (can be string, number, object, etc.)
@@ -95,11 +113,13 @@ async function resolveValue(value, variableGetFn, variableHasFn, evaluateExpress
       if (!unquoted.split(q + q).join('').includes(q)) {
         unquoted = unquoted.split(q + q).join(q);
       }
-      // Process escape sequences
-      unquoted = unquoted.replace(/\\n/g, '\n');
-      unquoted = unquoted.replace(/\\t/g, '\t');
-      unquoted = unquoted.replace(/\\r/g, '\r');
-      unquoted = unquoted.replace(/\\\\/g, '\\');
+      // A double-quoted literal's escape sequences, in one pass that takes
+      // \\ first (so the second backslash of a \\ never starts a \t):
+      // escape-sequence-processor.js. A single-quoted literal has none, as
+      // in SAY and evaluateConcatenation.
+      if (value[0] === '"') {
+        unquoted = processEscapeSequences(unquoted);
+      }
       return unquoted;
     }
     // Handle escaped quotes
@@ -127,7 +147,11 @@ async function resolveValue(value, variableGetFn, variableHasFn, evaluateExpress
   
   // If value is a string that looks like a variable reference (e.g., "myVar.x")
   if (typeof value === 'string' && value.includes('.')) {
-    const parts = value.split('.');
+    if (variableHasFn(value)) {
+      return variableGetFn(value);
+    }
+    // A compound symbol's tail is substituted first (list.i is list.2)
+    const parts = derivedName(value, variableHasFn, variableGetFn).split('.');
     const varName = parts[0];
 
     // Check if this is a variable reference
@@ -269,7 +293,9 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
         }
       }
       
-      return await resolveValueFn(varName);
+      // A symbol that is no variable is its own name in uppercase (TRL 3.1)
+      const resolved = await resolveValueFn(varName);
+      return resolved === varName ? unsetSymbolValue(varName, variableHasFn, variableGetFn) : resolved;
       
     case 'PIPE_OP':
       // Pipe operator: left |> right
@@ -484,6 +510,17 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
         }
         const builtInFunc = getBuiltinFunctionFn(method);
 
+        // A function that declares it needs parameters (requiresParameters,
+        // or a required entry in its parameterMetadata), called with none,
+        // says so, as interpreter-function-execution does for a call
+        // statement. Only a declaration counts here: a function with no
+        // metadata (PS(), GETPID()) may well take nothing.
+        if (Object.keys(expr.params || {}).length === 0 && builtInFunc &&
+            (builtInFunc.requiresParameters === true ||
+             (Array.isArray(builtInFunc.parameterMetadata) && builtInFunc.parameterMetadata.some(p => !p.optional)))) {
+          throw new Error(`${expr.command} function requires parameters`);
+        }
+
         // DOM functions receive params object directly
         if (method.startsWith('DOM_')) {
           return await builtInFunc(resolvedParams);
@@ -568,11 +605,17 @@ async function evaluateExpression(expr, resolveValueFn, variableGetFn, variableH
  * @param {Function} isTruthyFn - Function to check truthiness
  * @returns {Promise<boolean>} Condition evaluation result
  */
-async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isTruthyFn) {
+async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn) {
+  // A side that is a symbol no variable is set for is its uppercase name
+  // (TRL 3.1): x = active then IF x = active compares ACTIVE with ACTIVE
+  const sideValue = async (side) => {
+    const resolved = await resolveValueFn(side);
+    return unsetSymbolValueFn && resolved === side ? unsetSymbolValueFn(side) : resolved;
+  };
   switch (condition.type) {
     case 'COMPARISON':
-      const leftValue = await resolveValueFn(condition.left);
-      const rightValue = await resolveValueFn(condition.right);
+      const leftValue = await sideValue(condition.left);
+      const rightValue = await sideValue(condition.right);
 
       switch (condition.operator) {
         case '>':
@@ -603,7 +646,7 @@ async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isT
     case 'LOGICAL_AND':
       // Evaluate all parts and return true only if all are true
       for (const part of condition.parts) {
-        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn);
+        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn);
         if (!partResult) {
           return false;
         }
@@ -613,7 +656,7 @@ async function evaluateCondition(condition, resolveValueFn, compareValuesFn, isT
     case 'LOGICAL_OR':
       // Evaluate all parts and return true if any is true
       for (const part of condition.parts) {
-        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn);
+        const partResult = await evaluateCondition(part, resolveValueFn, compareValuesFn, isTruthyFn, unsetSymbolValueFn);
         if (partResult) {
           return true;
         }

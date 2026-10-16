@@ -99,6 +99,39 @@ function removeCommentsPreservingStrings(line) {
 }
 
 // Import function parsing strategies
+// True when the blank-separated pieces of a CALL's arguments (outside quotes
+// and parentheses) include a bare binary operator, so that the whole is one
+// expression.
+const CALL_BINARY_OPERATORS = new Set(['+', '-', '*', '/', '//', '%', '**', '||', '=', '==', '<', '>', '<=', '>=', '<>', '\\=', '\\==', '¬=', '&', '|', '&&']);
+function callArgsHoldAnOperator(argsString) {
+  let piece = '';
+  let inQuotes = false;
+  let quoteChar = '';
+  let parenLevel = 0;
+  const pieces = [];
+  for (let i = 0; i < argsString.length; i++) {
+    const char = argsString[i];
+    if ((char === '"' || char === "'") && !inQuotes) {
+      inQuotes = true;
+      quoteChar = char;
+    } else if (char === quoteChar && inQuotes) {
+      inQuotes = false;
+      quoteChar = '';
+    } else if (char === '(' && !inQuotes) {
+      parenLevel++;
+    } else if (char === ')' && !inQuotes) {
+      parenLevel--;
+    } else if (char === ' ' && !inQuotes && parenLevel === 0) {
+      if (piece) pieces.push(piece);
+      piece = '';
+      continue;
+    }
+    piece += char;
+  }
+  if (piece) pieces.push(piece);
+  return pieces.some((p) => CALL_BINARY_OPERATORS.has(p));
+}
+
 function callIsFunctionCallExpression(expression) {
   if (typeof require !== 'undefined' && typeof module !== 'undefined') {
     // Node.js environment
@@ -611,7 +644,11 @@ function parseStatement(tokens, startIndex) {
         }
       }
       
-      const separator = hasCommas ? ',' : ' ';
+      // With no commas, the arguments are split at blanks (CALL PAIR 1 2).
+      // But CALL DOWN n - 1 is one argument, the expression n - 1, as in
+      // REXX: when any blank-separated piece is a bare operator, the whole
+      // is one expression. (-5 is a number, not an operator.)
+      const separator = hasCommas ? ',' : (callArgsHoldAnOperator(argsString) ? '\0' : ' ');
       
       let parenLevel = 0;
       
@@ -682,6 +719,18 @@ function parseStatement(tokens, startIndex) {
     };
   }
   
+  // PROCEDURE statement: the routine it starts gets a generation of
+  // variables of its own per CALL; PROCEDURE EXPOSE a b stem. shares those
+  // with the caller (a trailing period names a whole stem)
+  const procedureMatch = line.match(/^PROCEDURE(?:\s+EXPOSE\s+(.+))?\s*$/i);
+  if (procedureMatch) {
+    const expose = procedureMatch[1] ? procedureMatch[1].trim().split(/\s+/) : [];
+    return {
+      command: addLineNumber({ type: 'PROCEDURE', expose }, token),
+      nextIndex: startIndex + 1
+    };
+  }
+
   // RETURN statement
   const returnMatch = line.match(/^RETURN(?:\s+(.*))?/i);
   if (returnMatch) {
@@ -952,34 +1001,9 @@ function parseStatement(tokens, startIndex) {
       };
     }
 
-    // Check if it's a concatenation expression with || FIRST
-    // But only if the || is not inside quoted strings or parentheses
-    const hasUnquotedPipe = (() => {
-      let inQuotes = false;
-      let quoteChar = '';
-      let parenDepth = 0;
-      for (let i = 0; i < expression.length - 1; i++) {
-        const char = expression[i];
-        const nextChar = expression[i + 1];
-
-        if ((char === '"' || char === "'") && !inQuotes) {
-          inQuotes = true;
-          quoteChar = char;
-        } else if (char === quoteChar && inQuotes) {
-          inQuotes = false;
-          quoteChar = '';
-        } else if (!inQuotes && char === '(') {
-          parenDepth++;
-        } else if (!inQuotes && char === ')') {
-          parenDepth--;
-        } else if (!inQuotes && parenDepth === 0 && char === '|' && nextChar === '|') {
-          return true;
-        }
-      }
-      return false;
-    })();
-
-    if (hasUnquotedPipe) {
+    // Check if it's a concatenation expression with || FIRST, or of terms
+    // joined by blanks or abuttal (v "text", v"text")
+    if (hasTopLevelConcatenation(expression) || isTermConcatenation(expression)) {
       return {
         command: addLineNumber({
           type: 'ASSIGNMENT',
@@ -1221,6 +1245,19 @@ function parseStatement(tokens, startIndex) {
     throw new Error(`EXIT UNLESS syntax error: unexpected ${separator === '.' ? 'period' : 'semicolon'} after condition. Expected comma (,) to separate condition from message. Use: EXIT UNLESS condition, 'message'`);
   }
 
+  // LEAVE and ITERATE: the innermost DO loop ends, or goes to its next
+  // iteration (a named loop is not supported)
+  const loopControlMatch = line.match(/^(LEAVE|ITERATE)(?:\s+(\w+))?\s*$/i);
+  if (loopControlMatch) {
+    if (loopControlMatch[2]) {
+      throw new Error(`${loopControlMatch[1].toUpperCase()} ${loopControlMatch[2]}: a named loop is not supported, only the innermost DO loop`);
+    }
+    return {
+      command: addLineNumber({ type: loopControlMatch[1].toUpperCase() }, token),
+      nextIndex: startIndex + 1
+    };
+  }
+
   // EXIT statement
   const exitMatch = line.match(/^EXIT(?:\s+(.+))?/i);
   if (exitMatch) {
@@ -1289,6 +1326,21 @@ function parseStatement(tokens, startIndex) {
   if (simpleAssignMatch) {
     const variableName = simpleAssignMatch[1];
     const expression = simpleAssignMatch[2];
+
+    // A concatenation (a || b, v "text", v"text") first, as the LET path has it
+    if (hasTopLevelConcatenation(expression) || isTermConcatenation(expression)) {
+      return {
+        command: addLineNumber({
+          type: 'ASSIGNMENT',
+          variable: variableName,
+          expression: {
+            type: 'CONCATENATION',
+            value: expression
+          }
+        }, token),
+        nextIndex: startIndex + 1
+      };
+    }
     
     // Check if it's a quoted string
     if (expression.match(/^(['"`]).*\1$/)) {
@@ -1340,6 +1392,144 @@ function parseStatement(tokens, startIndex) {
   
   // Skip unrecognized lines
   return { command: null, nextIndex: startIndex + 1 };
+}
+
+/**
+ * Whether an expression has a || outside quotes and parentheses: a
+ * concatenation, for LET and for an assignment without LET alike.
+ * @param {string} expression - The right-hand side as written
+ * @returns {boolean}
+ */
+function hasTopLevelConcatenation(expression) {
+  let inQuotes = false;
+  let quoteChar = '';
+  let parenDepth = 0;
+  for (let i = 0; i < expression.length - 1; i++) {
+    const char = expression[i];
+    const nextChar = expression[i + 1];
+
+    if ((char === '"' || char === "'") && !inQuotes) {
+      inQuotes = true;
+      quoteChar = char;
+    } else if (char === quoteChar && inQuotes) {
+      inQuotes = false;
+      quoteChar = '';
+    } else if (!inQuotes && char === '(') {
+      parenDepth++;
+    } else if (!inQuotes && char === ')') {
+      parenDepth--;
+    } else if (!inQuotes && parenDepth === 0 && char === '|' && nextChar === '|') {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The operator characters: a term made only of these (+, ||, |>), or one
+// that starts or ends with one (-1, a+), links to its neighbour.
+const OPERATOR_TERM = /^[+\-*\/%=<>\\¬&|!]+$/;
+const OPERATOR_START = /^[+\-*\/%=<>\\¬&|!]/;
+const OPERATOR_END = /[+\-*\/%=<>\\¬&|!]$/;
+
+/**
+ * The terms of a concatenation, as classic REXX reads an expression (TRL
+ * 6.1): blank-separated terms are joined with one blank; a term abutting a
+ * quoted literal (v"text", "a"'b') with nothing between. Arithmetic binds
+ * tighter, so a run of terms linked by operators (n + 1, a*2, x |> f) is
+ * one term here. Each term is {text, abut}, abut true when it follows the
+ * one before with no blank.
+ *
+ * null when the expression is not a list of terms to concatenate: a
+ * literal array or object; an unterminated literal; or a term with = in
+ * it, a call's named parameter (execute command="ls") or a comparison.
+ * @param {string} expression - The right-hand side as written
+ * @returns {Array<{text: string, abut: boolean}>|null}
+ */
+function concatenationTerms(expression) {
+  const expr = expression.trim();
+  if (expr[0] === '[' || expr[0] === '{') return null;
+  const terms = [];
+  let current = '';
+  let abut = false;
+  let depth = 0;
+  const end = (nextAbut) => {
+    if (current !== '') terms.push({ text: current, abut });
+    current = '';
+    abut = nextAbut;
+  };
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i];
+    if (c === '"' || c === "'") {
+      // A literal to its closing quote: a doubled quote is one quote of
+      // it, and in a double-quoted one a backslash escapes the next char
+      let literal = c;
+      let j = i + 1;
+      for (; j < expr.length; j++) {
+        if (c === '"' && expr[j] === '\\' && j + 1 < expr.length) {
+          literal += expr[j] + expr[j + 1];
+          j++;
+          continue;
+        }
+        literal += expr[j];
+        if (expr[j] === c) {
+          if (expr[j + 1] === c) {
+            literal += c;
+            j++;
+            continue;
+          }
+          break;
+        }
+      }
+      if (j >= expr.length) return null;
+      if (depth === 0) {
+        if (current !== '' && !OPERATOR_END.test(current)) end(true);
+        current += literal;
+        if (/[A-Za-z0-9_.(]/.test(expr[j + 1] || '')) end(true);
+      } else {
+        current += literal;
+      }
+      i = j;
+    } else if (c === '(') {
+      depth++;
+      current += c;
+    } else if (c === ')') {
+      depth--;
+      current += c;
+    } else if (c === ' ' && depth === 0) {
+      end(false);
+    } else {
+      current += c;
+    }
+  }
+  end(false);
+
+  const groups = [];
+  for (const term of terms) {
+    const prev = groups[groups.length - 1];
+    const quoted = term.text[0] === '"' || term.text[0] === "'";
+    const linked = prev && !term.abut &&
+      (OPERATOR_TERM.test(prev.text) || OPERATOR_END.test(prev.text) ||
+       (!quoted && (OPERATOR_TERM.test(term.text) || OPERATOR_START.test(term.text))));
+    if (linked) {
+      prev.text += ' ' + term.text;
+    } else {
+      groups.push({ text: term.text, abut: term.abut });
+    }
+  }
+  if (groups.some((g) => g.text.replace(/"[^"]*"|'[^']*'/g, '').includes('='))) return null;
+  return groups;
+}
+
+/**
+ * Whether an expression is two or more terms to concatenate (v "text",
+ * v"text"), which a CONCATENATION node has evaluateConcatenation work out,
+ * as || does.
+ * @param {string} expression - The right-hand side as written
+ * @returns {boolean}
+ */
+function isTermConcatenation(expression) {
+  const groups = concatenationTerms(expression);
+  return groups !== null && groups.length > 1;
 }
 
 function parseSingleLineIfStatement(tokens, startIndex, match) {
@@ -1641,6 +1831,12 @@ function parseLoopSpecification(specStr) {
   // DO variable OVER array
   const overMatch = spec.match(/^(\w+)\s+OVER\s+(.+)$/i);
   if (overMatch) {
+    // A stem written with its trailing period (DO v OVER stem., TRL 3.4)
+    // names the stem, as DO v OVER stem does
+    const stemMatch = overMatch[2].trim().match(/^([a-zA-Z_]\w*)\.$/);
+    if (stemMatch) {
+      return { type: 'OVER', variable: overMatch[1], array: { type: 'VARIABLE', name: stemMatch[1] } };
+    }
     const arrayExpr = parseExpression(overMatch[2].trim());
     return {
       type: 'OVER',
@@ -1656,6 +1852,11 @@ function parseLoopSpecification(specStr) {
       type: 'WHILE',
       condition: parseCondition(whileMatch[1])
     };
+  }
+
+  // DO FOREVER: until LEAVE, RETURN or EXIT (and the iteration safety limit)
+  if (/^FOREVER$/i.test(spec)) {
+    return { type: 'FOREVER' };
   }
 
   // DO UNTIL condition - loops until condition becomes true
@@ -1713,6 +1914,8 @@ function parseCondition(conditionStr) {
 function argumentOf(arg) {
   // An arrow function, a number, or a named argument (delimiter=",").
   if (arg.includes('=>') || /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(arg) || /^\w+=(?!=)/.test(arg)) return arg;
+  // Terms joined by blanks or abuttal (a "yz", a"yz") are a concatenation
+  if (isTermConcatenation(arg)) return { type: 'CONCATENATION', value: arg };
   const unquoted = arg.replace(/"[^"]*"|'[^']*'/g, '""');
   if (!/[+\-*/%<>=¬|]/.test(unquoted)) return arg;
   // || is concatenation, worked out as LET's is.
@@ -1731,11 +1934,23 @@ function parseFunctionCall(line) {
   if (!parts) return null;
 
   const command = parts[1];
-  const argsStr = parts[2];
+  let argsStr = parts[2];
   
   // Debug logging removed
   
   const params = {};
+
+  // REQUIRE "library" AS pattern: the AS clause is not part of the
+  // library argument (which would otherwise read as a concatenation of
+  // the three terms)
+  let asClause = null;
+  if (command.toUpperCase() === 'REQUIRE' && argsStr) {
+    const asMatch = argsStr.match(/^(.*\S)\s+AS\s+(\S+)\s*$/i);
+    if (asMatch) {
+      argsStr = asMatch[1];
+      asClause = asMatch[2];
+    }
+  }
 
   if (argsStr && argsStr.trim().length > 0) {
     // Handle parentheses syntax: FUNC(param=value) or FUNC param=value
@@ -1791,10 +2006,11 @@ function parseFunctionCall(line) {
             } else if (!inQuotes && parenCount === 0 && char === ',') {
               // End of this argument
               break;
-            } else if (!inQuotes && parenCount === 0 && char === ' ' && !inArrowFunction) {
-              // End of this argument (space separator) - but only if not in quotes or arrow function!
-              break;
             } else {
+              // A blank does not end the argument: only a comma does. Terms
+              // with blanks between (a "yz") are the one argument, their
+              // concatenation (TRL 6.1), as argumentOf reads it; a blank
+              // beside an operator (5 + 3, a || b) is that expression.
               argValue += char;
             }
 
@@ -1837,12 +2053,13 @@ function parseFunctionCall(line) {
         } else if (inQuotes && char === quoteChar) {
           inQuotes = false;
           quoteChar = '';
-        } else if (!inQuotes && char === '(') {
+        } else if (!inQuotes && (char === '(' || char === '[' || char === '{')) {
           parenCount++;
-        } else if (!inQuotes && char === ')') {
+        } else if (!inQuotes && (char === ')' || char === ']' || char === '}')) {
           parenCount--;
         } else if (!inQuotes && parenCount === 0 && char === ' ') {
-          // End of this parameter value (space separator)
+          // End of this parameter value (space separator); a blank inside
+          // parentheses, a literal array or a literal object is not one
           break;
         } else if (!inQuotes && parenCount === 0 && char === ',') {
           // Check if comma is followed by a parameter name (name=)
@@ -1926,13 +2143,8 @@ function parseFunctionCall(line) {
     }
   }
 
-  // Special handling for REQUIRE with AS clause
-  // REQUIRE "library" AS pattern
-  if (command.toUpperCase() === 'REQUIRE' && argsStr) {
-    const asMatch = argsStr.match(/\bAS\s+(\S+)/i);
-    if (asMatch) {
-      params.asClause = asMatch[1];
-    }
+  if (asClause) {
+    params.asClause = asClause;
   }
 
   return {
@@ -2172,6 +2384,15 @@ function parseExpression(exprStr) {
     }
   }
 
+  // Terms joined by blanks or abuttal (v "text", v"text") are a
+  // concatenation, as || is; arithmetic among them binds tighter
+  if (isTermConcatenation(expr)) {
+    return {
+      type: 'CONCATENATION',
+      value: expr
+    };
+  }
+
   // First check if this looks like a mathematical expression (contains operators or parentheses)
   // But exclude function calls with named parameters like FUNC(name=value)
   // Those should be handled as function calls, not arithmetic expressions
@@ -2231,8 +2452,9 @@ function parseExpression(exprStr) {
       }
     }
     
-    // Check if it's a variable reference (with or without property access)
-    if (expr.match(/^[a-zA-Z_]\w*(\.[a-zA-Z_]\w*)*$/)) {
+    // Check if it's a variable reference (with or without property access),
+    // a compound symbol's tail part being a number too (list.2, stem.0)
+    if (expr.match(/^[a-zA-Z_]\w*(\.\w*)*$/)) {
       return {
         type: 'VARIABLE',
         name: expr
@@ -2244,10 +2466,17 @@ function parseExpression(exprStr) {
   return null;
 }
 
+// Blanks are dropped outside quoted literals and outside a call's
+// parentheses. Inside a call's parentheses they stay: a blank between two
+// terms there is their concatenation (LENGTH(a "yz") is 4, TRL 6.1), which
+// parseFunctionCall's argument reading works out; a grouping parenthesis
+// (one not after a name) is arithmetic, and loses its blanks.
 function removeSpacesExceptInQuotes(expr) {
   let result = '';
   let inQuotes = false;
   let quoteChar = '';
+  const parens = []; // for each open parenthesis, whether it is a call's
+  let callDepth = 0;
   
   for (let i = 0; i < expr.length; i++) {
     const char = expr[i];
@@ -2265,8 +2494,17 @@ function removeSpacesExceptInQuotes(expr) {
     } else if (inQuotes) {
       // Inside quotes - preserve all characters including spaces
       result += char;
+    } else if (char === '(') {
+      const isCall = /\w$/.test(result);
+      parens.push(isCall);
+      if (isCall) callDepth++;
+      result += char;
+    } else if (char === ')') {
+      if (parens.pop()) callDepth--;
+      result += char;
     } else if (char === ' ') {
-      // Outside quotes - skip spaces
+      // Outside quotes - skip spaces, unless inside a call's parentheses
+      if (callDepth > 0) result += char;
       continue;
     } else {
       // Outside quotes - keep non-space characters
@@ -2666,10 +2904,11 @@ function parseFactor(expr) {
 
 // Export for both Node.js and browser environments
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parse, parseFunctionCall, parseExpression };
+  module.exports = { parse, parseFunctionCall, parseExpression, concatenationTerms };
 } else {
   // Browser environment - attach to window
   window.parse = parse;
   window.parseFunctionCall = parseFunctionCall;
   window.parseExpression = parseExpression;
+  window.concatenationTerms = concatenationTerms;
 }

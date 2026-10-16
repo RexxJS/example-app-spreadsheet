@@ -1033,6 +1033,16 @@ class RexxInterpreter {
     return variableStackUtils.getVariable(name, this.variables, this.variableResolver);
   }
 
+  // A compound symbol's derived name (TRL 3.4): list.i is list.2 when i = 2
+  derivedName(name) {
+    return variableStackUtils.derivedName(name, (n) => this.variables.has(n), (n) => this.variables.get(n));
+  }
+
+  // A symbol no variable is set for is its own name in uppercase (TRL 3.1)
+  unsetSymbolValue(name) {
+    return variableStackUtils.unsetSymbolValue(name, (n) => this.variables.has(n), (n) => this.variables.get(n));
+  }
+
   isExternalScriptCall(subroutineName) {
     return parseSubroutineUtils.isExternalScriptCall(subroutineName);
   }
@@ -1176,6 +1186,10 @@ class RexxInterpreter {
           if (result.type === 'RETURN') {
             return result;
           }
+        }
+        if (result && result.loopControl) {
+          // LEAVE or ITERATE: out to the innermost DO loop
+          return result;
         }
         if (result && result.skipCommands) {
           // Handle LINES command skipping - skip the next N commands
@@ -1338,7 +1352,9 @@ class RexxInterpreter {
             this.returnValue,
             this.builtInFunctions,
             callConvertParamsToArgs,
-            this.argv  // Pass argv array reference for efficient argument storage
+            this.argv,  // Pass argv array reference for efficient argument storage
+            this.externalFunctions,
+            this.resolveValue.bind(this)
           );
           if (callResult && callResult.terminated) {
             return callResult;
@@ -1351,6 +1367,11 @@ class RexxInterpreter {
           
         case 'RETURN':
           return await this.executeReturn(command);
+          
+        case 'PROCEDURE':
+          // Reached only by falling or jumping into a routine: a CALLed
+          // routine's PROCEDURE is taken by discoverSubroutines (TRL error 17)
+          throw new Error('Unexpected PROCEDURE: it is valid only as the first instruction of a routine reached by CALL');
           
         case 'TRACE':
           this.traceMode = traceFormattingUtils.executeTrace(command, this.traceOutput, this.addTraceOutput.bind(this));
@@ -1381,7 +1402,9 @@ class RexxInterpreter {
                 this.returnValue,
                 this.builtInFunctions,
                 callConvertParamsToArgs,
-                this.argv  // Pass argv array reference for efficient argument storage
+                this.argv,  // Pass argv array reference for efficient argument storage
+                this.externalFunctions,
+                this.resolveValue.bind(this)
               );
               const variableName = await this.interpolateString(command.variable);
               
@@ -1458,7 +1481,7 @@ class RexxInterpreter {
               result = await this.evaluateExpression(command.expression);
             }
             
-            const variableName = await this.interpolateString(command.variable);
+            const variableName = this.derivedName(await this.interpolateString(command.variable));
 
             // Handle compound variable assignment (e.g., RESULT.message = value)
             if (variableName.includes('.')) {
@@ -1552,7 +1575,7 @@ class RexxInterpreter {
               }
             }
             
-            const variableName = await this.interpolateString(command.variable);
+            const variableName = this.derivedName(await this.interpolateString(command.variable));
 
             // Handle compound variable assignment (e.g., RESULT.message = value)
             if (variableName.includes('.')) {
@@ -1584,6 +1607,9 @@ class RexxInterpreter {
         
         case 'IF':
           const ifResult = await controlFlowUtils.executeIfStatement(command, this.evaluateCondition.bind(this), this.run.bind(this));
+          if (ifResult && ifResult.loopControl) {
+            return ifResult;
+          }
           if (ifResult && ifResult.terminated) {
             if (ifResult.type === 'RETURN') {
               // RETURN inside IF should bubble up to caller
@@ -1623,6 +1649,9 @@ class RexxInterpreter {
         
         case 'SELECT':
           const selectResult = await controlFlowUtils.executeSelectStatement.call(this, command, this.evaluateCondition.bind(this), this.run.bind(this));
+          if (selectResult && selectResult.loopControl) {
+            return selectResult;
+          }
           if (selectResult && selectResult.terminated) {
             if (selectResult.type === 'RETURN') {
               // RETURN inside SELECT should bubble up to caller
@@ -1640,6 +1669,12 @@ class RexxInterpreter {
         case 'EXIT':
           await this.executeExitStatement(command);
           break;
+
+        case 'LEAVE':
+        case 'ITERATE':
+          // The innermost DO loop takes it (interpreter-control-flow.js); the
+          // statements after it in the block do not run
+          return { loopControl: command.type };
 
         case 'EXIT_UNLESS':
           await this.executeExitUnlessStatement(command);
@@ -1959,8 +1994,12 @@ class RexxInterpreter {
   async executeSayStatement(sayCommand) {
     const expression = sayCommand.expression;
     
-    // Check if the expression contains concatenation operators (||)
-    if (expression.includes('||')) {
+    // Check if the expression contains concatenation operators (||), or a
+    // term abutting a literal (v"text"), which evaluateConcatenation joins
+    const concatenationTerms = (typeof require !== 'undefined' && typeof module !== 'undefined')
+      ? require('./parser').concatenationTerms
+      : window.concatenationTerms;
+    if (expression.includes('||') || (concatenationTerms(expression) || []).some((t) => t.abut)) {
       // Handle as a concatenation expression
       const result = await this.evaluateConcatenation(expression);
       this.outputHandler.output(String(result));
@@ -2001,9 +2040,10 @@ class RexxInterpreter {
         // Single quoted string (no interpolation)
         outputParts.push(unquoteLiteral(part));
       } else {
-        // Variable reference or literal
+        // Variable reference or literal; a symbol no variable is set for
+        // is its uppercase name (TRL 3.1)
         const resolved = await this.resolveValue(part);
-        outputParts.push(String(resolved));
+        outputParts.push(String(resolved === part ? this.unsetSymbolValue(part) : resolved));
       }
     }
     
@@ -2062,8 +2102,16 @@ class RexxInterpreter {
       condition,
       this.resolveValue.bind(this),
       compareValues,
-      isTruthy
+      isTruthy,
+      (name) => this.unsetSymbolValue(name)
     );
+  }
+
+  // A name that is a function here: built in, an operation, or REQUIREd
+  isKnownFunctionName(name) {
+    const upper = name.toUpperCase();
+    return !!(this.builtInFunctions[upper] || this.operations[upper] ||
+      (this.externalFunctions && (this.externalFunctions[name] || this.externalFunctions[upper])));
   }
 
   isLikelyFunctionName(name) {
@@ -2114,7 +2162,20 @@ class RexxInterpreter {
   async evaluateConcatenation(expression) {
     // Use the extracted evaluateConcatenation function, passing resolveValue, evaluateExpression, and parseExpression
     // This allows proper evaluation of expressions like (a + b) in concatenation contexts
-    const { parseExpression } = require('./parser');
+    const { parseExpression, parseFunctionCall, concatenationTerms } = require('./parser');
+
+    // RexxJS's call without parentheses (LET x = UPPER str1, LET d = DATE
+    // 'S'): the first of blank-separated terms is a function's name, and no
+    // variable's, so the rest are its arguments, not a concatenation.
+    const terms = concatenationTerms(expression);
+    if (terms && terms.length > 1 && !terms[1].abut && !expression.includes('||') &&
+        /^[A-Za-z_]\w*$/.test(terms[0].text) && !this.variables.has(terms[0].text) &&
+        this.isKnownFunctionName(terms[0].text)) {
+      const call = parseFunctionCall(expression);
+      if (call) {
+        return await this.executeFunctionCall(call);
+      }
+    }
     return await evaluateConcatenation(
       expression,
       (variableName) => this.resolveValue(variableName),
@@ -2127,7 +2188,8 @@ class RexxInterpreter {
           // If parsing fails, try resolving as a variable
           return await this.resolveValue(exprStr);
         }
-      }
+      },
+      (name) => this.unsetSymbolValue(name)
     );
   }
   
