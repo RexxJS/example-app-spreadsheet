@@ -615,6 +615,23 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("Paste Special adding, from the edit bar: each number added to what is there") callback {
+            g.enter("K70", "5")
+            g.enter("K71", "7")
+            g.enter("L70", "100")
+            g.enter("L71", "200")
+            g.pick("K", 70)
+            g.key("Shift+Down")
+            g.key("Ctrl+C")
+            spec.assert_true(b.wait_for_console("sheet: copied K70:K71"), "copied")
+            g.pick("L", 70)
+            b.click("Paste adding")
+            spec.assert_true(b.wait_for_console("sheet: pasted values, add at L70"), "pasted adding")
+            spec.assert_true(g.wait_cell("L", 70, "105"), "100 + 5")
+            spec.assert_true(g.wait_cell("L", 71, "207"), "200 + 7")
+            g.command("range.clear range=K70:L71")
+            g.goto("A1")
+        }
         spec.it("Fill series, AutoSum and Paste values, from the edit bar") callback {
             g.enter("A14", "Mon")
             g.enter("B14", "1")

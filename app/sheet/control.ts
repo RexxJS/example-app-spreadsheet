@@ -118,6 +118,16 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Calculate Sheet; the cells out of date; iterative calculation (0 off).
   SETCALCULATION: async (exec, m) => (await must(exec, "formulas.calculation", { mode: text(m) }), (await state(exec)).calculation),
   GETCALCULATION: async (exec) => (await state(exec)).calculation,
+  // The clipboard: a range copied or cut, pasted at a cell (formulas moved).
+  COPY: async (exec, r) => (await must(exec, "edit.copy", { range: text(r) })).message,
+  CUT: async (exec, r) => (await must(exec, "edit.cut", { range: text(r) })).message,
+  PASTE: async (exec, at) => (await must(exec, "edit.paste", { at: text(at) })).message,
+  // Paste Special at a cell: what (all, formulas, values, formats,
+  // comments), an operation (add, subtract, multiply, divide), skip blanks,
+  // transpose; what was copied (COPY, or the page's Copy).
+  PASTESPECIAL: async (exec, at, what, op, skip, turn) => (await must(exec, "edit.pasteSpecial", {
+    at: text(at), what: text(what) || "all", ...(text(op).trim() ? { operation: text(op).trim() } : {}), ...(yes(skip) ? { skipBlanks: "1" } : {}), ...(yes(turn) ? { transpose: "1" } : {}),
+  })).message,
   // The status bar's figures for a range: its line, or one figure (sum,
   // average, count, numbers, min, max).
   SELECTIONSTATS: async (exec, r, which) => {

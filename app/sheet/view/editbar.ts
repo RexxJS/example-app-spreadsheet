@@ -38,6 +38,10 @@ export function editBar(v: SheetView): void {
     v.btn("Paste values", () => v.run("edit.pasteSpecial", { at: at(), what: "values" }));
     v.btn("Paste formats", () => v.run("edit.pasteSpecial", { at: at(), what: "formats" }));
     v.btn("Paste transposed", () => v.run("edit.pasteSpecial", { at: at(), what: "all", transpose: "true" }));
+    v.btn("Paste comments", () => v.run("edit.pasteSpecial", { at: at(), what: "comments" }));
+    v.btn("Paste adding", () => v.run("edit.pasteSpecial", { at: at(), what: "values", operation: "add" }));
+    v.btn("Paste multiplying", () => v.run("edit.pasteSpecial", { at: at(), what: "values", operation: "multiply" }));
+    v.btn("Paste skipping blanks", () => v.run("edit.pasteSpecial", { at: at(), what: "all", skipBlanks: "1" }));
     v.btn("Clear formats", () => v.run("range.clearFormats", { range: v.range() }));
     v.btn("Clear comments", () => v.run("range.clearComments", { range: v.range() }));
     v.btn("Clear cells", () => v.run("range.clearAll", { range: v.range() }));

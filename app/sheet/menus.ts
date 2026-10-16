@@ -38,7 +38,8 @@ export const MENUS: readonly Menu[] = [
   { label: "Edit", items: [
     i("Undo", "edit.undo", "Ctrl+Z"), i("Redo", "edit.redo", "Ctrl+Y"), "-",
     i("Cut", "edit.cut", "Ctrl+X"), i("Copy", "edit.copy", "Ctrl+C"), i("Paste", "edit.paste", "Ctrl+V"),
-    i("Paste values", "edit.pasteSpecial"), i("Paste formats", "edit.pasteSpecial"), i("Paste transposed", "edit.pasteSpecial"), "-",
+    i("Paste values", "edit.pasteSpecial"), i("Paste formats", "edit.pasteSpecial"), i("Paste transposed", "edit.pasteSpecial"),
+    i("Paste comments", "edit.pasteSpecial"), i("Paste adding", "edit.pasteSpecial"), i("Paste multiplying", "edit.pasteSpecial"), i("Paste skipping blanks", "edit.pasteSpecial"), "-",
     i("Fill Down", "edit.fillDown", "Ctrl+D"), i("Fill Right", "edit.fillRight", "Ctrl+R"), i("Fill Up", "edit.fillUp"), i("Fill Left", "edit.fillLeft"), i("Fill series", "edit.fillSeries"), "-",
     i("Clear contents", "range.clear", "Delete"), i("Clear cells", "range.clearAll"), i("Clear formats", "range.clearFormats"), i("Clear comments", "range.clearComments"), "-",
     i("Delete row", "rows.delete"), i("Delete column", "columns.delete"), i("Delete sheet", "sheet.delete"), "-",

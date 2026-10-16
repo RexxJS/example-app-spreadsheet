@@ -792,31 +792,49 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "edit.pasteSpecial", label: "Paste Special", params: ["at", "what"], optional: ["transpose"], journaled: true,
+    // Paste Special, as Excel's dialog: what (all, formulas, values,
+    // formats, comments), an operation with what is there (add, subtract,
+    // multiply, divide: numbers worked, a formula there wrapped as
+    // =(formula)+n), skip blanks (an empty copied cell leaves its target),
+    // and transpose.
+    id: "edit.pasteSpecial", label: "Paste Special", params: ["at", "what"], optional: ["transpose", "operation", "skipBlanks"], journaled: true,
     run: async (wb, p) => {
       const at = rangeOf(p.at)[0];
       const clip = wb.clip ?? refuse("nothing copied");
       const what = p.what.toLowerCase();
-      if (!["values", "formulas", "formats", "all"].includes(what)) refuse(`${p.what} is not values, formulas, formats or all`);
-      const turned = flag(p.transpose);
+      if (!["values", "formulas", "formats", "comments", "all"].includes(what)) refuse(`${p.what} is not all, formulas, values, formats or comments`);
+      const op = (p.operation ?? "none").toLowerCase();
+      const ops: Record<string, (a: number, b: number) => number> = { add: (a, b) => a + b, subtract: (a, b) => a - b, multiply: (a, b) => a * b, divide: (a, b) => a / b };
+      const sign: Record<string, string> = { add: "+", subtract: "-", multiply: "*", divide: "/" };
+      if (op !== "none" && !ops[op]) refuse(`${p.operation} is not an operation (none, add, subtract, multiply, divide)`);
+      if (op !== "none" && (what === "formats" || what === "comments")) refuse(`an operation pastes values or formulas, not ${what}`);
+      const turned = flag(p.transpose), skip = flag(p.skipBlanks);
       const entries: [string, string][] = [];
       clip.inputs.forEach((row, i) => row.forEach((input, j) => {
         const to = { col: at.col + (turned ? i : j), row: at.row + (turned ? j : i) };
         if (to.col >= COLS || to.row >= ROWS) return;
+        if (skip && input === "") return;
         const by = { cols: to.col - (clip.from.col + j), rows: to.row - (clip.from.row + i) };
         const key = keyOf(to);
-        if (what === "values") entries.push([key, clip.shown[i][j]]);
-        if (what === "formulas" || what === "all") entries.push([key, movedBy(clip.language, input, by)]);
+        let pasting = what === "values" ? clip.shown[i][j] : what === "formulas" || what === "all" ? movedBy(clip.language, input, by) : null;
+        if (pasting !== null && op !== "none") {
+          // The operation with the copied cell's value and the target's.
+          const src = clip.shown[i][j], n = src === "" ? 0 : Number(src), there = wb.sheet.input(key), v = wb.sheet.value(key);
+          if (!isNaN(n) && there.startsWith("=")) pasting = `=(${there.slice(1)})${sign[op]}${n}`;
+          else if (!isNaN(n) && (v === null || typeof v === "number")) pasting = String(ops[op]((v as number | null) ?? 0, n));
+        }
+        if (pasting !== null) entries.push([key, pasting]);
+        const n = clip.notes[i][j];
         if (what === "formats" || what === "all") {
-          const n = clip.notes[i][j];
           wb.notes.set(key, {
             format: n.format ?? "", style: n.style ?? "", look: n.look,
             styleExpression: n.styleExpression ? movedBy(clip.language, `=${n.styleExpression}`, by).slice(1) : "",
-            ...(what === "all" ? { comment: n.comment ?? "" } : {}),
           });
         }
+        if (what === "comments" || what === "all") wb.notes.set(key, { comment: n.comment ?? "" });
       }));
-      return setting(wb, entries, `pasted ${what}${turned ? ", transposed," : ""} at ${keyOf(at)}`);
+      const how = [what, op !== "none" ? op : "", skip ? "skipping blanks" : "", turned ? "transposed" : ""].filter((x) => x).join(", ");
+      return setting(wb, entries, `pasted ${how} at ${keyOf(at)}`);
     },
   },
   {
