@@ -517,6 +517,24 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("Error checking lists what to check; Ignore passes over one") callback {
+            g.command("formulas.use language=Excel")
+            spec.assert_true(b.wait_for_console("sheet: Excel formulas"), "Excel formulas")
+            g.enter("K40", "=1/0")
+            g.enter("L40", "'42")
+            b.click("Error checking")
+            spec.assert_true(b.wait_for_console("to check:"), "checked")
+            spec.assert_true(b.wait_for_text("K40 error: #DIV/0! divide by zero"), "the error, listed")
+            spec.assert_true(b.wait_for_text("L40 text-number: a number stored as text"), "the number as text")
+            b.click("Ignore L40")
+            spec.assert_true(b.wait_for_console("sheet: L40: error ignored"), "ignored")
+            spec.assert_true(b.wait_for_text_gone("L40 text-number: a number stored as text"), "checked again, L40 gone from the list")
+            spec.assert_true(b.has_text("K40 error: #DIV/0! divide by zero"), "K40 still there")
+            g.command("range.clear range=K40:L40")
+            g.command("formulas.use language=RexxJS")
+            spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
+            g.goto("A1")
+        }
         spec.it("Fill series, AutoSum and Paste values, from the edit bar") callback {
             g.enter("A14", "Mon")
             g.enter("B14", "1")

@@ -36,6 +36,7 @@ import type { Edit, Scope } from "./shift.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows } from "./sortfind.ts";
 import { distinctRows, secant, splitText } from "./whatif.ts";
 import { criterion } from "./functions.ts";
+import { errorCheck } from "./errorcheck.ts";
 
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
@@ -1486,6 +1487,28 @@ const SPECS: readonly Spec[] = [
       const changed = await recalculated(wb);
       const n = wb.pages().reduce((t, page) => t + page.sheet.keys().filter((k) => page.sheet.input(k).startsWith("=")).length, 0);
       return { ...await changedBy(wb, changed, `${n} formula${n === 1 ? "" : "s"} worked out`), output: n };
+    },
+  },
+  {
+    // Error Checking over the active sheet: formulas come to an error,
+    // inconsistent with those beside them, omitting a number next to their
+    // range, and numbers stored as text (errorcheck.ts); a cell ignored is
+    // passed over.
+    id: "formulas.errorCheck", label: "Error Checking", params: [], journaled: false,
+    run: async (wb) => {
+      const found = errorCheck(wb.sheet, new Set(wb.notes.keys().filter((k) => wb.notes.get(k).ignoreError)));
+      const message = found.length ? `${found.length} to check: ${found.map((f) => `${f.cell} ${f.check}`).join(", ")}` : "no errors found";
+      return { ok: true, message, changed: [], output: found };
+    },
+  },
+  {
+    // Ignore Error: Error Checking passes over the cell from now on; off,
+    // it checks it again.
+    id: "formulas.ignoreError", label: "Ignore Error", params: ["cell"], optional: ["off"], journaled: true,
+    run: async (wb, p) => {
+      const key = cellOf(p.cell);
+      wb.notes.set(key, { ignoreError: flag(p.off) ? undefined : true });
+      return changedBy(wb, [key], `${key}: ${flag(p.off) ? "checked again" : "error ignored"}`);
     },
   },
   {

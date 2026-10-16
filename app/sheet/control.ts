@@ -117,6 +117,10 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Calculate Sheet; the cells out of date; iterative calculation (0 off).
   SETCALCULATION: async (exec, m) => (await must(exec, "formulas.calculation", { mode: text(m) }), (await state(exec)).calculation),
   GETCALCULATION: async (exec) => (await state(exec)).calculation,
+  // Error Checking: a stem of "cell check message" lines (check: error,
+  // inconsistent, text-number, omits); Ignore Error, and checked again.
+  ERRORCHECK: async (exec) => stem(((await must(exec, "formulas.errorCheck")).output as { cell: string; check: string; message: string }[]).map((f) => `${f.cell} ${f.check} ${f.message}`)),
+  IGNOREERROR: async (exec, c, off) => (await must(exec, "formulas.ignoreError", { cell: text(c), ...(yes(off) ? { off: "1" } : {}) }), ""),
   CALCULATE: async (exec) => (await must(exec, "formulas.recalculate")).output,
   CALCULATESHEET: async (exec) => (await must(exec, "formulas.calculateSheet")).output,
   STALECELLS: async (exec) => stem((await state(exec)).stale),

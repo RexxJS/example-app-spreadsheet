@@ -193,6 +193,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   RECALCULATE: fn([], "Works every formula out again", "how many there were"),
   SETCALCULATION: fn([p("mode", "text", "Automatic or Manual")], "Sets how formulas are worked out: on every change, or only when calculated (CALCULATE)", "the mode now"),
   GETCALCULATION: fn([], "How formulas are worked out", "Automatic or Manual"),
+  ERRORCHECK: fn([], "Error Checking over the active sheet: formulas that come to an error, are inconsistent with those beside them or omit a number next to their range, and numbers stored as text", "a stem of \"cell check message\" lines, check one of error, inconsistent, text-number, omits"),
+  IGNOREERROR: fn([p("cell", "cell"), opt("off", "flag", "1 to check it again")], "Error Checking passes over the cell", "\"\""),
   CALCULATE: fn([], "Calculate Now: every sheet's formulas worked out", "how many there were"),
   CALCULATESHEET: fn([], "Calculate Sheet: the active sheet's formulas worked out", "how many there were"),
   STALECELLS: fn([], "The cells out of date under manual calculation", "a stem of cells, each with its sheet (Sheet1!B2)"),

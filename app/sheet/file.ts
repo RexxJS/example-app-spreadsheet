@@ -75,6 +75,7 @@ interface FileCell {
   readonly validation?: Record<string, unknown> | null;
   readonly look?: Record<string, unknown> | null;
   readonly editor?: unknown;
+  readonly ignoreError?: unknown;
 }
 
 type Cells = Record<string, string | FileCell>;
@@ -105,6 +106,7 @@ function noteOf(c: string | FileCell): Note {
   if (c.look && typeof c.look === "object") note.look = c.look;
   const editor = editorIn(c.editor);
   if (editor) note.editor = editor;
+  if (c.ignoreError === true) note.ignoreError = true;
   return note;
 }
 

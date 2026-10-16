@@ -3,12 +3,20 @@
 // remove the arrows; Show Formulas (on, then off); Evaluate Formula's steps; and the Watch
 // Window, the cells watched on any sheet as they change. And Calculation
 // Options: manual calculation (on, then off), Calculate now (F9) and
-// Calculate sheet (Shift+F9), iterative calculation (on, then off).
+// Calculate sheet (Shift+F9), iterative calculation (on, then off). Error
+// checking lists what to check on the sheet, each with Go to and Ignore.
+import { parseRange } from "../address.ts";
+import type { Finding } from "../errorcheck.ts";
 import type { Watch } from "../workbook.ts";
 import type { SheetView } from "./view.ts";
 
 export function auditBar(v: SheetView): void {
   const steps = state("");
+  const findings = state<Finding[]>([]);
+  const check = async () => {
+    const o = await v.run("formulas.errorCheck");
+    findings.set(o.ok ? o.output as Finding[] : []);
+  };
   ui.hstack(() => {
     ui.btn("Trace precedents", () => v.run("formulas.tracePrecedents", { cell: v.here() }));
     ui.btn("Trace dependents", () => v.run("formulas.traceDependents", { cell: v.here() }));
@@ -25,7 +33,16 @@ export function auditBar(v: SheetView): void {
     ui.btn("Calculate now", () => v.run("formulas.recalculate"));
     ui.btn("Calculate sheet", () => v.run("formulas.calculateSheet"));
     ui.btn("Iterative calculation", () => v.run("formulas.iteration", v.wb.calculation.iterate ? { off: "1" } : {}));
+    ui.btn("Error checking", check);
   });
+  each(findings, (f: Finding) => `${f.cell} ${f.check}`, (f: Finding) => ui.hstack(() => {
+    ui.text(`${f.cell} ${f.check}: ${f.message}`);
+    ui.btn(`Go to ${f.cell}`, () => v.select(parseRange(f.cell)!));
+    ui.btn(`Ignore ${f.cell}`, async () => {
+      await v.run("formulas.ignoreError", { cell: f.cell });
+      await check();
+    });
+  }));
   bind(ui.text_wrapped("", 720), steps);
   each(v.watches, (w: Watch) => `${w.sheet}!${w.cell}`, (w: Watch) => ui.hstack(() => {
     ui.text(`Watch ${w.sheet}!${w.cell}: ${w.input} = ${w.shown}`);

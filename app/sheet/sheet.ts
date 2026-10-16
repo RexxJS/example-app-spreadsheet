@@ -46,6 +46,8 @@ const NUMERIC = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$/;
 export function compile(input: string, language: Language = EXCEL, names?: Names, tables?: Tables, formulas?: Formulas, at?: string): Compiled {
   if (input.startsWith("=")) return language.compile(input.slice(1), names, tables, formulas, at);
   if (input === "") return { kind: "constant", value: null };
+  // An apostrophe in front keeps what follows text, as typed: '42.
+  if (input.startsWith("'")) return { kind: "constant", value: input.slice(1) };
   return { kind: "constant", value: NUMERIC.test(input) ? Number(input) : input };
 }
 

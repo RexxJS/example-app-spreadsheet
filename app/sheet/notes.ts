@@ -3,7 +3,8 @@
 // style, and a conditional style (an
 // expression in the sheet's language whose value is a style, worked out
 // with the sheet: STYLE_IF(C5 < 0, RED_TEXT(), GREEN_TEXT()) in RexxJS
-// formulas, IF(C5 < 0, "color: red", "") in Excel ones).
+// formulas, IF(C5 < 0, "color: red", "") in Excel ones), and whether Error
+// Checking ignores it.
 import { addrOf, keyOf } from "./address.ts";
 import type { Addr } from "./address.ts";
 import type { Rule } from "./validation.ts";
@@ -18,6 +19,8 @@ export interface Note {
   readonly styleExpression?: string;
   readonly look?: Look;
   readonly editor?: CellEditor;
+  // Error Checking passes over the cell (Ignore Error).
+  readonly ignoreError?: true;
 }
 
 export class CellNotes {
