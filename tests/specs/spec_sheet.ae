@@ -692,6 +692,17 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("two areas cleared by one command, and undone as one step") callback {
+            g.enter("K150", "1")
+            g.enter("M152", "2")
+            g.command("range.clear range=K150,M152")
+            spec.assert_true(b.wait_for_console("sheet: cleared K150:K150: 1 cells set, 1 changed; cleared M152:M152"), "both")
+            spec.assert_true(g.wait_cell("M", 152, ""), "M152 empty")
+            g.command("edit.undo")
+            spec.assert_true(g.wait_cell("K", 150, "1"), "K150 back")
+            spec.assert_true(g.wait_cell("M", 152, "2"), "and M152, one step")
+            g.command("range.clear range=K150:M152")
+        }
         spec.it("a whole column selected, Delete clears it, and undo") callback {
             g.enter("P5", "1")
             g.enter("P90", "2")

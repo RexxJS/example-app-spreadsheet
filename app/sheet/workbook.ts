@@ -875,10 +875,15 @@ export class Workbook {
   // What the status bar says of a range, as Excel's: the average, count
   // (cells not empty), numerical count, min, max and sum of its numbers;
   // nothing but the count when it has no numbers.
-  stats(r: [Addr, Addr]): Stats {
-    const lo = { col: Math.min(r[0].col, r[1].col), row: Math.min(r[0].row, r[1].row) }, hi = { col: Math.max(r[0].col, r[1].col), row: Math.max(r[0].row, r[1].row) };
-    const values: Value[] = [];
-    for (let row = lo.row; row <= hi.row; row++) for (let col = lo.col; col <= hi.col; col++) values.push(this.sheet.value(keyOf({ col, row })));
+  // Several areas (a multiple selection): each cell once.
+  stats(r: [Addr, Addr] | readonly [Addr, Addr][]): Stats {
+    const areas = (Array.isArray(r[0]) ? r : [r]) as readonly [Addr, Addr][];
+    const keys = new Set<string>();
+    for (const [a, b] of areas) {
+      const lo = { col: Math.min(a.col, b.col), row: Math.min(a.row, b.row) }, hi = { col: Math.max(a.col, b.col), row: Math.max(a.row, b.row) };
+      for (let row = lo.row; row <= hi.row; row++) for (let col = lo.col; col <= hi.col; col++) keys.add(keyOf({ col, row }));
+    }
+    const values: Value[] = [...keys].map((k) => this.sheet.value(k));
     const nums = values.filter((v): v is number => typeof v === "number");
     const sum = nums.reduce((t, n) => t + n, 0);
     return {

@@ -85,6 +85,11 @@ interface Spec {
   run(wb: Workbook, p: Params, store: Store): Promise<Outcome>;
 }
 
+// The commands that run over each area of a multiple selection
+// ("A1:B2,D4:D9") as one step.
+const AREAS = new Set(["range.clear", "range.clearFormats", "range.clearComments", "range.clearAll", "format.font", "format.align", "format.fill",
+  "format.color", "format.number", "format.border", "format.wrap", "validation.set", "validation.clear", "rows.hide", "rows.unhide", "columns.hide", "columns.unhide"]);
+
 // A command that cannot run as asked: its message is the Outcome's.
 class Refused extends Error {}
 const refuse = (message: string): never => { throw new Refused(message); };
@@ -1676,8 +1681,8 @@ const SPECS: readonly Spec[] = [
     // ("3:5"), or all ("all"); the page selects it. A view, not a step.
     id: "view.select", label: "Select", params: ["range"], journaled: false,
     run: async (wb, p) => {
-      const r = /^\s*all\s*$/i.test(p.range) ? [{ col: 0, row: 0 }, { col: COLS - 1, row: ROWS - 1 }] as [Addr, Addr] : rangeOf(p.range);
-      wb.selection = rangeName(r);
+      const rs = /^\s*all\s*$/i.test(p.range) ? [[{ col: 0, row: 0 }, { col: COLS - 1, row: ROWS - 1 }] as [Addr, Addr]] : p.range.split(",").map((a) => rangeOf(a.trim()));
+      wb.selection = rs.map(rangeName).join(",");
       wb.selecting = true;
       return { ok: true, message: `selected ${wb.selection}`, changed: [], output: wb.selection };
     },
@@ -1734,7 +1739,7 @@ const SPECS: readonly Spec[] = [
     // count, min, max, sum.
     id: "range.stats", label: "Status Bar figures", params: ["range"], journaled: false,
     run: async (wb, p) => {
-      const st = wb.stats(rangeOf(p.range));
+      const st = wb.stats(p.range.split(",").map((a) => rangeOf(a.trim())));
       return { ok: true, message: statsLine(st), changed: [], output: st };
     },
   },
@@ -2117,7 +2122,11 @@ export class Commands {
       // The workbook as it was, kept as a step to undo once the command has
       // changed it.
       const before = spec!.journaled && !spec!.unstepped ? this.#wb.saved() : null;
-      const outcome = await spec!.run(this.#wb, params, this.#store);
+      // Several areas ("A1:B2,D4:D9", a multiple selection): the command
+      // over each, every one read first, as one step and one line.
+      const areas = AREAS.has(id) && params.range?.includes(",") ? params.range.split(",").map((a) => a.trim()) : null;
+      if (areas) for (const a of areas) rangeOf(a);
+      const outcome = areas ? await this.#overAreas(spec!, params, areas) : await spec!.run(this.#wb, params, this.#store);
       if (outcome.ok && before) this.#wb.changed(before, spec!.label);
       if (outcome.ok && spec!.journaled) this.#journal.push(lineOf(id, params));
       return outcome;
@@ -2125,6 +2134,16 @@ export class Commands {
       if (e instanceof Refused || e instanceof RangeError) return { ok: false, message: e.message, changed: [] };
       throw e;
     }
+  }
+
+  async #overAreas(spec: Spec, params: Params, areas: readonly string[]): Promise<Outcome> {
+    const outs: Outcome[] = [];
+    for (const range of areas) {
+      const o = await spec.run(this.#wb, { ...params, range }, this.#store);
+      if (!o.ok) return o;
+      outs.push(o);
+    }
+    return { ok: true, message: outs.map((o) => o.message).join("; "), changed: [...new Set(outs.flatMap((o) => o.changed))] };
   }
 
   run(line: string): Promise<Outcome> {

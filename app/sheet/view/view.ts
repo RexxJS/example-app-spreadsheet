@@ -192,7 +192,8 @@ export class SheetView {
     }
     if (this.grid && this.wb.selecting) {
       this.wb.selecting = false;
-      const r = parseRange(this.wb.selection);
+      // The grid selects one area: the first of several.
+      const r = parseRange(this.wb.selection.split(",")[0]);
       // Selected, the grid has the keys (Delete clears it), as after the
       // Name Box.
       if (r) {
