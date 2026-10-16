@@ -74,6 +74,7 @@ function printed(n: Node): string {
     case "spill": return `${e.name}#`;
     case "range": return `${e.from}${e.trim === "leading" ? ".:" : e.trim === "trailing" ? ":." : e.trim === "both" ? ".:." : ":"}${e.to}`;
     case "at": return `@${wrap(n.kids[0], level(n.kids[0]) < ATOM)}`;
+    case "span3d": return `${e.first}:${e.last}!${e.from === e.to ? e.from : `${e.from}:${e.to}`}`;
     case "table": return e.text;
     case "neg": return `-${wrap(n.kids[0], level(n.kids[0]) < NEG)}`;
     case "binary": {

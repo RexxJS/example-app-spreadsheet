@@ -128,6 +128,27 @@ await cmds.run("sheet.activate name=Totals");
 await cmds.run("rows.hide range=A4");
 eq("from another sheet too", on("Data", "I8"), "60");
 
+// 3-D references: the same cells on every sheet from one to another in
+// tab order, in SUM and its friends; they follow a change on any of them,
+// the order (a sheet moved out of the span), and a rename.
+for (const [n, v] of [["Jan", "10"], ["Feb", "20"], ["Mar", "30"]]) {
+  await cmds.run(`sheet.add name=${n}`);
+  await cmds.run(`cell.set cell=A1 input=${v}`);
+  await cmds.run("cell.set cell=A2 input=1");
+}
+await cmds.run("sheet.activate name=Totals");
+for (const [k, f] of [["B1", "=SUM(Jan:Mar!A1)"], ["B2", "=SUM(Jan:Mar!A1:A2)"], ["B3", "=COUNT(Mar:Jan!A1)"], ["B4", "=AVERAGE('Jan:Feb'!A1)"], ["B5", "=MAX(Jan:Mar!A1) - MIN(Jan:Mar!A1)"], ["B6", "=SUM(Jan:Nope!A1)"]]) {
+  await cmds.run(`cell.set cell=${k} input="${f}"`);
+}
+eq("3-D references in SUM, COUNT (either way round), AVERAGE, MAX and MIN; a sheet that is not there", ["B1", "B2", "B3", "B4", "B5", "B6"].map((k) => on("Totals", k)), ["60", "63", "3", "15", "20", "#REF!"]);
+await cmds.run("sheet.activate name=Feb");
+await cmds.run("cell.set cell=A1 input=25");
+eq("a change on a sheet between shows", on("Totals", "B1"), "65");
+await cmds.run(`sheet.move name=Feb to=${wb.sheetNames().indexOf("Jan") + 1}`);
+eq("Feb moved before Jan is out of the span", [wb.sheetNames().slice(-3), on("Totals", "B1")], [["Feb", "Jan", "Mar"], "40"]);
+await cmds.run("sheet.rename name=Jan to=January");
+eq("a rename carries the reference along, the other end as typed, quoted only when it needs it", [wb.page("Totals")!.sheet.input("B1"), wb.page("Totals")!.sheet.input("B4"), on("Totals", "B1")], ["=SUM(January:Mar!A1)", "=AVERAGE(January:Feb!A1)", "40"]);
+
 // expect: ok sheet.move to a place, or a way
 // expect: ok the active sheet stays active
 // expect: ok refusals: past either end, neither or both, no such sheet
@@ -160,3 +181,7 @@ eq("from another sheet too", on("Data", "I8"), "60");
 // expect: ok rows a filter hides (the range's first row its header): every form skips them
 // expect: ok the filter cleared, back
 // expect: ok from another sheet too
+// expect: ok 3-D references in SUM, COUNT (either way round), AVERAGE, MAX and MIN; a sheet that is not there
+// expect: ok a change on a sheet between shows
+// expect: ok Feb moved before Jan is out of the span
+// expect: ok a rename carries the reference along, the other end as typed, quoted only when it needs it

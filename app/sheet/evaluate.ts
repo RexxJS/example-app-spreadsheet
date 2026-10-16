@@ -253,6 +253,8 @@ class Evaluator {
       }
       case "at":
         return this.#intersect(e.arg);
+      case "span3d":
+        return this.#span3d(e);
       // A table reference: its cells as the table is now (its header row
       // read for a column's name); one cell is its value.
       case "table": {
@@ -528,6 +530,27 @@ class Evaluator {
   #scalar(e: Expr): Value {
     const r = collapsed(this.result(e));
     return isArray(r) ? fail("#VALUE!", "an array where one value goes") : r;
+  }
+
+  // A 3-D reference's cells: each sheet's from the first to the last in
+  // tab order (either way round), stacked sheet under sheet; each told
+  // the Env, as the sheets between are the workbook's to say.
+  #span3d(e: Extract<Expr, { kind: "span3d" }>): Result {
+    const { sheets } = this.#book();
+    const at = (name: string) => sheets.findIndex((s) => s.toUpperCase() === name);
+    const i = at(e.first), j = at(e.last);
+    if (i < 0 || j < 0) return fail("#REF!", `no sheet ${i < 0 ? e.first : e.last}`);
+    const a = cellAddr(e.from), b = cellAddr(e.to);
+    if (!a || !b) return fail("#REF!", `${a ? e.to : e.from} is not on the sheet`);
+    const keys = [...range(a, b)], width = Math.abs(a.col - b.col) + 1, values: Value[] = [];
+    for (let s = Math.min(i, j); s <= Math.max(i, j); s++) {
+      for (const k of keys) {
+        const key = `${sheets[s].toUpperCase()}!${k}`;
+        this.#env.read?.(key);
+        values.push(this.#env.get(key));
+      }
+    }
+    return values.length === 1 ? values[0] : array(values.length / width, width, values);
   }
 
   // @x: of a range, the cell in the formula's own row (a column), its own

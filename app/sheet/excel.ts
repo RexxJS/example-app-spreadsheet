@@ -65,6 +65,9 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
 function calls(e: Expr, forms: ReadonlySet<string>, seen: Set<string> = new Set()): boolean {
   switch (e.kind) {
     case "call": return forms.has(e.name) || e.args.some((a) => calls(a, forms, seen));
+    // A 3-D reference's sheets are the workbook's tab order: it is worked
+    // out again on every change, as OFFSET is.
+    case "span3d": return forms === VOLATILE_FORMS;
     case "neg":
     case "at":
       return calls(e.arg, forms, seen);
@@ -144,6 +147,18 @@ function renamed(input: string, from: string, to: string): string {
   }
   let out = "", at = 0;
   for (const t of toks) {
+    // A 3-D reference with the sheet at either end: that end renamed, the
+    // other as typed, quoted when either needs it.
+    const sheets = t.kind === "ref" ? splitKey(t.name).sheet : null;
+    if (t.kind === "ref" && sheets !== null && sheets.includes(":")) {
+      if (!sheets.split(":").includes(from)) continue;
+      const bang = t.text.lastIndexOf("!"), typed = t.text.slice(0, bang).replace(/^'|'$/g, "").split(":");
+      const ends = typed.map((n) => (n.toUpperCase() === from ? to : n));
+      const both = ends.join(":");
+      out += input.slice(at, t.at) + (ends.every((n) => /^[A-Za-z_]\w*$/.test(n)) ? `${both}!` : `'${both}'!`) + t.text.slice(bang + 1);
+      at = t.at + t.text.length;
+      continue;
+    }
     // A cell there, or one of its own names (Costs!QTY).
     if ((t.kind !== "ref" && !(t.kind === "name" && t.name.includes("!"))) || splitKey(t.name).sheet !== from) continue;
     out += input.slice(at, t.at) + sheetPrefix(to) + t.text.slice(t.text.lastIndexOf("!") + 1);

@@ -44,8 +44,9 @@ const WORD = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*/;
 // Costs!B2, is a reference; a call, Costs!F(, is not this).
 const SHEET_NAME = /^(?:([A-Za-z_]\w*)|'([^']+)')!([A-Za-z_][A-Za-z0-9_]*)(?![\w(])/;
 // A reference, perhaps on another sheet: Costs!B2, 'My Costs'!$B$2; A1#
-// is the whole of what A1 spills.
-const REF = /^(?:(?:([A-Za-z_]\w*)|'([^']+)')!)?(\$?)([A-Za-z]+)(\$?)([0-9]+)(?![A-Za-z0-9_])(#(?![A-Za-z/]))?/;
+// is the whole of what A1 spills. A 3-D one spans sheets in tab order,
+// Jan:Mar!A1 or 'Jan 24:Mar 24'!A1 (its sheet "JAN:MAR" in the key).
+const REF = /^(?:(?:([A-Za-z_]\w*(?::[A-Za-z_]\w*)?)|'([^']+)')!)?(\$?)([A-Za-z]+)(\$?)([0-9]+)(?![A-Za-z0-9_])(#(?![A-Za-z/]))?/;
 // The errors a formula can be written with (a copy writes #REF! for a
 // reference it moved off the sheet).
 const ERRORS: readonly ErrorCode[] = ["#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#CALC!"];

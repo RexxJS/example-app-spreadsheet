@@ -23,6 +23,9 @@ export type Expr =
   | { readonly kind: "ref"; readonly name: string }
   // A trim ref (A1:.E10) trims empty rows and columns from that end.
   | { readonly kind: "range"; readonly from: string; readonly to: string; readonly trim?: "leading" | "trailing" | "both" }
+  // A 3-D reference: the same cell or range on every sheet from `first`
+  // to `last` (upper case) in the workbook's tab order, then.
+  | { readonly kind: "span3d"; readonly first: string; readonly last: string; readonly from: string; readonly to: string }
   // Implicit intersection: @A1:A9, the cell in the formula's own row.
   | { readonly kind: "at"; readonly arg: Expr }
   | { readonly kind: "spill"; readonly name: string }
@@ -248,6 +251,18 @@ class Parser {
     return this.#primary();
   }
 
+  // Jan:Mar!A1, or Jan:Mar!A1:B2 (the second corner on no sheet of its own).
+  #span3d(t: Extract<Token, { kind: "ref" }>, sheets: string): Expr {
+    if (t.spill) throw new FormulaError(t.at, "a 3-D reference does not spill");
+    const [first, last] = sheets.split(":"), cell = splitKey(t.name).cell;
+    if (this.#tok.kind !== ":") return { kind: "span3d", first, last, from: cell, to: cell };
+    this.#next();
+    const to = this.#tok;
+    if (to.kind !== "ref" || splitKey(to.name).sheet !== null) throw new FormulaError(to.at, `expected a cell after ':' but found ${shown(to)}`);
+    this.#next();
+    return { kind: "span3d", first, last, from: cell, to: to.name };
+  }
+
   // A named formula by its name, or null when there is none.
   #named(name: string): Expr | null {
     const text = this.#formulas(name);
@@ -306,6 +321,8 @@ class Parser {
         return table ? { kind: "table", table, spec, row: this.#row, text: t.text } : { kind: "error", code: "#REF!", why: `no table ${t.text.slice(0, t.text.indexOf("["))}` };
       }
       case "ref": {
+        const sheets = splitKey(t.name).sheet;
+        if (sheets !== null && sheets.includes(":")) return this.#span3d(t, sheets);
         if (t.spill) return { kind: "spill", name: t.name };
         if (this.#tok.kind !== ":") return { kind: "ref", name: t.name };
         const trim = (this.#tok as { trim?: "leading" | "trailing" | "both" }).trim;
