@@ -10,6 +10,9 @@ import type { Outcome, Params } from "../commands.ts";
 import type { Problem } from "../sheet.ts";
 import { Workbook } from "../workbook.ts";
 import { COLUMN_WIDTH } from "./grid.ts";
+
+// aether-ui's datagrid's own row height, which a zoom scales.
+const ROW_HEIGHT = 24;
 import type { ChartView, Watch } from "../workbook.ts";
 import { statsLine } from "../workbook.ts";
 import type { CellEditor } from "../editors.ts";
@@ -127,7 +130,7 @@ export class SheetView {
     const sel = this.grid ? this.selection() : null;
     const many = sel && (sel[0].col !== sel[1].col || sel[0].row !== sel[1].row);
     const cells = this.wb.sheet.keys().length;
-    const bar = [many ? statsLine(this.wb.stats(sel!)) : "Ready", `${cells} cell${cells === 1 ? "" : "s"}`, this.wb.calculation.manual && this.wb.stale().length ? "Calculate" : "", this.bus ? "Control bus" : ""];
+    const bar = [many ? statsLine(this.wb.stats(sel!)) : "Ready", `${cells} cell${cells === 1 ? "" : "s"}`, `Zoom ${this.wb.zoom}%`, this.wb.calculation.manual && this.wb.stale().length ? "Calculate" : "", this.bus ? "Control bus" : ""];
     batch(() => {
       this.figures.set(bar.filter((x) => x).join("  ·  "));
       this.input.set(this.wb.shownInput(key));
@@ -193,7 +196,7 @@ export class SheetView {
 
   // Columns set to a width that width; columns no longer set the grid's.
   #sizeCols(): void {
-    const set = new Map(this.wb.colWidths());
+    const set = new Map(this.wb.shownColWidths(COLUMN_WIDTH));
     for (const [c] of this.#sized) if (!set.has(c)) ui.datagrid_set_col_width(this.grid, this.viewCol(c + 1), COLUMN_WIDTH);
     for (const [c, w] of set) if (this.#sized.get(c) !== w) ui.datagrid_set_col_width(this.grid, this.viewCol(c + 1), w);
     this.#sized = set;
@@ -224,7 +227,7 @@ export class SheetView {
   // Rows set to a height that height; other rows with wrapped text as tall
   // as it; rows no longer either as tall as the grid's.
   #fitRows(): void {
-    const set = new Map(this.wb.rowHeights()), wrapped = new Set(this.wb.wrapped().filter((r) => !set.has(r)));
+    const set = new Map(this.wb.shownRowHeights(ROW_HEIGHT)), wrapped = new Set(this.wb.wrapped().filter((r) => !set.has(r)));
     for (const r of this.#fitted) if (!set.has(r) && !wrapped.has(r)) ui.datagrid_set_row_height(this.grid, r, 0);
     for (const [r, h] of set) ui.datagrid_set_row_height(this.grid, r, h);
     for (const r of wrapped) ui.datagrid_fit_row(this.grid, r);

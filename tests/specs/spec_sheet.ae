@@ -651,6 +651,18 @@ main() {
             g.command("formulas.use language=RexxJS")
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
         }
+        spec.it("Zoom: the grid's columns scaled, and the status bar says it") callback {
+            w0 = uidriver.widget_int_field_by_id(g.header_id("C"), "w")
+            b.click("Zoom in")
+            spec.assert_true(b.wait_for_console("sheet: zoom 125%"), "125%")
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "Zoom 125%", 40), "said on the status bar")
+            i = 0
+            w1 = w0
+            while i < 40 && w1 <= w0 { sleep(50); w1 = uidriver.widget_int_field_by_id(g.header_id("C"), "w"); i = i + 1 }
+            spec.assert_gt(w1, w0, "C wider (${w0} to ${w1})")
+            b.click("Zoom 100%")
+            spec.assert_true(b.wait_for_console("sheet: zoom 100%"), "back")
+        }
         spec.it("Excel's keys: Ctrl+Home, Ctrl+End, Shift+Space, Ctrl+Space, Ctrl+Shift+$, Ctrl+F") callback {
             nb = g.field("cell")
             g.enter("Z100", "7")

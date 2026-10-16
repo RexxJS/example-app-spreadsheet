@@ -1635,6 +1635,24 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Zoom: the sheet drawn at a percentage, 10 to 400, as Excel's; or in
+    // or out a step (Excel's 10, 25, 50, 75, 100, 125, 150, 200, 400). A
+    // view, not a step to undo, not saved.
+    id: "view.zoom", label: "Zoom", params: [], optional: ["percent", "by"], journaled: false,
+    run: async (wb, p) => {
+      const steps = [10, 25, 50, 75, 100, 125, 150, 200, 400];
+      let z = wb.zoom;
+      if (p.percent !== undefined) {
+        z = Number(String(p.percent).replace(/%$/, ""));
+        if (!Number.isInteger(z) || z < 10 || z > 400) refuse(`${p.percent} is not a zoom (10 to 400)`);
+      } else if (p.by === "in") z = steps.find((s) => s > wb.zoom) ?? 400;
+      else if (p.by === "out") z = [...steps].reverse().find((s) => s < wb.zoom) ?? 10;
+      else refuse("view.zoom needs percent= or by=in|out");
+      wb.zoom = z;
+      return { ok: true, message: `zoom ${z}%`, changed: wb.sheet.keys(), output: z };
+    },
+  },
+  {
     // Ctrl+End's cell: the last row used and the last column used.
     id: "sheet.lastCell", label: "Last Cell", params: [], journaled: false,
     run: async (wb) => {
@@ -1820,7 +1838,7 @@ const SPECS: readonly Spec[] = [
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
         language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
-        panel: wb.panel ?? "", calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
+        panel: wb.panel ?? "", zoom: wb.zoom, calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

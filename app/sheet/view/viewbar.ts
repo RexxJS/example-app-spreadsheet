@@ -19,6 +19,9 @@ export function viewBar(v: SheetView): void {
     v.btn("Freeze top row", () => v.run("view.freezeRows", { count: "1" }));
     v.btn("Unfreeze", () => v.run("view.freezeRows", { count: "0" }));
     bind(ui.textfield("row height", () => {}), height);
+    v.btn("Zoom in", () => v.run("view.zoom", { by: "in" }));
+    v.btn("Zoom out", () => v.run("view.zoom", { by: "out" }));
+    v.btn("Zoom 100%", () => v.run("view.zoom", { percent: "100" }));
     v.btn("AutoFit columns", () => v.run("columns.autofit", { range: v.range() }));
     v.btn("AutoFit rows", () => v.run("rows.autofit", { range: v.range() }));
     v.btn("Row height", () => v.run("rows.height", { range: v.range(), height: height.value.trim() || "0" }));

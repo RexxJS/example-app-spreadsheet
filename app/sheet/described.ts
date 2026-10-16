@@ -65,6 +65,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SETCOMMENT: fn([CELL, p("text", "text")], "Sets a cell's comment", "the comment"),
   GETCOMMENT: fn([CELL], "Reads a cell's comment", "the comment, or \"\""),
   AUTOFIT: fn([p("what", "text", "a column (\"B\", \"B:D\") or a row (3, \"3:5\")")], "AutoFit: columns as wide as their text, or rows as tall", "what it did"),
+  SETZOOM: fn([p("zoom", "text", "a percentage, 10 to 400, or in or out a step")], "Zooms the sheet", "the zoom now"),
+  GETZOOM: fn([], "The sheet's zoom", "a percentage"),
   GETLASTCELL: fn([], "Ctrl+End's cell: the last row used and the last column used", "a cell, e.g. D12"),
   LISTKEYS: fn([], "The keyboard map", "a stem of \"keys | what they do | command\" lines"),
   FLASHFILL: fn([p("range", "range", "one column, its first cells typed as examples")], "Flash Fill: the column's empty cells filled by the pattern the examples show, from the columns to its left", "what it did"),

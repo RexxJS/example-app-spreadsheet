@@ -11,7 +11,7 @@
 // and its status line.
 // Commands (commands.ts) change it; the page's panels read it.
 import { drawn } from "./editors.ts";
-import { cellAddr, keyOf, order, parseRange, splitKey } from "./address.ts";
+import { COLS, ROWS, cellAddr, keyOf, order, parseRange, splitKey } from "./address.ts";
 import { REFERENCE_COLOURS } from "./typing.ts";
 import type { Addr } from "./address.ts";
 import type { PivotFields } from "./pivot.ts";
@@ -219,6 +219,8 @@ export class Workbook {
   // Circle Invalid: on, the cells whose input breaks their rule are marked.
   circling = false;
   #circled = new Set<string>();
+  // The zoom, in percent (10 to 400, as Excel's): a view of the sheet.
+  zoom = 100;
   // The panel open under the grid (menus.ts's PANELS), or null: a view.
   panel: string | null = null;
   // Show Formulas: the grid shows inputs rather than values.
@@ -760,9 +762,10 @@ export class Workbook {
   // and a comment's corner marker.
   styleOf(key: string): string {
     const v = this.sheet.value(key), n = this.notes.get(key);
+    const zoomed = this.zoom === 100 ? "" : `font-size: ${Math.round((n.look?.size ?? 13) * this.zoom / 100)}px`;
     return [typeof v === "number" ? "text-align: end" : "", toStyle(n.style), lookStyle(n.look), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
       this.#circled.has(key) ? "background: #ffd6d6" : "", v instanceof CellError ? "color: #c0392b" : "",
-      n.comment ? "--corner: #d00000" : "", this.#typed.get(key) ?? ""].filter((p) => p).join("; ");
+      n.comment ? "--corner: #d00000" : "", this.#typed.get(key) ?? "", zoomed].filter((p) => p).join("; ");
   }
 
   // The active sheet's rows (by hand or by its filter) and columns out of
@@ -789,6 +792,17 @@ export class Workbook {
   // Its columns set to a width ([column, px], 0-based, in order).
   colWidths(): [number, number][] {
     return [...this.#active.widths].sort(([a], [b]) => a - b);
+  }
+
+  // As the grid draws them at the zoom: every column and row scaled from
+  // its own size or the grid's (`col`, `row`), or, at 100%, those set.
+  shownColWidths(col: number): [number, number][] {
+    if (this.zoom === 100) return this.colWidths();
+    return Array.from({ length: COLS }, (_, c): [number, number] => [c, Math.round((this.#active.widths.get(c) ?? col) * this.zoom / 100)]);
+  }
+  shownRowHeights(row: number): [number, number][] {
+    if (this.zoom === 100) return this.rowHeights();
+    return Array.from({ length: ROWS }, (_, r): [number, number] => [r, Math.round((this.#active.heights.get(r) ?? row) * this.zoom / 100)]);
   }
 
   // A formula being typed in the active sheet (null once it is entered or
