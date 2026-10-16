@@ -9,7 +9,7 @@ import type { ArrayValue, Comparison, Result, Value } from "./values.ts";
 import { sortOrder } from "./sortfind.ts";
 import { sparkline } from "./charts.ts";
 import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
-import { fv, irr, nper, npv, pmt, pv, rate } from "./finance.ts";
+import { db, depreciation, fv, ipmt, irr, mirr, nper, npv, pmt, ppmt, pv, rate, vdb, xirr, xnpv } from "./finance.ts";
 import * as D from "./distributions.ts";
 import { colName, sheetPrefix } from "./address.ts";
 
@@ -1420,6 +1420,115 @@ def("IRR", 1, 2, (args) => {
   const flows = numbersIn(args[0].values);
   if (!flows.some((c) => c < 0) || !flows.some((c) => c > 0)) return fail("#NUM!", "IRR needs a negative and a positive cash flow");
   return irr(flows, num(args, 1, 0.1)) ?? fail("#NUM!", "IRR did not settle");
+});
+
+// The rest of the cash-flow functions (2.9a: finance.ts).
+const loan = (args: readonly Arg[], name: string): [number, number, number, number, number, number] => {
+  const r = num(args, 0), per = num(args, 1), n = num(args, 2), pv0 = num(args, 3), fv0 = num(args, 4, 0), type = num(args, 5, 0) !== 0 ? 1 : 0;
+  if (per < 1 || per > n) return fail("#NUM!", `${name}'s period ${per} is outside 1 to ${n}`);
+  return [r, per, n, pv0, fv0, type];
+};
+def("IPMT", 4, 6, (args) => finite(ipmt(...loan(args, "IPMT"))));
+def("PPMT", 4, 6, (args) => finite(ppmt(...loan(args, "PPMT"))));
+// CUMIPMT and CUMPRINC(rate, nper, pv, start, end, type): from period
+// start to end; Excel takes no negative pv, rate or periods.
+const cumulative = (name: string, part: typeof ipmt) => (args: readonly Arg[]): number => {
+  const r = num(args, 0), n = Math.trunc(num(args, 1)), pv0 = num(args, 2), start = Math.trunc(num(args, 3)), end = Math.trunc(num(args, 4)), type = Math.trunc(num(args, 5));
+  if (r <= 0 || n <= 0 || pv0 <= 0) return fail("#NUM!", `${name}'s rate, periods and present value are positive`);
+  if (start < 1 || end < start || end > n) return fail("#NUM!", `${name}'s periods ${start} to ${end}, of ${n}`);
+  if (type !== 0 && type !== 1) return fail("#NUM!", `${name}'s type is 0 or 1, not ${type}`);
+  let total = 0;
+  for (let p = start; p <= end; p++) total += part(r, p, n, pv0, 0, type);
+  return total;
+};
+def("CUMIPMT", 6, 6, cumulative("CUMIPMT", ipmt));
+def("CUMPRINC", 6, 6, cumulative("CUMPRINC", ppmt));
+// XNPV(rate, values, dates) and XIRR(values, dates, [guess]): dates as
+// serials or text; none before the first.
+const dated = (name: string, values: Arg, when: Arg): [number[], number[]] => {
+  if (values.values.length !== when.values.length) return fail("#NUM!", `${name}'s values and dates differ in number`);
+  const flows = values.values.map(toNumber), dates = when.values.map((v) => Math.floor(typeof v === "string" ? parseDate(v) ?? fail("#VALUE!", `'${v}' is not a date`) : toNumber(v)));
+  if (dates.some((d) => d < dates[0])) return fail("#NUM!", `${name}: a date before the first`);
+  return [flows, dates];
+};
+def("XNPV", 3, 3, (args) => { const [flows, dates] = dated("XNPV", args[1], args[2]); return finite(xnpv(num(args, 0), flows, dates)); });
+def("XIRR", 2, 3, (args) => {
+  const [flows, dates] = dated("XIRR", args[0], args[1]);
+  if (!flows.some((c) => c < 0) || !flows.some((c) => c > 0)) return fail("#NUM!", "XIRR needs a negative and a positive cash flow");
+  return xirr(flows, dates, num(args, 2, 0.1)) ?? fail("#NUM!", "XIRR did not settle");
+});
+def("MIRR", 3, 3, (args) => mirr(numbersIn(args[0].values), num(args, 1), num(args, 2)) ?? fail("#DIV/0!", "MIRR needs a negative and a positive cash flow"));
+// Depreciation: straight line, sum of the years' digits, fixed and double
+// declining balance, and the variable (VDB) over any span of periods.
+def("SLN", 3, 3, (args) => {
+  const life = num(args, 2);
+  return life === 0 ? fail("#DIV/0!", "SLN over a life of 0") : (num(args, 0) - num(args, 1)) / life;
+});
+def("SYD", 4, 4, (args) => {
+  const cost = num(args, 0), salvage = num(args, 1), life = num(args, 2), per = num(args, 3);
+  if (life <= 0 || per <= 0 || per > life) return fail("#NUM!", `SYD's period ${per} of a life of ${life}`);
+  return ((cost - salvage) * (life - per + 1) * 2) / (life * (life + 1));
+});
+const assetArgs = (name: string, args: readonly Arg[]): [number, number, number] => {
+  const cost = num(args, 0), salvage = num(args, 1), life = num(args, 2);
+  if (cost < 0 || salvage < 0 || life <= 0) return fail("#NUM!", `${name}'s cost, salvage and life are not negative (life above 0)`);
+  return [cost, salvage, life];
+};
+def("DB", 4, 5, (args) => {
+  const [cost, salvage, life] = assetArgs("DB", args), per = Math.trunc(num(args, 3)), month = Math.trunc(num(args, 4, 12));
+  if (month < 1 || month > 12) return fail("#NUM!", `DB's month is 1 to 12, not ${month}`);
+  if (per < 1 || per > life + (month < 12 ? 1 : 0)) return fail("#NUM!", `DB's period ${per} of a life of ${life}`);
+  return db(cost, salvage, life, per, month);
+});
+def("DDB", 4, 5, (args) => {
+  const [cost, salvage, life] = assetArgs("DDB", args), per = num(args, 3), factor = num(args, 4, 2);
+  if (per < 1 || per > life || factor <= 0) return fail("#NUM!", `DDB's period ${per} of a life of ${life}, factor ${factor}`);
+  return depreciation(cost, salvage, life, factor, false)[Math.ceil(per) - 1];
+});
+def("VDB", 5, 7, (args) => {
+  const [cost, salvage, life] = assetArgs("VDB", args), start = num(args, 3), end = num(args, 4), factor = num(args, 5, 2);
+  if (start < 0 || end < start || end > life || factor <= 0) return fail("#NUM!", `VDB from ${start} to ${end} of a life of ${life}`);
+  return vdb(cost, salvage, life, start, end, factor, !absent(args, 6) && toNumber(val(args, 6)) !== 0);
+});
+// Rates: effective from nominal and back, the rate that grows pv to fv
+// in n periods (RRI), the periods it takes (PDURATION), a principal grown
+// by a schedule of rates, and a loan's interest in a period of even
+// principal payments (ISPMT).
+def("EFFECT", 2, 2, (args) => {
+  const r = num(args, 0), p = Math.trunc(num(args, 1));
+  return r <= 0 || p < 1 ? fail("#NUM!", `EFFECT of ${r} compounded ${p} times`) : (1 + r / p) ** p - 1;
+});
+def("NOMINAL", 2, 2, (args) => {
+  const r = num(args, 0), p = Math.trunc(num(args, 1));
+  return r <= 0 || p < 1 ? fail("#NUM!", `NOMINAL of ${r} compounded ${p} times`) : p * ((1 + r) ** (1 / p) - 1);
+});
+def("RRI", 3, 3, (args) => {
+  const n = num(args, 0), from = num(args, 1), to = num(args, 2);
+  return n <= 0 || from === 0 ? fail("#NUM!", `RRI over ${n} periods from ${from}`) : finite((to / from) ** (1 / n) - 1);
+});
+def("PDURATION", 3, 3, (args) => {
+  const r = num(args, 0), from = num(args, 1), to = num(args, 2);
+  return r <= 0 || from <= 0 || to <= 0 ? fail("#NUM!", "PDURATION's rate and values are positive") : (Math.log(to) - Math.log(from)) / Math.log(1 + r);
+});
+def("FVSCHEDULE", 2, 2, (args) => args[1].values.reduce<number>((p, r) => p * (1 + toNumber(r)), num(args, 0)));
+def("ISPMT", 4, 4, (args) => {
+  const n = num(args, 2);
+  return n === 0 ? fail("#DIV/0!", "ISPMT over 0 periods") : num(args, 3) * num(args, 0) * (num(args, 1) / n - 1);
+});
+// DOLLARDE(1.02, 16): a price in sixteenths as a decimal (1 2/16 is
+// 1.125); DOLLARFR back.
+const fractionOf = (name: string, args: readonly Arg[]): number => {
+  const f = Math.trunc(num(args, 1));
+  if (f < 0) return fail("#NUM!", `${name}'s fraction is not negative`);
+  return f === 0 ? fail("#DIV/0!", `${name} of a fraction of 0`) : f;
+};
+def("DOLLARDE", 2, 2, (args) => {
+  const x = num(args, 0), f = fractionOf("DOLLARDE", args), whole = Math.trunc(x), scale = 10 ** Math.ceil(Math.log10(f));
+  return whole + Number((((x - whole) * scale) / f).toPrecision(15));
+});
+def("DOLLARFR", 2, 2, (args) => {
+  const x = num(args, 0), f = fractionOf("DOLLARFR", args), whole = Math.trunc(x), scale = 10 ** Math.ceil(Math.log10(f));
+  return whole + Number((((x - whole) * f) / scale).toPrecision(15));
 });
 
 // --- dynamic arrays ---
