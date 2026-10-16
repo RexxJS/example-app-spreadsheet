@@ -489,6 +489,21 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("the Name Box and the formula bar: one row, under the toolbar") callback {
+            nb = g.field("cell")
+            fb = g.formula_field()
+            fx = uidriver.widget_id_of("text", "fx")
+            spec.assert_gt(nb, 0, "the Name Box")
+            spec.assert_gt(fx, 0, "fx between them")
+            y = uidriver.widget_int_field_by_id(nb, "y")
+            spec.assert_true(uidriver.widget_int_field_by_id(fb, "y") - y < 6 && y - uidriver.widget_int_field_by_id(fb, "y") < 6, "the formula bar on the Name Box's row")
+            spec.assert_gt(uidriver.widget_int_field_by_id(fx, "x"), uidriver.widget_int_field_by_id(nb, "x"), "fx after the Name Box")
+            spec.assert_gt(uidriver.widget_int_field_by_id(fb, "x"), uidriver.widget_int_field_by_id(fx, "x"), "the formula after fx")
+            spec.assert_gt(y, uidriver.widget_int_field_by_id(uidriver.widget_id_of("button", "Undo"), "y"), "under the toolbar")
+            g.goto("C3")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${nb}", "C3", 40), "the Name Box says the cell")
+            g.goto("A1")
+        }
         spec.it("the toolbar: one row of short buttons with tooltips, each running its command") callback {
             u = uidriver.widget_id_of("button", "Undo")
             f = uidriver.widget_id_of("button", "Fill")

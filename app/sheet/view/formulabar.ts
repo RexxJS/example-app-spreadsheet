@@ -1,4 +1,5 @@
-// The formula bar: the selected cell's address and what was typed into it,
+// The formula bar, as old Excel's: one row under the toolbar, the Name
+// Box (the selected cell's address), fx, and what was typed into the cell,
 // both bound two-way. The address is also the Name Box: Return on a named
 // range's name selects it (going to its sheet, for a workbook's name of
 // another one); Return on a cell moves to the formula. Return in the
@@ -9,8 +10,9 @@ import type { SheetView } from "./view.ts";
 
 export function formulaBar(v: SheetView): void {
   ui.hstack(() => {
-    const cell = bind(ui.textfield("cell", () => {}), v.address);
-    const formula = bind(ui.textfield("formula", () => {}), v.input);
+    const cell = ui.tooltip(bind(ui.textfield("cell", () => {}), v.address), "Name Box: a cell, or a name, to go to");
+    ui.text("fx");
+    const formula = ui.tooltip(bind(ui.textfield("formula", () => {}), v.input), "Formula bar: Return sets the cell");
     ui.on_submit(cell, async () => {
       const name = v.address.value.trim().toUpperCase(), named = v.wb.sheet.named(name);
       if (!named) return ui.focus(formula);

@@ -40,8 +40,9 @@ const sheet = new SheetView();
 
 ui.text("Spreadsheet");
 toolBar(sheet);
-languageBar(sheet);
+// The Name Box and the formula bar, one row under the toolbar.
 formulaBar(sheet);
+languageBar(sheet);
 notesBar(sheet);
 lookBar(sheet);
 viewBar(sheet);
