@@ -12,6 +12,7 @@ import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parse
 import { db, depreciation, fv, ipmt, irr, mirr, nper, npv, pmt, ppmt, pv, rate, vdb, xirr, xnpv } from "./finance.ts";
 import * as D from "./distributions.ts";
 import * as B from "./bonds.ts";
+import * as E from "./engineering.ts";
 import { colName, sheetPrefix } from "./address.ts";
 
 export interface Arg {
@@ -1965,3 +1966,113 @@ defBond("ODDLYIELD", 7, 8, (args) => {
   nonNegative(rate, "the rate"); above0(pr, "the price"); above0(red, "the redemption");
   return B.oddLastYield(day(args, 0), day(args, 1), day(args, 2), rate, pr, red, f, b);
 });
+
+// --- engineering (2.10: engineering.ts) ---
+
+// An engineering function: a RangeError from engineering.ts is #NUM!.
+const defEng = (name: string, min: number, max: number, fn: Fn): void => {
+  def(name, min, max, (args) => {
+    try {
+      return fn(args);
+    } catch (e) {
+      if (e instanceof RangeError) return fail("#NUM!", `${name}: ${e.message}`);
+      throw e;
+    }
+  });
+};
+// Bases: DEC2BIN ... HEX2OCT, ten digits, two's complement for negatives.
+const RADICES: Readonly<Record<string, E.Radix>> = { BIN: E.BIN, OCT: E.OCT, HEX: E.HEX };
+const placesAt = (args: readonly Arg[], i: number): number | null => (absent(args, i) ? null : num(args, i));
+for (const [to, r] of Object.entries(RADICES)) {
+  defEng(`DEC2${to}`, 1, 2, (args) => E.toRadix(num(args, 0), r, placesAt(args, 1)));
+  defEng(`${to}2DEC`, 1, 1, (args) => E.fromRadix(str(args, 0), r));
+  for (const [from, q] of Object.entries(RADICES)) {
+    if (from !== to) defEng(`${from}2${to}`, 1, 2, (args) => E.toRadix(E.fromRadix(str(args, 0), q), r, placesAt(args, 1)));
+  }
+}
+// BASE(n, radix, [min length]) and DECIMAL(text, radix): any radix 2 to 36.
+defEng("BASE", 2, 3, (args) => {
+  const n = Math.trunc(num(args, 0)), radix = Math.trunc(num(args, 1)), least = Math.trunc(num(args, 2, 0));
+  if (n < 0 || n >= 2 ** 53) throw new RangeError(`${n} is not 0 to 2^53`);
+  if (radix < 2 || radix > 36) throw new RangeError(`radix ${radix}: 2 to 36`);
+  if (least < 0 || least > 255) throw new RangeError(`a length of ${least}: 0 to 255`);
+  return n.toString(radix).toUpperCase().padStart(least, "0");
+});
+defEng("DECIMAL", 2, 2, (args) => {
+  const text = str(args, 0).trim(), radix = Math.trunc(num(args, 1));
+  if (radix < 2 || radix > 36) throw new RangeError(`radix ${radix}: 2 to 36`);
+  if (text.length > 255) throw new RangeError("text of more than 255 characters");
+  let n = 0;
+  for (const ch of text.toUpperCase()) {
+    const d = parseInt(ch, 36);
+    if (Number.isNaN(d) || d >= radix) return fail("#NUM!", `DECIMAL: '${ch}' is not a digit in base ${radix}`);
+    n = n * radix + d;
+  }
+  return n;
+});
+// Bits, 0 to 2^48 - 1.
+defEng("BITAND", 2, 2, (args) => E.bitwise(num(args, 0), num(args, 1), (x, y) => x & y));
+defEng("BITOR", 2, 2, (args) => E.bitwise(num(args, 0), num(args, 1), (x, y) => x | y));
+defEng("BITXOR", 2, 2, (args) => E.bitwise(num(args, 0), num(args, 1), (x, y) => x ^ y));
+defEng("BITLSHIFT", 2, 2, (args) => E.shift(num(args, 0), num(args, 1)));
+defEng("BITRSHIFT", 2, 2, (args) => E.shift(num(args, 0), -num(args, 1)));
+// CONVERT(x, from, to): units of one kind, with prefixes where Excel takes
+// them; none, or two of different kinds, is #N/A.
+def("CONVERT", 3, 3, (args) => {
+  const from = str(args, 1), to = str(args, 2);
+  return E.convert(num(args, 0), from, to) ?? fail("#N/A", `CONVERT from ${from} to ${to}: not units of one kind`);
+});
+def("DELTA", 1, 2, (args) => (num(args, 0) === num(args, 1, 0) ? 1 : 0));
+def("GESTEP", 1, 2, (args) => (num(args, 0) >= num(args, 1, 0) ? 1 : 0));
+// ERF(lower, [upper]): from 0 to lower, or from lower to upper.
+def("ERF", 1, 2, (args) => (absent(args, 1) ? D.erf(num(args, 0)) : D.erf(num(args, 1)) - D.erf(num(args, 0))));
+def("ERF.PRECISE", 1, 1, (args) => D.erf(num(args, 0)));
+def("ERFC", 1, 1, (args) => 1 - D.erf(num(args, 0)));
+def("ERFC.PRECISE", 1, 1, (args) => 1 - D.erf(num(args, 0)));
+// Complex numbers, as text: "3+4i" (or j). Text that is not one is #NUM!.
+const complexAt = (args: readonly Arg[], i: number): E.Complex => {
+  const v = scalar(val(args, i));
+  return E.parseComplex(typeof v === "number" ? v : v === null ? "" : typeof v === "boolean" ? fail("#VALUE!", "a complex number, not TRUE or FALSE") : v);
+};
+const complexes = (name: string, args: readonly Arg[]): E.Complex[] => {
+  const zs = every(args).map((v) => { const s = scalar(v); return E.parseComplex(typeof s === "number" ? s : s === null ? "" : String(s)); });
+  const written = args.flatMap((a) => a.values).map(scalar).filter((v): v is string => typeof v === "string" && /[ij]\s*$/.test(v)).map((v) => v.trim().slice(-1));
+  if (new Set(written).size > 1) return fail("#VALUE!", `${name} of numbers written with i and with j`);
+  const unit = (written[0] ?? "i") as "i" | "j";
+  return zs.map((z) => ({ ...z, unit }));
+};
+def("COMPLEX", 2, 3, (args) => {
+  const unit = absent(args, 2) ? "i" : str(args, 2);
+  if (unit !== "i" && unit !== "j") return fail("#VALUE!", `COMPLEX's suffix is i or j, not '${unit}'`);
+  return E.formatComplex({ re: num(args, 0), im: num(args, 1), unit });
+});
+defEng("IMREAL", 1, 1, (args) => complexAt(args, 0).re);
+defEng("IMAGINARY", 1, 1, (args) => complexAt(args, 0).im);
+defEng("IMABS", 1, 1, (args) => E.cAbs(complexAt(args, 0)));
+defEng("IMARGUMENT", 1, 1, (args) => {
+  const z = complexAt(args, 0);
+  return z.re === 0 && z.im === 0 ? fail("#DIV/0!", "IMARGUMENT of 0") : E.cArg(z);
+});
+defEng("IMCONJUGATE", 1, 1, (args) => { const z = complexAt(args, 0); return E.formatComplex({ ...z, im: -z.im }); });
+const unary: Readonly<Record<string, (z: E.Complex) => E.Complex>> = {
+  IMEXP: E.cExp, IMLN: E.cLn, IMSQRT: E.cSqrt, IMSIN: E.cSin, IMCOS: E.cCos, IMTAN: E.cTan, IMCOT: E.cCot, IMSEC: E.cSec, IMCSC: E.cCsc,
+  IMSINH: E.cSinh, IMCOSH: E.cCosh, IMSECH: E.cSech, IMCSCH: E.cCsch,
+  IMLOG10: (z) => { const l = E.cLn(z); return { ...l, re: l.re / Math.LN10, im: l.im / Math.LN10 }; },
+  IMLOG2: (z) => { const l = E.cLn(z); return { ...l, re: l.re / Math.LN2, im: l.im / Math.LN2 }; },
+};
+for (const [name, f] of Object.entries(unary)) defEng(name, 1, 1, (args) => E.formatComplex(f(complexAt(args, 0))));
+defEng("IMPOWER", 2, 2, (args) => E.formatComplex(E.cPow(complexAt(args, 0), num(args, 1))));
+defEng("IMDIV", 2, 2, (args) => { const [a, b] = complexes("IMDIV", args); return E.formatComplex(E.cDiv(a, b)); });
+defEng("IMSUB", 2, 2, (args) => { const [a, b] = complexes("IMSUB", args); return E.formatComplex(E.cSub(a, b)); });
+defEng("IMSUM", 1, Infinity, (args) => { const zs = complexes("IMSUM", args); return E.formatComplex(zs.reduce(E.cAdd)); });
+defEng("IMPRODUCT", 1, Infinity, (args) => { const zs = complexes("IMPRODUCT", args); return E.formatComplex(zs.reduce(E.cMul)); });
+// Bessel functions of whole order n >= 0.
+const order = (args: readonly Arg[]): number => {
+  const n = Math.trunc(num(args, 1));
+  if (n < 0) throw new RangeError(`the order is 0 or more, not ${n}`);
+  return n;
+};
+defEng("BESSELJ", 2, 2, (args) => E.besselJ(num(args, 0), order(args)));
+defEng("BESSELI", 2, 2, (args) => E.besselI(num(args, 0), order(args)));
+defEng("BESSELK", 2, 2, (args) => E.besselK(num(args, 0), order(args)));
+defEng("BESSELY", 2, 2, (args) => E.besselY(num(args, 0), order(args)));
