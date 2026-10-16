@@ -2,7 +2,7 @@
 // Italic, Underline and Strikethrough (each on, or off when the selected
 // cell has it), outline, all or no borders, Wrap text (its rows as tall as
 // their text), and Merge & center, Merge and Unmerge (a merge keeps its
-// top-left's value). Ctrl+B, Ctrl+I and Ctrl+U on the grid do the first three.
+// top-left's value), and Format painter. Ctrl+B, Ctrl+I and Ctrl+U on the grid do the first three.
 import type { SheetView } from "./view.ts";
 
 export type FontPart = "bold" | "italic" | "underline" | "strike";
@@ -12,7 +12,20 @@ export const toggleFont = (v: SheetView, part: FontPart) =>
   v.run("format.font", { range: v.range(), [part]: v.wb.notes.get(v.here()).look?.[part] ? "0" : "1" });
 
 export function lookBar(v: SheetView): void {
+  // Format Painter: the first click takes the selection's format, the
+  // second paints it over the selection then.
+  let painting: string | null = null;
   ui.hstack(() => {
+    v.btn("Format painter", async () => {
+      if (painting === null) {
+        painting = v.range();
+        v.status.set(`Format painter: ${painting}'s format taken; select where to paint it, then Format painter again`);
+        return;
+      }
+      const from = painting;
+      painting = null;
+      await v.run("format.painter", { from, to: v.range() });
+    });
     v.btn("Bold", () => toggleFont(v, "bold"));
     v.btn("Italic", () => toggleFont(v, "italic"));
     v.btn("Underline", () => toggleFont(v, "underline"));

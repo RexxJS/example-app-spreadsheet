@@ -226,6 +226,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const id = ascending === undefined || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
     return (await must(exec, id, { range: text(r), by: col(by, "SORTRANGE") }), "OK");
   },
+  // Format Painter: COPYFORMAT("A1", "B1:B9").
+  COPYFORMAT: async (exec, from, to) => (await must(exec, "format.painter", { from: text(from), to: text(to) })).message,
   // The toolbar's looks over a range.
   SETALIGNMENT: async (exec, r, how) => (await must(exec, "format.align", { range: text(r), align: text(how) }), "OK"),
   SETFILLCOLOR: async (exec, r, c) => (await must(exec, "format.fill", { range: text(r), color: text(c) }), "OK"),

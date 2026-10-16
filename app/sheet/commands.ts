@@ -1160,6 +1160,22 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Format Painter: a cell's look, number format and style (not its
+    // value, comment or rule) onto a range; a range's, tiled over it.
+    id: "format.painter", label: "Format Painter", params: ["from", "to"], journaled: true,
+    run: async (wb, p) => {
+      const f = rangeOf(p.from), t = rangeOf(p.to), ftl = topLeft(f), ttl = topLeft(t);
+      const fr = Math.abs(f[0].row - f[1].row) + 1, fc = Math.abs(f[0].col - f[1].col) + 1;
+      const keys = [...range(t[0], t[1])];
+      const src = new Map(keys.map((k) => {
+        const a = cellAddr(k)!, from = keyOf({ col: ftl.col + ((a.col - ttl.col) % fc), row: ftl.row + ((a.row - ttl.row) % fr) });
+        return [k, wb.notes.get(from)];
+      }));
+      for (const [k, n] of src) wb.notes.set(k, { format: n.format ?? "", style: n.style ?? "", look: n.look, styleExpression: n.styleExpression ?? "" });
+      return changedBy(wb, keys, `painted ${rangeName(f)}'s format over ${rangeName(t)}`);
+    },
+  },
+  {
     // Align Left, Center and Right, as the toolbar's; general: by the value
     // (numbers to the right), as Excel's default.
     id: "format.align", label: "Alignment", params: ["range", "align"], journaled: true,

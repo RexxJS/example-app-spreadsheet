@@ -77,7 +77,7 @@ change the specs check through the driver, and REXX loses nothing.
 | # | Step | Tests prove | REXX |
 |---|---|---|---|
 | 3.1 | ~~Paste Special: values, formulas, formats, comments, transpose, operations (add, multiply), skip blanks~~ (done 2026-10-16: `edit.pasteSpecial` takes all, formulas, values, formats or comments, `operation` add, subtract, multiply or divide (numbers worked, a formula there wrapped `=(f)+n`, text pasted as it is, as Excel does), `skipBlanks`, `transpose`; the Edit panel's Paste comments, adding, multiplying, skipping blanks; REXX gains COPY, CUT and PASTE beside it. Not Excel's validation-only or column-widths pastes) | headless `sheet_copy`; spec | `PASTESPECIAL("B1", "values")` |
-| 3.2 | Format Painter (copy a cell's look to a range) | headless; spec | `COPYFORMAT("A1", "B1:B9")` |
+| 3.2 | ~~Format Painter (copy a cell's look to a range)~~ (done 2026-10-16: `format.painter from= to=`, the look, number format, style and conditional style, a range's tiled; not values, comments or validation; the Looks panel's Format painter, two clicks, as Excel's single-use painter; not the double-click that keeps it on) | headless; spec | `COPYFORMAT("A1", "B1:B9")` |
 | 3.3 | F4 cycling of a reference while editing; autocomplete of function names and argument hints in the formula bar | spec | |
 | 3.4 | Flash Fill: pattern inference from an example column (split, join, case) | headless: the examples the reference names (split names, case) | `FLASHFILL("B1:B9")` |
 | 3.5 | AutoFit column width and row height to content | spec (geometry through the driver) | `AUTOFIT("B")` |

@@ -62,7 +62,7 @@ export const MENUS: readonly Menu[] = [
     i("Align left", "format.align"), i("Align center", "format.align"), i("Align right", "format.align"),
     i("Comma style", "format.number"), i("Currency style", "format.number"), i("Percent style", "format.number"),
     i("Fill yellow", "format.fill"), i("Text red", "format.color"), "-",
-    i("Wrap text", "format.wrap"), i("Merge & center", "cells.merge"), i("Merge", "cells.merge"), i("Unmerge", "cells.unmerge"), "-",
+    i("Format painter", "format.painter"), i("Wrap text", "format.wrap"), i("Merge & center", "cells.merge"), i("Merge", "cells.merge"), i("Unmerge", "cells.unmerge"), "-",
     i("Greater than", "format.highlight"), i("Less than", "format.highlight"), i("Equal to", "format.highlight"), i("Text contains", "format.highlight"),
     i("Top 10", "format.topBottom"), i("Above average", "format.aboveAverage"), i("Duplicates", "format.duplicates"),
     i("Color scale", "format.colorScale"), i("Icon set", "format.iconSet"), i("Data bars", "format.dataBar"), i("Clear rules", "format.clearRules"), "-",

@@ -615,6 +615,20 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("Format painter: the first click takes the format, the second paints it") callback {
+            g.enter("K80", "1")
+            g.enter("L80", "2")
+            g.command("format.font range=K80 bold=1")
+            g.pick("K", 80)
+            b.click("Format painter")
+            spec.assert_true(b.wait_for_text("Format painter: K80's format taken; select where to paint it, then Format painter again"), "taken")
+            g.pick("L", 80)
+            b.click("Format painter")
+            spec.assert_true(b.wait_for_console("sheet: painted K80's format over L80"), "painted")
+            spec.assert_true(g.cell_has("L", 80, "bold"), "L80 bold now")
+            g.command("range.clearAll range=K80:L80")
+            g.goto("A1")
+        }
         spec.it("Paste Special adding, from the edit bar: each number added to what is there") callback {
             g.enter("K70", "5")
             g.enter("K71", "7")
