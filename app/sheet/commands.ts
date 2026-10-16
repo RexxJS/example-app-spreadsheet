@@ -192,6 +192,8 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.hiddenRows = new Set(s.view.hiddenRows);
     page.hiddenCols = new Set(s.view.hiddenCols);
     page.frozen = s.view.frozenRows;
+    page.tabColor = s.view.tabColor;
+    page.hiddenSheet = s.view.hidden;
     page.heights = new Map(s.view.rowHeights);
     page.widths = new Map(s.view.colWidths);
     page.autoId = s.autoId;
@@ -1845,7 +1847,8 @@ const SPECS: readonly Spec[] = [
     run: async (wb) => {
       const hidden = wb.hidden(), page = wb.page(wb.active)!;
       const state = {
-        name: wb.active, sheets: wb.sheetNames(), hiddenRows: hidden.rows.map((r) => r + 1), hiddenCols: hidden.cols.map(colName),
+        name: wb.active, sheets: wb.sheetNames(), hiddenSheets: wb.pages().filter((x) => x.hiddenSheet).map((x) => x.name),
+        tabColors: Object.fromEntries(wb.pages().filter((x) => x.tabColor).map((x) => [x.name, x.tabColor])), hiddenRows: hidden.rows.map((r) => r + 1), hiddenCols: hidden.cols.map(colName),
         frozenRows: wb.frozenRows(), rowHeights: wb.rowHeights().map(([r, h]) => [r + 1, h]), colWidths: wb.colWidths().map(([c, w]) => [colName(c), w]),
         filter: page.filter && { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion },
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
@@ -1886,6 +1889,45 @@ const SPECS: readonly Spec[] = [
       if (at < 0 || at > last) refuse(`${page.name} cannot move ${p.to !== undefined ? `to ${p.to}` : p.way}: there are ${last + 1} sheets`);
       await wb.move(page.name, at);
       return changedBy(wb, [], `${page.name} is sheet ${at + 1} of ${last + 1}`);
+    },
+  },
+  {
+    // A sheet's tab colour: a colour's name or #rrggbb; none takes it off.
+    id: "sheet.color", label: "Tab Color", params: ["name", "color"], journaled: true,
+    run: async (wb, p) => {
+      const page = pageOf(wb, p.name), off = /^(none|auto|automatic)$/i.test(p.color.trim());
+      page.tabColor = off ? null : colour(p.color) ?? refuse(`${p.color} is not a colour (a name such as red, or #rrggbb)`);
+      return changedBy(wb, [], `${page.name}'s tab ${page.tabColor ?? "uncoloured"}`);
+    },
+  },
+  {
+    // Hide a sheet (never the last one shown; the active one hidden, the
+    // next one shown is made active), or unhide it.
+    id: "sheet.hide", label: "Hide Sheet", params: ["name"], optional: ["off"], journaled: true,
+    run: async (wb, p) => {
+      const page = pageOf(wb, p.name), hide = !flag(p.off), before = wb.sheet.keys();
+      if (hide && !page.hiddenSheet && wb.pages().filter((x) => !x.hiddenSheet).length === 1) refuse(`${page.name} is the only sheet shown`);
+      page.hiddenSheet = hide;
+      if (hide && wb.active === page.name) {
+        const pages = wb.pages(), i = pages.indexOf(page);
+        wb.activate((pages.slice(i + 1).find((x) => !x.hiddenSheet) ?? [...pages.slice(0, i)].reverse().find((x) => !x.hiddenSheet))!.name);
+      }
+      return changedBy(wb, shownKeys(wb, before), `${page.name} ${hide ? "hidden" : "shown"}`);
+    },
+  },
+  {
+    // Move or Copy's "create a copy": the sheet with its cells and looks,
+    // after it, named "Name copy" unless named (a sheet name has no
+    // brackets here, so not Excel's "Name (2)"); the copy made active.
+    id: "sheet.copy", label: "Copy Sheet", params: ["name"], optional: ["to"], journaled: true,
+    run: async (wb, p) => {
+      const page = pageOf(wb, p.name), before = wb.sheet.keys();
+      let to = p.to;
+      if (to === undefined) for (let i = 1; !to || wb.page(to); i++) to = i === 1 ? `${page.name} copy` : `${page.name} copy ${i}`;
+      to = sheetNameOf(to);
+      if (wb.page(to)) refuse(`${to} is a sheet already`);
+      await wb.copy(page, to);
+      return changedBy(wb, shownKeys(wb, before), `copied ${page.name} to ${to}`);
     },
   },
   {

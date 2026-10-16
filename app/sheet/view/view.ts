@@ -37,6 +37,8 @@ export class SheetView {
   readonly setup = state("");
   readonly problems = state<Problem[]>([]);
   readonly sheets = state<string[]>(["Sheet1"]);
+  // The tabs shown: the sheets not hidden, each with its colour.
+  readonly tabs = state<{ name: string; color: string | null }[]>([{ name: "Sheet1", color: null }]);
   readonly active = state("Sheet1");
   readonly watches = state<Watch[]>([]);
   readonly charts = state<(ChartView & { n: number })[]>([]);
@@ -173,6 +175,7 @@ export class SheetView {
     batch(() => {
       this.problems.set(this.wb.sheet.problems());
       this.sheets.set(this.wb.sheetNames());
+      this.tabs.set(this.wb.pages().filter((p) => !p.hiddenSheet).map((p) => ({ name: p.name, color: p.tabColor })));
       this.active.set(this.wb.active);
       this.watches.set(this.wb.watches());
       this.charts.set(this.wb.charts().map((c, i) => ({ ...c, n: i + 1 })));

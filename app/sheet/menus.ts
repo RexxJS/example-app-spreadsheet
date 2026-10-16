@@ -66,7 +66,7 @@ export const MENUS: readonly Menu[] = [
     i("Greater than", "format.highlight"), i("Less than", "format.highlight"), i("Equal to", "format.highlight"), i("Text contains", "format.highlight"),
     i("Top 10", "format.topBottom"), i("Above average", "format.aboveAverage"), i("Duplicates", "format.duplicates"),
     i("Color scale", "format.colorScale"), i("Icon set", "format.iconSet"), i("Data bars", "format.dataBar"), i("Clear rules", "format.clearRules"), "-",
-    i("Rename sheet", "sheet.rename"), i("Move left", "sheet.move"), i("Move right", "sheet.move"),
+    i("Rename sheet", "sheet.rename"), i("Copy sheet", "sheet.copy"), i("Hide sheet", "sheet.hide"), i("Unhide sheets", "sheet.hide"), i("Tab color", "sheet.color"), i("Move left", "sheet.move"), i("Move right", "sheet.move"),
   ] },
   { label: "Data", items: [
     i("Sort A→Z", "data.sortAscending"), i("Sort Z→A", "data.sortDescending"), i("Filter", "data.filter"), i("Clear filter", "data.clearFilter"), "-",

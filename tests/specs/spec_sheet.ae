@@ -467,6 +467,31 @@ main() {
             b.click("Sheet1")
             spec.assert_true(b.wait_for_text("On Sheet1:"), "back on Sheet1")
         }
+        spec.it("a sheet copied with its cells; a tab coloured; a sheet hidden and shown") callback {
+            g.enter("K130", "42")
+            b.set_field_by("sheet", "")
+            b.click("Copy sheet")
+            spec.assert_true(b.wait_for_console("sheet: copied Sheet1 to Sheet1 copy"), "copied")
+            spec.assert_true(b.wait_for_text("On Sheet1 copy:"), "the copy made active")
+            spec.assert_true(g.wait_cell("K", 130, "42"), "with its cells")
+            b.set_field_by("sheet", "green")
+            b.click("Tab color")
+            spec.assert_true(b.wait_for_console("sheet: Sheet1 copy's tab #008000"), "coloured")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${tab("Sheet1 copy")}", "\"bg\":\"#008000\"", 40), "the tab drawn green")
+            b.click("Hide sheet")
+            spec.assert_true(b.wait_for_console("sheet: Sheet1 copy hidden"), "hidden")
+            spec.assert_true(b.wait_for_text("On Sheet1:"), "Sheet1 active again")
+            i = 0
+            while i < 40 && b.button_exists("Sheet1 copy") == 1 { sleep(50); i = i + 1 }
+            spec.assert_eq(b.button_exists("Sheet1 copy"), 0, "its tab gone")
+            b.click("Unhide sheets")
+            spec.assert_true(b.wait_for_console("sheet: Sheet1 copy shown"), "shown")
+            g.command("sheet.delete name=\"Sheet1 copy\"")
+            spec.assert_true(b.wait_for_console("sheet: deleted Sheet1 copy"), "deleted")
+            b.set_field_by("sheet", "")
+            g.command("range.clear range=K130")
+            g.goto("A1")
+        }
         spec.it("R1C1 on the formula bar: a formula shown so, one typed so stored A1, and A1 again") callback {
             // R1C1 is for Excel formulas (the page is in RexxJS ones here).
             g.command("formulas.use language=Excel")

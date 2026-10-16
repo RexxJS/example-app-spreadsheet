@@ -92,6 +92,9 @@ export interface Page {
   widths: Map<number, number>;
   autoId: AutoId | null;
   pivots: Map<string, Pivot>;
+  // Its tab's colour (#rrggbb) or null, and whether the sheet is hidden.
+  tabColor: string | null;
+  hiddenSheet: boolean;
 }
 
 // A pivot table (pivot.ts) by its id: its source range, the cell it is
@@ -171,6 +174,7 @@ const viewOf = (p: Omit<Page, "name" | "sheet" | "notes">): Omit<Page, "name" | 
   rules: [...p.rules], charts: [...p.charts], hiddenRows: new Set(p.hiddenRows), hiddenCols: new Set(p.hiddenCols),
   filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, merges: [...p.merges],
   heights: new Map(p.heights), widths: new Map(p.widths), autoId: p.autoId, pivots: new Map(p.pivots),
+  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet,
 });
 
 // A name for the whole workbook: a range of one of its sheets, or a
@@ -322,7 +326,7 @@ export class Workbook {
       keys.add(key);
     };
     page = { name, sheet: new Sheet({ changed }, language, context), notes: new CellNotes(), rules: [], charts: [],
-      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map() };
+      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false };
     return page;
   }
 
@@ -339,6 +343,20 @@ export class Workbook {
     this.#active = this.#make(name, this.sheet.language);
     this.#pages.push(this.#active);
     await this.#recalculate();
+  }
+
+  // A copy of a sheet, put after it and made active: its cells, notes,
+  // names and tables, and how it looks and is viewed.
+  async copy(from: Page, name: string): Promise<void> {
+    const saved = from.sheet.saved();
+    this.#active = this.#make(name, from.sheet.language);
+    this.#pages.splice(this.#pages.indexOf(from) + 1, 0, this.#active);
+    const to = this.#active;
+    Object.assign(to, viewOf(from), { hiddenSheet: false });
+    to.notes.restore(from.notes.saved());
+    await to.sheet.restore(saved);
+    await this.#recalculate();
+    await this.settle();
   }
 
   activate(name: string): void {

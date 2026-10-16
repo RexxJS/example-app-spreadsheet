@@ -46,6 +46,8 @@ interface State {
   readonly referenceStyle: string;
   readonly panel: string;
   readonly zoom: number;
+  readonly hiddenSheets: readonly string[];
+  readonly tabColors: Readonly<Record<string, string>>;
   readonly dateSystem: number;
   readonly calculation: string;
   readonly iteration: { readonly max: number; readonly change: number } | null;
@@ -243,6 +245,12 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const r = rows ? `A${parts[0]}:A${parts[1] ?? parts[0]}` : `${parts[0]}1:${parts[1] ?? parts[0]}1`;
     return (await must(exec, rows ? "rows.autofit" : "columns.autofit", { range: r })).message;
   },
+  // A sheet's tab colour, hiding, and a copy of it (with its cells and looks).
+  SETSHEETCOLOR: async (exec, n, c) => (await must(exec, "sheet.color", { name: text(n), color: text(c) })).message,
+  HIDESHEET: async (exec, n, off) => (await must(exec, "sheet.hide", { name: text(n), ...(yes(off) ? { off: "1" } : {}) })).message,
+  UNHIDESHEET: async (exec, n) => (await must(exec, "sheet.hide", { name: text(n), off: "1" })).message,
+  ISSHEETHIDDEN: async (exec, n) => ((await state(exec)).hiddenSheets.some((x) => x.toUpperCase() === text(n).toUpperCase()) ? 1 : 0),
+  COPYSHEET: async (exec, n, to) => (await must(exec, "sheet.copy", { name: text(n), ...(text(to).trim() ? { to: text(to) } : {}) })).message,
   // The date system: SETDATESYSTEM(1904), GETDATESYSTEM().
   SETDATESYSTEM: async (exec, sys) => (await must(exec, "workbook.dateSystem", { system: text(sys).trim() }), (await state(exec)).dateSystem),
   GETDATESYSTEM: async (exec) => (await state(exec)).dateSystem,

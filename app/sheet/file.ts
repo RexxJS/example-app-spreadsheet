@@ -49,6 +49,8 @@ export interface FileSheet {
     readonly hiddenRows: readonly number[]; readonly hiddenCols: readonly number[]; readonly frozenRows: number;
     readonly rowHeights: readonly [number, number][]; readonly colWidths: readonly [number, number][];
     readonly filter: Filter | null;
+    readonly tabColor: string | null;
+    readonly hidden: boolean;
   };
   readonly merges: readonly string[];
   readonly tables: readonly TableDef[];
@@ -131,14 +133,16 @@ function chartsOf(charts: unknown): ChartSpec[] {
   });
 }
 
-// How a sheet was viewed: rows and columns hidden, rows frozen.
+// How a sheet was viewed: rows and columns hidden, rows frozen, its tab's
+// colour (tabColor) and whether it is hidden (hidden: true).
 function viewOf(v: any): FileSheet["view"] {
   const indexes = (xs: unknown) => (Array.isArray(xs) ? xs.map(Number).filter((n) => Number.isInteger(n) && n >= 0) : []);
   const sizes = (xs: unknown) => (Array.isArray(xs) ? xs.filter((p: unknown) => Array.isArray(p) && Number.isInteger(p[0]) && p[1] > 0).map((p: number[]): [number, number] => [p[0], p[1]]) : []);
   const r = parseRange(String(v?.filter?.range ?? "")), column = addrOf(`${v?.filter?.column ?? ""}1`);
   const filter = r && column ? { range: r, column: column.col, criterion: String(v.filter.criterion ?? "") } : null;
   return { hiddenRows: indexes(v?.hiddenRows), hiddenCols: indexes(v?.hiddenCols), frozenRows: Number.isInteger(v?.frozenRows) && v.frozenRows > 0 ? v.frozenRows : 0,
-    rowHeights: sizes(v?.rowHeights), colWidths: sizes(v?.colWidths), filter };
+    rowHeights: sizes(v?.rowHeights), colWidths: sizes(v?.colWidths), filter,
+    tabColor: /^#[0-9a-f]{6}$/i.test(String(v?.tabColor ?? "")) ? String(v.tabColor).toLowerCase() : null, hidden: v?.hidden === true };
 }
 
 // Tables as written ({ name, range, headers, columns }), read back.
@@ -251,6 +255,7 @@ const viewIn = (page: Page) => ({
   rowHeights: [...page.heights].sort(([a], [b]) => a - b), colWidths: [...page.widths].sort(([a], [b]) => a - b),
   // The filter's rows are worked out again when the file is opened.
   ...(page.filter ? { filter: { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion } } : {}),
+  ...(page.tabColor ? { tabColor: page.tabColor } : {}), ...(page.hiddenSheet ? { hidden: true } : {}),
 });
 
 // A sheet's parts as the file has them.
