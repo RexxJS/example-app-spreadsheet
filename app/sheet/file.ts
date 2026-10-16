@@ -10,7 +10,7 @@
 // sheet's name (sheetName), named
 // ranges (names: { QTY: "B2:B4" }), conditional-format rules (rules.ts's,
 // their ranges as text), charts ({ kind, range, title }) and how it is viewed
-// (view: { hiddenRows, hiddenCols, frozenRows, rowHeights, colWidths,
+// (view: { hiddenRows, hiddenCols, frozenRows, frozenCols, rowHeights, colWidths,
 // filter: { range, column, criterion } }, 0-based), its
 // merged cells (merges: ["A1:C1"]), its tables (tables: [{ name, range,
 // headers, columns }], the Tauri app's table metadata), and the workbook's
@@ -46,7 +46,7 @@ export interface FileSheet {
   readonly rules: readonly CfRule[];
   readonly charts: readonly ChartSpec[];
   readonly view: {
-    readonly hiddenRows: readonly number[]; readonly hiddenCols: readonly number[]; readonly frozenRows: number;
+    readonly hiddenRows: readonly number[]; readonly hiddenCols: readonly number[]; readonly frozenRows: number; readonly frozenCols: number;
     readonly rowHeights: readonly [number, number][]; readonly colWidths: readonly [number, number][];
     readonly filter: Filter | null;
     readonly tabColor: string | null;
@@ -141,6 +141,7 @@ function viewOf(v: any): FileSheet["view"] {
   const r = parseRange(String(v?.filter?.range ?? "")), column = addrOf(`${v?.filter?.column ?? ""}1`);
   const filter = r && column ? { range: r, column: column.col, criterion: String(v.filter.criterion ?? "") } : null;
   return { hiddenRows: indexes(v?.hiddenRows), hiddenCols: indexes(v?.hiddenCols), frozenRows: Number.isInteger(v?.frozenRows) && v.frozenRows > 0 ? v.frozenRows : 0,
+    frozenCols: Number.isInteger(v?.frozenCols) && v.frozenCols > 0 ? v.frozenCols : 0,
     rowHeights: sizes(v?.rowHeights), colWidths: sizes(v?.colWidths), filter,
     tabColor: /^#[0-9a-f]{6}$/i.test(String(v?.tabColor ?? "")) ? String(v.tabColor).toLowerCase() : null, hidden: v?.hidden === true };
 }
@@ -251,7 +252,7 @@ const tablesIn = (page: Page) => page.sheet.tables().map((t) => ({
 const chartsIn = (page: Page) => page.charts.map((c) => ({ kind: c.kind, range: rangeName(c.range), title: c.title }));
 const up = (a: number, b: number) => a - b;
 const viewIn = (page: Page) => ({
-  hiddenRows: [...page.hiddenRows].sort(up), hiddenCols: [...page.hiddenCols].sort(up), frozenRows: page.frozen,
+  hiddenRows: [...page.hiddenRows].sort(up), hiddenCols: [...page.hiddenCols].sort(up), frozenRows: page.frozen, ...(page.frozenCols ? { frozenCols: page.frozenCols } : {}),
   rowHeights: [...page.heights].sort(([a], [b]) => a - b), colWidths: [...page.widths].sort(([a], [b]) => a - b),
   // The filter's rows are worked out again when the file is opened.
   ...(page.filter ? { filter: { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion } } : {}),

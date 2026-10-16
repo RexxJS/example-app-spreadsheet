@@ -200,6 +200,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.hiddenRows = new Set(s.view.hiddenRows);
     page.hiddenCols = new Set(s.view.hiddenCols);
     page.frozen = s.view.frozenRows;
+    page.frozenCols = s.view.frozenCols;
     page.tabColor = s.view.tabColor;
     page.hiddenSheet = s.view.hidden;
     page.heights = new Map(s.view.rowHeights);
@@ -1298,6 +1299,29 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Freeze the first columns (Freeze First Column, Freeze Panes' columns);
+    // 0 frees them.
+    id: "view.freezeCols", label: "Freeze Columns", params: ["count"], journaled: true,
+    run: async (wb, p) => {
+      const n = Number(p.count);
+      if (!Number.isInteger(n) || n < 0 || n >= 9) refuse(`${p.count} is not a number of columns to freeze (0 to 8: the grid shows ten)`);
+      wb.page(wb.active)!.frozenCols = n;
+      return changedBy(wb, [], n ? `froze ${n} column${n === 1 ? "" : "s"}` : "unfroze columns");
+    },
+  },
+  {
+    // Freeze Panes at a cell, as Excel's: the rows above it and the columns
+    // left of it; at A1 everything unfrozen.
+    id: "view.freezePanes", label: "Freeze Panes", params: ["cell"], journaled: true,
+    run: async (wb, p) => {
+      const a = rangeOf(p.cell)[0], page = wb.page(wb.active)!;
+      if (a.col >= 9) refuse(`${p.cell}: at most 8 columns freeze (the grid shows ten)`);
+      page.frozen = a.row;
+      page.frozenCols = a.col;
+      return changedBy(wb, [], a.row || a.col ? `froze ${a.row} row${a.row === 1 ? "" : "s"} and ${a.col} column${a.col === 1 ? "" : "s"}` : "unfroze panes");
+    },
+  },
+  {
     id: "cells.merge", label: "Merge Cells", params: ["range"], optional: ["center"], journaled: true,
     run: async (wb, p) => {
       const r = rangeOf(p.range), tl = topLeft(r), page = wb.page(wb.active)!;
@@ -1905,7 +1929,7 @@ const SPECS: readonly Spec[] = [
       const state = {
         name: wb.active, sheets: wb.sheetNames(), hiddenSheets: wb.pages().filter((x) => x.hiddenSheet).map((x) => x.name),
         tabColors: Object.fromEntries(wb.pages().filter((x) => x.tabColor).map((x) => [x.name, x.tabColor])), hiddenRows: hidden.rows.map((r) => r + 1), hiddenCols: hidden.cols.map(colName),
-        frozenRows: wb.frozenRows(), rowHeights: wb.rowHeights().map(([r, h]) => [r + 1, h]), colWidths: wb.colWidths().map(([c, w]) => [colName(c), w]),
+        frozenRows: wb.frozenRows(), frozenCols: wb.frozenCols(), rowHeights: wb.rowHeights().map(([r, h]) => [r + 1, h]), colWidths: wb.colWidths().map(([c, w]) => [colName(c), w]),
         filter: page.filter && { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion },
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },

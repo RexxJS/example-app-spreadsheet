@@ -114,9 +114,9 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   GETROWHEIGHT: fn([ROW], "A row's height", "pixels, or 0 for the grid's own"),
   SETCOLWIDTH: fn([COLUMN, p("width", "number", "pixels")], "Sets a column's width", "\"OK\""),
   GETCOLWIDTH: fn([COLUMN], "A column's width", "pixels, or 0 for the grid's own"),
-  FREEZEPANES: fn([p("rows", "number"), opt("columns", "number", "0: only rows freeze")], "Freezes the top rows", "\"OK\""),
-  UNFREEZEPANES: fn([], "Unfreezes the rows", "\"OK\""),
-  GETFROZENPANES: fn([], "How many rows are frozen", "{ROWS, COLUMNS}"),
+  FREEZEPANES: fn([p("rows", "number"), opt("columns", "number", "0 to 8")], "Freezes the top rows and the first columns", "\"OK\""),
+  UNFREEZEPANES: fn([], "Unfreezes the rows and columns", "\"OK\""),
+  GETFROZENPANES: fn([], "How many rows and columns are frozen", "{ROWS, COLUMNS}"),
   // ---- filling, sorting, finding
   FILLDOWN: fn([p("source", "range"), p("target", "range")], "Fills the target from the source above it", "\"OK\""),
   FILLUP: fn([p("source", "range"), p("target", "range")], "Fills the target from the source below it", "\"OK\""),

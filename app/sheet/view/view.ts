@@ -57,6 +57,7 @@ export class SheetView {
   #fitted = new Set<number>();
   #shownHidden = { rows: new Set<number>(), cols: new Set<number>() };
   #frozen = 0;
+  #frozenCols = 0;
   #merged: string[] = [];
   #sized = new Map<number, number>();
 
@@ -256,6 +257,7 @@ export class SheetView {
     for (const c of new Set([...was.cols, ...want.cols])) if (was.cols.has(c) !== want.cols.has(c)) ui.datagrid_hide_col(this.grid, this.viewCol(c + 1), want.cols.has(c) ? 1 : 0);
     this.#shownHidden = want;
     if (this.wb.frozenRows() !== this.#frozen) ui.datagrid_freeze_rows(this.grid, (this.#frozen = this.wb.frozenRows()));
+    if (this.wb.frozenCols() !== this.#frozenCols) ui.datagrid_freeze_cols(this.grid, (this.#frozenCols = this.wb.frozenCols()));
     // Merges: those gone undone, those new made (at the columns on screen).
     const merges = this.wb.merges();
     for (const m of this.#merged) if (!merges.includes(m)) {

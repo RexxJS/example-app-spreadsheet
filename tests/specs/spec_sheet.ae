@@ -759,6 +759,19 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("Freeze first column: A stays as the sheet scrolls across; Unfreeze") callback {
+            g.goto("A1")
+            ax = uidriver.widget_int_field_by_id(g.header_id("A"), "x")
+            b.click("Freeze first column")
+            spec.assert_true(b.wait_for_console("sheet: froze 1 column"), "frozen")
+            g.goto("Z1")
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "\"text\":\"Z\"", 40), "scrolled to Z")
+            spec.assert_true(g.header_id("A") > 0, "A still shown")
+            spec.assert_eq(uidriver.widget_int_field_by_id(g.header_id("A"), "x"), ax, "where it was")
+            b.click("Unfreeze")
+            spec.assert_true(b.wait_for_console("sheet: unfroze columns"), "unfrozen")
+            g.goto("A1")
+        }
         spec.it("Zoom: the grid's columns scaled, and the status bar says it") callback {
             w0 = uidriver.widget_int_field_by_id(g.header_id("C"), "w")
             b.click("Zoom in")

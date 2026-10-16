@@ -49,7 +49,7 @@ export const MENUS: readonly Menu[] = [
     ...PANELS.map((p) => i(panelItem(p.label), "view.panel")), "-",
     i("Show formulas", "formulas.showFormulas"), i("R1C1", "formulas.style"), "-",
     i("Hide rows", "rows.hide"), i("Unhide rows", "rows.unhide"), i("Hide columns", "columns.hide"), i("Unhide columns", "columns.unhide"), "-",
-    i("Freeze top row", "view.freezeRows"), i("Unfreeze", "view.freezeRows"), i("Row height", "rows.height"), i("Zoom in", "view.zoom"), i("Zoom out", "view.zoom"), i("Zoom 100%", "view.zoom"), i("AutoFit columns", "columns.autofit"), i("AutoFit rows", "rows.autofit"),
+    i("Freeze top row", "view.freezeRows"), i("Freeze first column", "view.freezeCols"), i("Freeze panes", "view.freezePanes"), i("Unfreeze", "view.freezeRows"), i("Row height", "rows.height"), i("Zoom in", "view.zoom"), i("Zoom out", "view.zoom"), i("Zoom 100%", "view.zoom"), i("AutoFit columns", "columns.autofit"), i("AutoFit rows", "rows.autofit"),
   ] },
   { label: "Insert", items: [
     i("Insert row", "rows.insert"), i("Insert column", "columns.insert"), i("Add sheet", "sheet.add"), "-",

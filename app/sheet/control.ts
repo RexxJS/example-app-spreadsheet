@@ -36,6 +36,7 @@ interface State {
   readonly hiddenRows: readonly number[];
   readonly hiddenCols: readonly string[];
   readonly frozenRows: number;
+  readonly frozenCols: number;
   readonly rowHeights: readonly (readonly [number, number])[];
   readonly colWidths: readonly (readonly [string, number])[];
   readonly filter: { readonly range: string; readonly column: string; readonly criterion: string } | null;
@@ -354,11 +355,14 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     return Object.fromEntries([[0, all.length], ...all.flatMap(([n, r], i) => [[`${i + 1}.NAME`, n], [`${i + 1}.RANGE`, r]])]);
   },
   FREEZEPANES: async (exec, rows, cols) => {
-    if (parseInt(text(cols) || "0", 10) > 0) throw new Error("FREEZEPANES: demo 18 freezes rows only");
-    return (await must(exec, "view.freezeRows", { count: text(rows) || "0" }), "OK");
+    await must(exec, "view.freezeRows", { count: text(rows) || "0" });
+    return (await must(exec, "view.freezeCols", { count: text(cols) || "0" }), "OK");
   },
-  UNFREEZEPANES: async (exec) => (await must(exec, "view.freezeRows", { count: "0" }), "OK"),
-  GETFROZENPANES: async (exec) => ({ ROWS: (await state(exec)).frozenRows, COLUMNS: 0 }),
+  UNFREEZEPANES: async (exec) => (await must(exec, "view.freezeRows", { count: "0" }), await must(exec, "view.freezeCols", { count: "0" }), "OK"),
+  GETFROZENPANES: async (exec) => {
+    const st = await state(exec);
+    return { ROWS: st.frozenRows, COLUMNS: st.frozenCols };
+  },
   SETCELLVALIDATION: async (exec, c, type, ...args) => (await must(exec, "validation.set", { range: text(c), ...validation(text(type), args) }), "OK"),
   CLEARCELLVALIDATION: async (exec, c) => (await must(exec, "validation.clear", { range: text(c) }), "OK"),
   VALIDATECELL: async (exec, c, v) => {

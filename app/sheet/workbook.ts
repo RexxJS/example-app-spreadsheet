@@ -87,6 +87,7 @@ export interface Page {
   filtered: Set<number> | null;
   filter: Filter | null;
   frozen: number;
+  frozenCols: number;
   merges: [Addr, Addr][];
   heights: Map<number, number>;
   widths: Map<number, number>;
@@ -172,7 +173,7 @@ interface SavedPage {
 // in place).
 const viewOf = (p: Omit<Page, "name" | "sheet" | "notes">): Omit<Page, "name" | "sheet" | "notes"> => ({
   rules: [...p.rules], charts: [...p.charts], hiddenRows: new Set(p.hiddenRows), hiddenCols: new Set(p.hiddenCols),
-  filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, merges: [...p.merges],
+  filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, frozenCols: p.frozenCols, merges: [...p.merges],
   heights: new Map(p.heights), widths: new Map(p.widths), autoId: p.autoId, pivots: new Map(p.pivots),
   tabColor: p.tabColor, hiddenSheet: p.hiddenSheet,
 });
@@ -330,7 +331,7 @@ export class Workbook {
       keys.add(key);
     };
     page = { name, sheet: new Sheet({ changed }, language, context), notes: new CellNotes(), rules: [], charts: [],
-      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false };
+      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false };
     return page;
   }
 
@@ -814,6 +815,11 @@ export class Workbook {
 
   frozenRows(): number {
     return this.#active.frozen;
+  }
+
+  // Its columns frozen at the left (Freeze Panes, Freeze First Column).
+  frozenCols(): number {
+    return this.#active.frozenCols;
   }
 
   // The active sheet's merged ranges ("A1:C1"), in sheet order, and its

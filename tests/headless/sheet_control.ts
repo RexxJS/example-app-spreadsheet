@@ -31,11 +31,11 @@ eq("the app's argument shapes as the commands' own", [
   [["edit.fillDown", { range: "A1:A5", source: "1" }]], [["edit.fillRight", { range: "A1:D2", source: "1" }]], [["data.sortDescending", { range: "A1:C10", by: "B" }]], [["data.sortAscending", { range: "A1:C10", by: "A" }]],
   [["format.wrap", { range: "A1", off: "1" }]], [{ 0: 2, 1: "A1", 2: "B2" }, [["edit.find", { text: "x", matchCase: "1", inFormulas: "1" }]]],
   [["validation.set", { range: "A1", kind: "decimal", min: "0", max: "100" }]], [["validation.set", { range: "A1", kind: "list", values: "Red,Green" }]],
-  [["view.freezeRows", { count: "2" }]], ['{"name":"T","range":"A1:B3","columns":["x","y"]}', [["table.define", { name: "T", range: "A1:B3", headers: "1" }], ["table.get", { name: "T" }]]],
+  [["view.freezeRows", { count: "2" }], ["view.freezeCols", { count: "0" }]], ['{"name":"T","range":"A1:B3","columns":["x","y"]}', [["table.define", { name: "T", range: "A1:B3", headers: "1" }], ["table.get", { name: "T" }]]],
 ]);
 
 const cell = { value: 300, input: "=A1+A2", format: "number:0.00", comment: "sum", wrap: 1, merged: "A1:B1", validation: null };
-const sheet = { name: "Sheet1", sheets: ["Sheet1", "Costs"], hiddenRows: [3], hiddenCols: ["E"], frozenRows: 1, rowHeights: [[2, 40]], canUndo: 0, canRedo: 1 };
+const sheet = { name: "Sheet1", sheets: ["Sheet1", "Costs"], hiddenRows: [3], hiddenCols: ["E"], frozenRows: 1, frozenCols: 0, rowHeights: [[2, 40]], canUndo: 0, canRedo: 1 };
 const reads = async (name: string, ...args: unknown[]) => (await told(name, args, { "cell.about": cell, "sheet.state": sheet }))[0];
 eq("a getter reads cell.about or sheet.state", [
   await reads("GETEXPRESSION", "A3"), await reads("GETFORMAT", "A3"), await reads("GETCOMMENT", "A3"), await reads("GETWRAPTEXT", "A3"), await reads("GETMERGEDRANGE", "A3"), await reads("ISCELLMERGED", "A3"),
@@ -52,10 +52,10 @@ eq("references worked out without the sheet", [await told("GETROW", ["C5"]), awa
   [[5, []], [3, []], ["C", []], ["C5", []], ["C5", []]]);
 eq("refusals: a bad argument, a refused command, what demo 18 cannot do", [
   await failed(() => told("INSERTROW", [0])), await failed(() => told("HIDECOLUMN", ["ABCD"])), await failed(() => CONTROL.MERGECELLS(stub({}, ["cells.merge"]).exec, "A1:B2")),
-  await failed(() => told("FREEZEPANES", [1, 2])), await failed(() => told("SETCELLVALIDATION", ["A1", "text", 1, 5, "^a"])),
+  await failed(() => told("SETCELLVALIDATION", ["A1", "text", 1, 5, "^a"])),
 ], [
   "INSERTROW needs a row number (e.g. 2)", 'HIDECOLUMN needs a column, a letter or a number (e.g. "B" or 2)', "cells.merge refused",
-  "FREEZEPANES: demo 18 freezes rows only", "SETCELLVALIDATION: demo 18 has no pattern rule yet",
+  "SETCELLVALIDATION: demo 18 has no pattern rule yet",
 ]);
 
 // The app's LISTCOMMANDS, as it lists them: each is here, missing, or one
@@ -87,7 +87,7 @@ const script = async (text: string) => {
 };
 eq("cell.about and sheet.state, the getters' commands", [(await cmds.run("cell.comment cell=B2 text=hi")) && (await cmds.run("cell.about cell=B2")).output, (await cmds.run("sheet.state")).output],
   [{ cell: "B2", value: "", input: "", format: "", comment: "hi", wrap: 0, merged: "", validation: null, editor: null },
-    { name: "Sheet1", sheets: ["Sheet1"], hiddenSheets: [], tabColors: {}, hiddenRows: [], hiddenCols: [], frozenRows: 0, rowHeights: [], colWidths: [], filter: null, canUndo: 1, canRedo: 0, autoId: null, language: "Excel", referenceStyle: "A1", panel: "", zoom: 100, dateSystem: 1900, calculation: "Automatic", iteration: null, stale: [] }]);
+    { name: "Sheet1", sheets: ["Sheet1"], hiddenSheets: [], tabColors: {}, hiddenRows: [], hiddenCols: [], frozenRows: 0, frozenCols: 0, rowHeights: [], colWidths: [], filter: null, canUndo: 1, canRedo: 0, autoId: null, language: "Excel", referenceStyle: "A1", panel: "", zoom: 100, dateSystem: 1900, calculation: "Automatic", iteration: null, stale: [] }]);
 eq("a script calls them by the app's names", [await script(`LET r = SETCELL("A1", 10); LET r = SETCELL("A2", 20); LET r = INSERTROW(2); LET r = HIDEROW(2)
 SAY GETCELL("A3") ISROWHIDDEN(2) ISROWHIDDEN(3); LET r = UNDO(); SAY CANUNDO() CANREDO(); LET n = GETSHEETNAMES(); SAY n.0 n.1`), said, wb.sheet.input("A3"), wb.hidden().rows],
   ["ran", ["20 1 0", "1 1", "1 Sheet1"], "20", []]);
