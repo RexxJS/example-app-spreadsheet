@@ -2076,3 +2076,71 @@ defEng("BESSELJ", 2, 2, (args) => E.besselJ(num(args, 0), order(args)));
 defEng("BESSELI", 2, 2, (args) => E.besselI(num(args, 0), order(args)));
 defEng("BESSELK", 2, 2, (args) => E.besselK(num(args, 0), order(args)));
 defEng("BESSELY", 2, 2, (args) => E.besselY(num(args, 0), order(args)));
+
+// --- database functions (2.11) ---
+
+// A database range (a header row naming its columns, then its records)
+// and a criteria range (a header row of column names, then rows of
+// conditions): a record matches when every condition in some row holds
+// (a row's cells AND, the rows OR; an empty row matches every record). A
+// condition: a number is that number; text with an operator (">10",
+// "=Apple", "<>x") compares as COUNTIF's does; plain text is what the
+// cell starts with, in any case (Excel's way, with * and ? as wildcards).
+const rowsOfArg = (a: Arg): Value[][] => Array.from({ length: a.values.length / a.cols }, (_, r) => a.values.slice(r * a.cols, (r + 1) * a.cols) as Value[]);
+const label = (v: Value): string => toText(v).trim().toUpperCase();
+function dbCondition(c: Value): (v: Value) => boolean {
+  if (typeof c === "string" && !/^(<>|<=|>=|=|<|>)/.test(c)) {
+    const pattern = new RegExp(`^${c.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".")}`, "i");
+    return (v) => typeof v === "string" && pattern.test(v);
+  }
+  return criterion(c);
+}
+// The field's values in the records that match.
+function matching(name: string, args: readonly Arg[], fieldOptional: boolean): { values: Value[]; count: number } {
+  const db = rowsOfArg(args[0]);
+  if (db.length < 1) return fail("#VALUE!", `${name}'s database has no header row`);
+  const header = db[0].map(label), records = db.slice(1);
+  const crit = args.length > 2 ? args[2] : args[1];
+  const fieldGiven = args.length > 2 && !absent(args, 1);
+  let column = -1;
+  if (fieldGiven) {
+    const f = val(args, 1);
+    column = typeof f === "number" ? Math.trunc(f) - 1 : header.indexOf(label(f));
+    if (column < 0 || column >= header.length) return fail("#VALUE!", `${name}: no field ${toText(f)} in the database`);
+  } else if (!fieldOptional) return fail("#VALUE!", `${name} takes a field`);
+  const cRows = rowsOfArg(crit);
+  if (cRows.length < 1) return fail("#VALUE!", `${name}'s criteria have no header row`);
+  const cHead = cRows[0].map(label);
+  const tests = cRows.slice(1).map((row) => row.flatMap((c, j): [number, (v: Value) => boolean][] => {
+    if (c === null || c === "") return [];
+    const at = header.indexOf(cHead[j]);
+    if (at < 0) return fail("#VALUE!", `${name}: the criteria's ${toText(cRows[0][j])} is not a field of the database`);
+    return [[at, dbCondition(c)]];
+  }));
+  const keep = records.filter((rec) => (tests.length === 0 ? true : tests.some((row) => row.every(([at, t]) => t(rec[at] ?? null)))));
+  return { values: column < 0 ? keep.map(() => 1) : keep.map((rec) => rec[column] ?? null), count: keep.length };
+}
+const dbNumbers = (vs: readonly Value[]): number[] => vs.filter((v): v is number => typeof v === "number");
+const dbStat = (name: string, of: (ns: number[]) => number, least = 0) => (args: readonly Arg[]): number => {
+  const ns = dbNumbers(matching(name, args, false).values);
+  return ns.length < least ? fail("#DIV/0!", `${name} needs ${plural(least)} or more`) : of(ns);
+};
+def("DSUM", 3, 3, dbStat("DSUM", sum));
+def("DAVERAGE", 3, 3, dbStat("DAVERAGE", (ns) => sum(ns) / ns.length, 1));
+def("DMAX", 3, 3, dbStat("DMAX", (ns) => (ns.length ? Math.max(...ns) : 0)));
+def("DMIN", 3, 3, dbStat("DMIN", (ns) => (ns.length ? Math.min(...ns) : 0)));
+def("DPRODUCT", 3, 3, dbStat("DPRODUCT", (ns) => (ns.length ? ns.reduce((p, n) => p * n, 1) : 0)));
+def("DSTDEV", 3, 3, dbStat("DSTDEV", (ns) => Math.sqrt(squares(ns) / (ns.length - 1)), 2));
+def("DSTDEVP", 3, 3, dbStat("DSTDEVP", (ns) => Math.sqrt(squares(ns) / ns.length), 1));
+def("DVAR", 3, 3, dbStat("DVAR", (ns) => squares(ns) / (ns.length - 1), 2));
+def("DVARP", 3, 3, dbStat("DVARP", (ns) => squares(ns) / ns.length, 1));
+// DCOUNT counts the numbers in the field, DCOUNTA what is not empty; with
+// the field left out, the records that match.
+def("DCOUNT", 2, 3, (args) => { const m = matching("DCOUNT", args, true); return args.length < 3 || absent(args, 1) ? m.count : dbNumbers(m.values).length; });
+def("DCOUNTA", 2, 3, (args) => { const m = matching("DCOUNTA", args, true); return args.length < 3 || absent(args, 1) ? m.count : m.values.filter((v) => v !== null && v !== "").length; });
+// DGET: the one record's field; none is #VALUE!, more than one #NUM!.
+def("DGET", 3, 3, (args) => {
+  const m = matching("DGET", args, false);
+  if (m.count === 0) return fail("#VALUE!", "DGET: no record matches");
+  return m.count > 1 ? fail("#NUM!", `DGET: ${m.count} records match, not one`) : m.values[0];
+});
