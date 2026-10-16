@@ -103,7 +103,7 @@ main() {
             spec.assert_true(g.wait_cell("E", 3, "3"), "COUNTIF follows an edit")
             spec.assert_true(g.wait_cell("E", 2, "8.8"), "and so does VLOOKUP, through D3")
             spec.assert_true(b.wait_for_text("No problems"), "no problems")
-            spec.assert_true(string.contains(b.page_texts(), "Excel functions: ABS, ACOS, ACOSH, ADDRESS, AND,") == 1, "the page lists its functions")
+            spec.assert_true(string.contains(b.page_texts(), "Excel functions: ABS, ACOS, ACOSH, ADDRESS, AGGREGATE,") == 1, "the page lists its functions")
         }
         spec.it("a double click edits a cell in place, opening on its formula") callback {
             uidriver.post_ok("/widget/${g.cell_id("D", 2)}/double_click", "double-click D2")

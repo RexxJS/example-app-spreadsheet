@@ -96,7 +96,7 @@ function lifted(fn: Fn, args: readonly Arg[], over: ReadonlySet<number>): Result
 
 // The evaluator's own forms count too (IF; ROW and COLUMN read references;
 // OFFSET and INDIRECT make them).
-export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS", "INFO"].sort();
+export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS", "INFO", "SUBTOTAL", "AGGREGATE", "GROUPBY", "PIVOTBY"].sort();
 
 // --- reading arguments ---
 
@@ -197,6 +197,15 @@ def("STDEV", 1, Infinity, (args) => {
   return Math.sqrt(sum(ns.map((n) => (n - mean) ** 2)) / (ns.length - 1));
 });
 def("COUNT", 1, Infinity, (args) => numbers(args).length);
+// The A forms count every cell that holds something: TRUE 1, FALSE and
+// text 0, an error itself.
+const everything = (args: readonly Arg[]): number[] => every(args).map(scalar).flatMap((v) => (v === null ? [] : typeof v === "number" ? [v] : v === true ? [1] : [0]));
+def("MAXA", 1, Infinity, (args) => { const ns = everything(args); return ns.length ? Math.max(...ns) : 0; });
+def("MINA", 1, Infinity, (args) => { const ns = everything(args); return ns.length ? Math.min(...ns) : 0; });
+def("AVERAGEA", 1, Infinity, (args) => {
+  const ns = everything(args);
+  return ns.length ? sum(ns) / ns.length : fail("#DIV/0!", "AVERAGEA of nothing");
+});
 def("COUNTA", 1, Infinity, (args) => every(args).filter((v) => v !== null).length);
 def("COUNTBLANK", 1, 1, (args) => args[0].values.filter(blank).length);
 def("ABS", 1, 1, (args) => Math.abs(num(args, 0)));
@@ -767,6 +776,27 @@ def("PERCENTILE", 2, 2, (args) => percentile(sorted(args, 0), num(args, 1), "PER
 def("QUARTILE", 2, 2, (args) => {
   const q = Math.trunc(num(args, 1));
   return q < 0 || q > 4 ? fail("#NUM!", "QUARTILE's quart is 0 to 4") : percentile(sorted(args, 0), q / 4, "QUARTILE");
+});
+// The .INC pair are PERCENTILE and QUARTILE; the .EXC pair leave the ends
+// out: the k-th point of n + 1, which must fall within the numbers.
+const exclusive = (ns: number[], k: number): number => {
+  ns.sort((a, b) => a - b);
+  const rank = k * (ns.length + 1);
+  if (rank < 1 || rank > ns.length) return fail("#NUM!", `the ${k} point lies outside the numbers`);
+  const lo = Math.floor(rank), frac = rank - lo;
+  return frac === 0 ? ns[lo - 1] : ns[lo - 1] + frac * (ns[lo] - ns[lo - 1]);
+};
+def("PERCENTILE.INC", 2, 2, (args) => call("PERCENTILE", args));
+def("QUARTILE.INC", 2, 2, (args) => call("QUARTILE", args));
+def("PERCENTILE.EXC", 2, 2, (args) => {
+  const k = num(args, 1);
+  if (k <= 0 || k >= 1) return fail("#NUM!", `PERCENTILE.EXC's k is between 0 and 1, not ${k}`);
+  return exclusive(numbers([args[0]]), k);
+});
+def("QUARTILE.EXC", 2, 2, (args) => {
+  const q = Math.trunc(num(args, 1));
+  if (q < 1 || q > 3) return fail("#NUM!", `QUARTILE.EXC's quart is 1, 2 or 3, not ${q}`);
+  return exclusive(numbers([args[0]]), q / 4);
 });
 def("MODE", 1, Infinity, (args) => {
   const ns = numbers(args), counts = new Map<number, number>();

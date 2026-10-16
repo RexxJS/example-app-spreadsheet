@@ -60,7 +60,12 @@ export interface Env {
   // this one is, for SHEET and SHEETS.
   input?(key: string): string;
   book?(): Book;
+  // Whether a cell's row is hidden: by hand, by a filter, or not (null),
+  // for SUBTOTAL and AGGREGATE.
+  hidden?(key: string): Hidden;
 }
+
+export type Hidden = "manual" | "filter" | null;
 
 export interface Book {
   readonly sheets: readonly string[];

@@ -38,20 +38,21 @@ const grid = (...srcs: string[]): string[] => srcs.map((src) => {
 });
 
 eq("the library", names().join(" "), [
-  "ABS ACOS ACOSH ADDRESS AND ARRAYTOTEXT ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEIF AVERAGEIFS CEILING",
-  "CEILING.MATH CEILING.PRECISE CHAR CHOOSE CHOOSECOLS CHOOSEROWS CLEAN CODE COLUMN COLUMNS COMBIN CONCAT",
-  "CONCATENATE COS COSH COUNT COUNTA COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS DAYS360 DEGREES",
-  "DOLLAR DROP EDATE EOMONTH ERROR.TYPE EVEN EXACT EXP EXPAND FACT FALSE FILTER FIND FIXED FLOOR FLOOR.MATH",
-  "FLOOR.PRECISE FORMULATEXT FV GCD HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INFO INT IRR ISBLANK",
-  "ISERR ISERROR ISEVEN ISFORMULA ISLOGICAL ISNA ISNONTEXT ISNUMBER ISODD ISOWEEKNUM ISREF ISTEXT LARGE LCM LEFT",
-  "LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX MAXIFS MEDIAN MID MIN MINIFS MINUTE MOD MODE MONTH MROUND N NA",
-  "NETWORKDAYS NETWORKDAYS.INTL NOT NOW NPER NPV NUMBERVALUE ODD OFFSET OR PERCENTILE PERMUT PI PMT POWER PRODUCT",
-  "PROPER PV QUARTILE QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE REGEXEXTRACT REGEXREPLACE REGEXTEST",
-  "REPLACE REPT RIGHT ROUND ROUNDDOWN ROUNDUP ROW ROWS SEARCH SECOND SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT",
-  "SORTBY SPARKLINE SQRT STDEV STDEVP SUBSTITUTE SUM SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT",
-  "TEXTAFTER TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TIMEVALUE TOCOL TODAY TOROW TRANSPOSE TRIM TRUE TRUNC TYPE UNICHAR",
-  "UNICODE UNIQUE UPPER VALUE VALUETOTEXT VAR VARP VLOOKUP VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS",
-  "WRAPROWS XLOOKUP XMATCH XOR YEAR YEARFRAC",
+  "ABS ACOS ACOSH ADDRESS AGGREGATE AND ARRAYTOTEXT ASIN ASINH ATAN ATAN2 ATANH AVERAGE AVERAGEA AVERAGEIF",
+  "AVERAGEIFS CEILING CEILING.MATH CEILING.PRECISE CHAR CHOOSE CHOOSECOLS CHOOSEROWS CLEAN CODE COLUMN COLUMNS",
+  "COMBIN CONCAT CONCATENATE COS COSH COUNT COUNTA COUNTBLANK COUNTIF COUNTIFS DATE DATEDIF DATEVALUE DAY DAYS",
+  "DAYS360 DEGREES DOLLAR DROP EDATE EOMONTH ERROR.TYPE EVEN EXACT EXP EXPAND FACT FALSE FILTER FIND FIXED FLOOR",
+  "FLOOR.MATH FLOOR.PRECISE FORMULATEXT FV GCD GROUPBY HLOOKUP HOUR HSTACK IF IFERROR IFNA IFS INDEX INDIRECT INFO",
+  "INT IRR ISBLANK ISERR ISERROR ISEVEN ISFORMULA ISLOGICAL ISNA ISNONTEXT ISNUMBER ISODD ISOWEEKNUM ISREF ISTEXT",
+  "LARGE LCM LEFT LEN LN LOG LOG10 LOOKUP LOWER MATCH MAX MAXA MAXIFS MEDIAN MID MIN MINA MINIFS MINUTE MOD MODE",
+  "MONTH MROUND N NA NETWORKDAYS NETWORKDAYS.INTL NOT NOW NPER NPV NUMBERVALUE ODD OFFSET OR PERCENTILE",
+  "PERCENTILE.EXC PERCENTILE.INC PERMUT PI PIVOTBY PMT POWER PRODUCT PROPER PV QUARTILE QUARTILE.EXC QUARTILE.INC",
+  "QUOTIENT RADIANS RAND RANDARRAY RANDBETWEEN RANK RATE REGEXEXTRACT REGEXREPLACE REGEXTEST REPLACE REPT RIGHT",
+  "ROUND ROUNDDOWN ROUNDUP ROW ROWS SEARCH SECOND SEQUENCE SHEET SHEETS SIGN SIN SINH SMALL SORT SORTBY SPARKLINE",
+  "SQRT STDEV STDEVP SUBSTITUTE SUBTOTAL SUM SUMIF SUMIFS SUMPRODUCT SUMSQ SWITCH T TAKE TAN TANH TEXT TEXTAFTER",
+  "TEXTBEFORE TEXTJOIN TEXTSPLIT TIME TIMEVALUE TOCOL TODAY TOROW TRANSPOSE TRIM TRUE TRUNC TYPE UNICHAR UNICODE",
+  "UNIQUE UPPER VALUE VALUETOTEXT VAR VARP VLOOKUP VSTACK WEEKDAY WEEKNUM WORKDAY WORKDAY.INTL WRAPCOLS WRAPROWS",
+  "XLOOKUP XMATCH XOR YEAR YEARFRAC",
 ].join(" "));
 
 // Maths and statistics.
@@ -113,6 +114,29 @@ eq("SUBSTITUTE, REPT, EXACT", ev(`SUBSTITUTE(D4, "o", "0")`, `SUBSTITUTE(D4, "",
 eq("TEXTJOIN, skipping blanks or not", ev(`TEXTJOIN(", ", TRUE, B1:B6)`, `TEXTJOIN("-", FALSE, B1:B4)`), ["apples, pears, apples, Plums", "apples-pears-apples-"]);
 eq("VALUE", ev("VALUE(D5)+1", `VALUE(" 2.5 ")`), ["6", "2.5"]);
 eq("VALUE of words", why("VALUE(B1)"), ["#VALUE! 'apples' is not a number"]);
+
+// Aggregates (2.6). The Env here hides nothing: a sheet's does (sheet_book).
+eq("SUBTOTAL by function number, 1 to 11 and 101 to 111", ev("SUBTOTAL(9, A1:A6)", "SUBTOTAL(109, A1:A6)", "SUBTOTAL(1, C1:C3)", "SUBTOTAL(2, A1:B6)", "SUBTOTAL(3, B1:B6)", "SUBTOTAL(4, A1:A6, C1:C6)", "SUBTOTAL(5, E1:E5)", "SUBTOTAL(6, A1:A3)", "ROUND(SUBTOTAL(7, A1:A6), 4)", "SUBTOTAL(11, C1:C3)"),
+  ["23", "23", "20", "6", "5", "60", "10", "12", "2.9944", "66.66666667"]);
+eq("SUBTOTAL's errors", why("SUBTOTAL(12, A1:A6)", "SUBTOTAL(0, A1:A6)", "SUBTOTAL(9)", "SUBTOTAL(9, D2)"), ["#VALUE! SUBTOTAL's function number 12: 1 to 11, or 101 to 111", "#VALUE! SUBTOTAL's function number 0: 1 to 11, or 101 to 111", "#VALUE! SUBTOTAL takes a function number and a reference", "#DIV/0! divide by zero"]);
+eq("AGGREGATE: the function, the options (2 skips errors), the k forms", ev("AGGREGATE(9, 6, A1:A6, D2)", "AGGREGATE(1, 6, A1:A6, D2)", "AGGREGATE(14, 6, A1:A6, 2)", "AGGREGATE(15, 4, A1:A6, 1)", "AGGREGATE(12, 0, A1:A6)", "AGGREGATE(13, 0, A1:A6)", "AGGREGATE(16, 6, A1:A6, 0.5)", "AGGREGATE(17, 6, A1:A6, 1)", "AGGREGATE(18, 6, A1:A6, 0.5)", "AGGREGATE(19, 6, A1:A6, 3)", "AGGREGATE(4, 0, {1, 5, 2})"),
+  ["23", "3.833333333", "5", "1", "3.5", "1", "3.5", "1.5", "3.5", "6", "5"]);
+eq("AGGREGATE's errors: an error kept, a bad number or options", why("AGGREGATE(9, 4, A1:A6, D2)", "AGGREGATE(20, 0, A1:A6)", "AGGREGATE(9, 8, A1:A6)", "AGGREGATE(14, 6, A1:A6, 9)"), ["#DIV/0! divide by zero", "#VALUE! AGGREGATE's function number 20: 1 to 19", "#VALUE! AGGREGATE's options are 0 to 7, not 8", "#NUM! LARGE's k is 9 of 6 numbers"]);
+eq("MAXA, MINA, AVERAGEA: TRUE 1, text and FALSE 0", ev("MAXA(A1:A3, D1)", "MAXA(B1:B6)", "MINA(A1:A6, B1)", "MINA(D1, 2)", "AVERAGEA(A1:A3, D1)", "AVERAGEA(C1:C2, B1)", "AVERAGEA(B5)"), ["4", "0", "0", "1", "2.25", "10", "#DIV/0!"]);
+eq("COUNTA over mixed cells: everything but the empty, the empty text included", ev("COUNTA(A1:D6)", "COUNTA(B1:B6)", `COUNTA(B5, "")`, "COUNTA(D1:D5)"), ["22", "5", "1", "5"]);
+eq("the .INC and .EXC quantiles", ev("PERCENTILE.INC(A1:A6, 0.5)", "QUARTILE.INC(A1:A6, 3)", "PERCENTILE.EXC(A1:A6, 0.5)", "PERCENTILE.EXC(A1:A6, 0.25)", "QUARTILE.EXC(A1:A6, 1)", "QUARTILE.EXC(A1:A6, 3)"), ["3.5", "4.75", "3.5", "1", "1", "6"]);
+eq("their ends", why("PERCENTILE.EXC(A1:A6, 0.1)", "PERCENTILE.EXC(A1:A6, 1)", "QUARTILE.EXC(A1:A6, 0)"), ["#NUM! the 0.1 point lies outside the numbers", "#NUM! PERCENTILE.EXC's k is between 0 and 1, not 1", "#NUM! QUARTILE.EXC's quart is 1, 2 or 3, not 0"]);
+eq("GROUPBY: each group's values folded by a LAMBDA, or a function's bare name, sorted, with a total", grid("GROUPBY(B1:B3, A1:A3, LAMBDA(v, SUM(v)))", "GROUPBY(B1:B3, A1:A3, SUM)", "GROUPBY(B1:B3, A1:A3, COUNT, 0, 0)", "GROUPBY(B1:B3, A1:A3, MAX, 0, 1, -1)", "GROUPBY(G1:G4, H1:H4, SUM, 3)"),
+  ["3x2:apples,7,pears,1,Total,8", "3x2:apples,7,pears,1,Total,8", "2x2:apples,2,pears,1", "3x2:pears,1,apples,4,Total,4", "5x2:fruit,price,apple,0.5,pear,0.75,plum,1.2,Total,2.45"]);
+eq("GROUPBY over two fields, a sort by the value, and a filter", grid("GROUPBY(HSTACK(B1:B3, A1:A3), C1:C3, SUM, 0, 0)", "GROUPBY(B1:B3, C1:C3, SUM, 0, 0, -2)", "GROUPBY(B1:B3, C1:C3, SUM, 0, 1, 1, A1:A3 > 1)"),
+  ["3x3:apples,3,10,apples,4,30,pears,1,20", "2x2:apples,40,pears,20", "2x2:apples,40,Total,40"]);
+eq("PIVOTBY: rows by one field, columns by another, totals both ways", grid("PIVOTBY(B1:B3, A1:A3, C1:C3, SUM)", "PIVOTBY(B1:B3, A1:A3, C1:C3, SUM, 0, 0, 1, 0, -1)"),
+  ["4x5:,1,3,4,Total,apples,,10,30,40,pears,20,,,20,Total,20,10,30,60", "3x4:,4,3,1,apples,30,10,,pears,,,20"]);
+eq("GROUPBY's and PIVOTBY's errors", why("GROUPBY(B1:B3, A1:A2, SUM)", "GROUPBY(B1:B3, A1:A3, 1)", "GROUPBY(B1:B3, A1:A3, SUM, 4)", "PIVOTBY(B1:B3, A1:A3, C1:C3, SUM, 0, 1, 1, 1, 1, A1:A2)", "GROUPBY(B1:B3, A1:A3)"), [
+  "#VALUE! GROUPBY's fields and values differ in height", "#VALUE! GROUPBY takes a LAMBDA last", "#VALUE! GROUPBY's field_headers is 0 to 3, not 4", "#VALUE! PIVOTBY's filter_array differs in height", "#VALUE! GROUPBY takes 3 to 7 values",
+]);
+eq("a function's bare name is a LAMBDA where one is taken", ev("SUM(MAP(A1:A3, SUM))", "SUM(BYROW(F2:F4, MAX))", "REDUCE(0, A1:A3, LAMBDA(a, v, a + v))"), ["8", "6", "8"]);
+eq("and nowhere else: a bare name, or one in another function's arguments", [...why("SUM(A1:A3) + 0"), (() => { try { parse("SUM(MAX)"); return "parsed"; } catch (e) { return String((e as Error).message); } })()], ["not an error: 8", "unknown name 'MAX'"]);
 
 // The dates batch (2.5): against values worked out by hand and by
 // Python's calendar (ISO weeks by isocalendar, workdays by a loop).
@@ -329,6 +353,20 @@ eq("a lookup in a formula", ev(`"A " & VLOOKUP(1, F2:H4, 2, FALSE) & " costs " &
 // expect: ok TEXTJOIN, skipping blanks or not
 // expect: ok VALUE
 // expect: ok VALUE of words
+// expect: ok SUBTOTAL by function number, 1 to 11 and 101 to 111
+// expect: ok SUBTOTAL's errors
+// expect: ok AGGREGATE: the function, the options (2 skips errors), the k forms
+// expect: ok AGGREGATE's errors: an error kept, a bad number or options
+// expect: ok MAXA, MINA, AVERAGEA: TRUE 1, text and FALSE 0
+// expect: ok COUNTA over mixed cells: everything but the empty, the empty text included
+// expect: ok the .INC and .EXC quantiles
+// expect: ok their ends
+// expect: ok GROUPBY: each group's values folded by a LAMBDA, or a function's bare name, sorted, with a total
+// expect: ok GROUPBY over two fields, a sort by the value, and a filter
+// expect: ok PIVOTBY: rows by one field, columns by another, totals both ways
+// expect: ok GROUPBY's and PIVOTBY's errors
+// expect: ok a function's bare name is a LAMBDA where one is taken
+// expect: ok and nowhere else: a bare name, or one in another function's arguments
 // expect: ok WEEKNUM: Sunday weeks (1), Monday weeks (2, 11), other starts, ISO (21)
 // expect: ok ISOWEEKNUM: week 1 holds the first Thursday
 // expect: ok WEEKNUM's type

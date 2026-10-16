@@ -109,6 +109,25 @@ await cmds.run("sheet.activate name=Data");
 await cmds.run('cell.set cell=I7 input="=INFO(""numfile"")"');
 eq("INFO(numfile) counts the workbook's sheets", on("Data", "I7"), "3");
 
+// SUBTOTAL and AGGREGATE skip rows a filter hides, and rows hidden by
+// hand when told (101 to 111; AGGREGATE's option bit 1); a hiding works
+// them out again.
+await cmds.run("sheet.add name=Totals");
+for (const [k, v] of [["A1", "10"], ["A2", "20"], ["A3", "30"], ["A4", "40"], ["A5", "=SUBTOTAL(9, A1:A4)"], ["A6", "=SUBTOTAL(109, A1:A4)"], ["A7", "=AGGREGATE(9, 5, A1:A4)"], ["A8", "=SUM(A1:A7)"], ["A9", "=SUBTOTAL(9, A1:A7)"]]) await cmds.run(`cell.set cell=${k} input="${v}"`);
+eq("all shown: the same sum, nested subtotals skipped, SUM not skipping", ["A5", "A6", "A7", "A8", "A9"].map((k) => on("Totals", k)), ["100", "100", "100", "400", "100"]);
+await cmds.run("rows.hide range=A2:A3");
+eq("rows hidden by hand: the 100s skip them, the 9 does not", ["A5", "A6", "A7"].map((k) => on("Totals", k)), ["100", "50", "50"]);
+await cmds.run("rows.unhide range=A2:A3");
+await cmds.run('data.filter range=A1:A4 column=A criterion="<35"');
+eq("rows a filter hides (the range's first row its header): every form skips them", ["A5", "A6", "A7"].map((k) => on("Totals", k)), ["60", "60", "60"]);
+await cmds.run("data.clearFilter");
+eq("the filter cleared, back", ["A5", "A6", "A7"].map((k) => on("Totals", k)), ["100", "100", "100"]);
+await cmds.run("sheet.activate name=Data");
+await cmds.run('cell.set cell=I8 input="=SUBTOTAL(109, Totals!A1:A4)"');
+await cmds.run("sheet.activate name=Totals");
+await cmds.run("rows.hide range=A4");
+eq("from another sheet too", on("Data", "I8"), "60");
+
 // expect: ok sheet.move to a place, or a way
 // expect: ok the active sheet stays active
 // expect: ok refusals: past either end, neither or both, no such sheet
@@ -136,3 +155,8 @@ eq("INFO(numfile) counts the workbook's sheets", on("Data", "I7"), "3");
 // expect: ok a sheet moved, the numbers follow
 // expect: ok the formula retyped, FORMULATEXT follows
 // expect: ok INFO(numfile) counts the workbook's sheets
+// expect: ok all shown: the same sum, nested subtotals skipped, SUM not skipping
+// expect: ok rows hidden by hand: the 100s skip them, the 9 does not
+// expect: ok rows a filter hides (the range's first row its header): every form skips them
+// expect: ok the filter cleared, back
+// expect: ok from another sheet too

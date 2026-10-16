@@ -13,6 +13,7 @@ import { keyOf, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
 import type { Formulas, Names, TableDef, Tables } from "./language.ts";
 import { parseSpec } from "./structured.ts";
+import { names as functionNames } from "./functions.ts";
 import type { TableSpec } from "./structured.ts";
 
 export type Expr =
@@ -48,6 +49,15 @@ export type Expr =
 // stays text.
 export type ArrayItem = number | string | boolean | { readonly error: ErrorCode };
 
+let functionSet: Set<string> | null = null;
+const FUNCTIONS = (): Set<string> => (functionSet ??= new Set(functionNames()));
+// A function's bare name is the LAMBDA of one value that calls it (SUM
+// for LAMBDA(x, SUM(x))), as Excel reads it, only where a LAMBDA is
+// taken: an argument of GROUPBY(A1:A9, B1:B9, SUM), MAP(A1:A9, SUM) and
+// the other helpers. Elsewhere a bare name is a name, or #NAME?.
+const TAKES_LAMBDA: ReadonlySet<string> = new Set(["GROUPBY", "PIVOTBY", "MAP", "REDUCE", "SCAN", "BYROW", "BYCOL", "MAKEARRAY"]);
+const eta = (name: string): Expr => ({ kind: "lambda", params: ["_"], body: { kind: "call", name, args: [{ kind: "local", name: "_" }] } });
+
 const LEVELS: readonly (readonly Op[])[] = [
   ["=", "<>", "<", ">", "<=", ">="],
   ["&"],
@@ -63,6 +73,9 @@ class Parser {
   #tok!: Token;
   #ahead: Token | null = null;
   readonly #scopes: Set<string>[] = [];
+  // For each argument list being read, whether it is one that takes a
+  // LAMBDA (a bare function name there is one).
+  readonly #lambdaArgs: boolean[] = [];
 
   readonly #names: Names | undefined;
   readonly #formulas: Formulas;
@@ -104,7 +117,21 @@ class Parser {
   }
 
   // A function's arguments, from '(' to ')'; one left out is missing.
-  #args(): Expr[] {
+  #args(takesLambda = false): Expr[] {
+    this.#lambdaArgs.push(takesLambda);
+    try {
+      return this.#argList();
+    } finally {
+      this.#lambdaArgs.pop();
+    }
+  }
+
+  // Whether a bare function name, here, is its LAMBDA.
+  #etaHere(name: string): boolean {
+    return this.#lambdaArgs[this.#lambdaArgs.length - 1] === true && FUNCTIONS().has(name);
+  }
+
+  #argList(): Expr[] {
     this.#expect("(");
     const args: Expr[] = [];
     const arg = (): Expr => (this.#tok.kind === "," || this.#tok.kind === ")" ? { kind: "missing" } : this.#binary(0));
@@ -288,14 +315,18 @@ class Parser {
         if (this.#tok.kind !== "(") {
           if (local) return { kind: "local", name: t.name };
           if (t.name === "TRUE" || t.name === "FALSE") return { kind: "bool", value: t.name === "TRUE" };
-          // A named range is its cell or range; with no names to ask, a bare
-          // name does not parse.
-          if (!this.#names) throw new FormulaError(t.at, `unknown name '${t.text}'`);
+          // A named range is its cell or range; a function's bare name its
+          // LAMBDA (eta); with no names to ask, another bare name does not
+          // parse.
+          if (!this.#names) {
+            if (this.#etaHere(t.name)) return eta(t.name);
+            throw new FormulaError(t.at, `unknown name '${t.text}'`);
+          }
           const r = this.#names(t.name);
           // A table's name alone is its data rows (Sales is Sales[]).
           const table = r ? null : this.#tables(t.name);
           if (table) return { kind: "table", table, spec: parseSpec("", t.at), row: this.#row, text: t.text };
-          if (!r) return this.#named(t.name) ?? { kind: "error", code: "#NAME?", why: `no name ${t.name}` };
+          if (!r) return this.#named(t.name) ?? (this.#etaHere(t.name) ? eta(t.name) : { kind: "error", code: "#NAME?", why: `no name ${t.name}` });
           const on = (a: Addr) => (r.sheet ? `${r.sheet}!${keyOf(a)}` : keyOf(a));
           const [a, b] = [on(r.range[0]), on(r.range[1])];
           return a === b ? { kind: "ref", name: a } : { kind: "range", from: a, to: b };
@@ -305,7 +336,7 @@ class Parser {
         if (t.name === "LAMBDA") return this.#applied(this.#lambda());
         const named = this.#named(t.name);
         if (named) return this.#applied(named);
-        return { kind: "call", name: t.name, args: this.#args() };
+        return { kind: "call", name: t.name, args: this.#args(TAKES_LAMBDA.has(t.name)) };
       }
       case "{":
         return this.#array(t.at);

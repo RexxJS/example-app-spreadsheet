@@ -20,6 +20,7 @@ import type { Addr } from "./address.ts";
 import { resolve } from "./structured.ts";
 import type { Expr } from "./parser.ts";
 import { call, single } from "./functions.ts";
+import { groupBy, pivotBy } from "./groupby.ts";
 import type { Arg } from "./functions.ts";
 import { CellError, array, collapsed, compare, fail, finite, isArray, toNumber, toText } from "./values.ts";
 import type { ArrayValue, Result, Value } from "./values.ts";
@@ -38,12 +39,22 @@ export interface Env {
   // order, and which this one is.
   input?(key: string): string;
   book?(): { readonly sheets: readonly string[]; readonly here: number };
+  // Whether a cell's row is hidden by hand, by a filter, or not.
+  hidden?(key: string): "manual" | "filter" | null;
 }
 
 // The forms that make a reference at run time, and the functions that
 // draw a random number: a formula calling one is volatile (worked out
 // again on every change).
-export const VOLATILE_FORMS: ReadonlySet<string> = new Set(["OFFSET", "INDIRECT", "RAND", "RANDBETWEEN", "RANDARRAY"]);
+// SUBTOTAL and AGGREGATE read which rows are hidden, which no cell says.
+export const VOLATILE_FORMS: ReadonlySet<string> = new Set(["OFFSET", "INDIRECT", "RAND", "RANDBETWEEN", "RANDARRAY", "SUBTOTAL", "AGGREGATE"]);
+
+// SUBTOTAL's function numbers (AGGREGATE's go on to 19).
+const SUBTOTAL_FUNCTIONS: readonly string[] = [
+  "AVERAGE", "COUNT", "COUNTA", "MAX", "MIN", "PRODUCT", "STDEV", "STDEVP", "SUM", "VAR", "VARP",
+  "MEDIAN", "MODE", "LARGE", "SMALL", "PERCENTILE", "QUARTILE", "PERCENTILE.EXC", "QUARTILE.EXC",
+];
+const NESTED = /\b(?:SUBTOTAL|AGGREGATE)\s*\(/i;
 
 // A reference as an expression comes to it: a rectangle of cells, on this
 // sheet (null) or another (its name in upper case, as keys have it).
@@ -367,6 +378,72 @@ class Evaluator {
         if (args.length > 1) return fail("#VALUE!", "SHEETS takes a reference, or nothing");
         if (args.length === 0) return this.#book().sheets.length;
         return this.#reference(args[0]) ? 1 : fail("#VALUE!", "SHEETS takes a reference");
+      }
+      // SUBTOTAL(n, ref ...): the function numbered n over the references,
+      // skipping rows a filter hides, and (n over 100) rows hidden by
+      // hand, and cells holding a SUBTOTAL or AGGREGATE of their own.
+      // AGGREGATE(n, options, ref ...) or AGGREGATE(n, options, array, k):
+      // the function numbered n (to 19), the options bits saying what to
+      // skip: 1 hidden rows, 2 errors, 4 nested subtotals (0 to 7).
+      case "SUBTOTAL":
+      case "AGGREGATE": {
+        const isAgg = e.name === "AGGREGATE";
+        if (args.length < (isAgg ? 3 : 2)) return fail("#VALUE!", `${e.name} takes a function number${isAgg ? ", options" : ""} and a reference`);
+        const n = Math.trunc(toNumber(this.#scalar(args[0])));
+        const options = isAgg ? Math.trunc(toNumber(this.#scalar(args[1]))) : n > 100 ? 1 : 0;
+        const fn = SUBTOTAL_FUNCTIONS[(isAgg ? n : n > 100 ? n - 100 : n) - 1];
+        if (!fn || (!isAgg && n > 11 && n < 101) || (!isAgg && n > 111)) return fail("#VALUE!", `${e.name}'s function number ${n}: 1 to ${isAgg ? 19 : "11, or 101 to 111"}`);
+        if (options < 0 || options > 7) return fail("#VALUE!", `AGGREGATE's options are 0 to 7, not ${options}`);
+        const skipHidden = (options & 1) !== 0, skipErrors = (options & 2) !== 0, skipNested = !isAgg || (options & 4) === 0;
+        const refs = args.slice(isAgg ? 2 : 1);
+        // A cell counts unless its row is filtered out, hidden when told,
+        // or it holds a subtotal of its own; an error is kept unless told.
+        const kept = (key: string): boolean => {
+          const h = this.#env.hidden?.(key) ?? null;
+          if (h === "filter" || (h === "manual" && skipHidden)) return false;
+          return !(skipNested && NESTED.test(this.#env.input?.(key) ?? ""));
+        };
+        const cells = (a: Expr): Arg => {
+          const r = this.#reference(a);
+          if (!r) return this.#arg(a);
+          const keys = [...range(r.a, r.b)].map((k) => qualify(r.sheet, k)).filter(kept);
+          return { values: keys.map((k) => this.#env.get(k)), cols: 1 };
+        };
+        let collected = refs.map(cells);
+        if (skipErrors) collected = collected.map((a) => ({ values: a.values.filter((v) => !(v instanceof CellError)), cols: 1 }));
+        // The k forms take an array and k: the array is the cells, k as given.
+        if (n >= 14 && refs.length === 2) collected = [collected[0], this.#arg(refs[1])];
+        return call(fn, collected);
+      }
+      // GROUPBY(fields, values, fn, [headers], [totals], [sort], [filter])
+      // and PIVOTBY(rows, cols, values, fn, [headers], [row totals], [row
+      // sort], [col totals], [col sort], [filter]): groupby.ts, the LAMBDA
+      // (or a function's bare name: SUM) folding each group's values.
+      case "GROUPBY":
+      case "PIVOTBY": {
+        const pivot = e.name === "PIVOTBY", min = pivot ? 4 : 3, max = pivot ? 10 : 7;
+        if (args.length < min || args.length > max) return fail("#VALUE!", `${e.name} takes ${min} to ${max} values`);
+        const grids = args.slice(0, min - 1).map((a) => this.#grid(a));
+        const height = grids[0].rows;
+        if (grids.some((g) => g.rows !== height)) return fail("#VALUE!", `${e.name}'s fields and values differ in height`);
+        if (pivot && grids.some((g) => g.cols !== 1)) return fail("#VALUE!", "PIVOTBY takes one column each of rows, columns and values");
+        const fn = this.#closure(args[min - 1], e.name);
+        const fold = (vs: readonly Value[]): Value => this.#one(e.name, () => this.#invoke(fn, [array(vs.length, 1, vs)]));
+        const opt = (i: number, otherwise: number): number => (i < args.length && args[i].kind !== "missing" ? Math.trunc(toNumber(this.#scalar(args[i]))) : otherwise);
+        const headers = opt(min, 0);
+        if (headers < 0 || headers > 3) return fail("#VALUE!", `${e.name}'s field_headers is 0 to 3, not ${headers}`);
+        const last = pivot ? 9 : 6;
+        const keep = last < args.length && args[last].kind !== "missing" ? this.#grid(args[last]).values.map((v) => toNumber(v) !== 0) : null;
+        if (keep && keep.length !== height) return fail("#VALUE!", `${e.name}'s filter_array differs in height`);
+        const column = (g: ArrayValue, c: number): Value[] => g.values.filter((_, i) => i % g.cols === c);
+        const rowsOf = (g: ArrayValue): Value[][] => Array.from({ length: g.rows }, (_, r) => g.values.slice(r * g.cols, (r + 1) * g.cols));
+        const out = pivot
+          ? pivotBy(column(grids[0], 0), column(grids[1], 0), column(grids[2], 0), fold,
+              { headers: headers === 1 || headers === 3, showHeaders: headers === 3, rowTotals: opt(5, 1) !== 0, colTotals: opt(7, 1) !== 0, rowSort: opt(6, 1), colSort: opt(8, 1), keep })
+          : groupBy(rowsOf(grids[0]), rowsOf(grids[1]), fold,
+              { headers: headers === 1 || headers === 3, showHeaders: headers === 3, totals: opt(4, 1) !== 0, sort: opt(5, 1), keep });
+        if (!out.length) return fail("#CALC!", `${e.name} of no rows`);
+        return array(out.length, out[0].length, out.flat());
       }
       // INFO(type), what applies here: "numfile" is the sheets the workbook
       // has, "recalc" how it calculates (always "Automatic", until 2.15).

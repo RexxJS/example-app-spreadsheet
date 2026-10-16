@@ -260,6 +260,11 @@ export class Workbook {
         return this.page(sheet ?? "")?.sheet.input(cell) ?? "";
       },
       sheets: () => this.sheetNames(),
+      hidden: (key) => {
+        const { sheet, cell } = splitKey(key), p = this.page(sheet ?? ""), row = cellAddr(cell)?.row;
+        if (!p || row === undefined) return null;
+        return p.filtered?.has(row) ? "filter" : p.hiddenRows.has(row) ? "manual" : null;
+      },
     };
     const changed = (key: string) => {
       let keys = this.#pending.get(upper());
@@ -486,6 +491,12 @@ export class Workbook {
 
   async #recalculate(): Promise<void> {
     for (const p of this.#pages) await p.sheet.recalculate();
+  }
+
+  // Rows hidden or shown (by hand or a filter): every sheet worked out
+  // again, as SUBTOTAL and AGGREGATE skip hidden rows.
+  async hiddenChanged(): Promise<void> {
+    await this.#recalculate();
   }
 
   language(name: LanguageName): Language {

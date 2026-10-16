@@ -24,7 +24,7 @@ import { COLS, ROWS, addrOf, cellAddr, keyOf, order, splitKey } from "./address.
 import { CellError, isArray } from "./values.ts";
 import type { ArrayValue, Result, Value } from "./values.ts";
 import { EXCEL } from "./excel.ts";
-import type { Formula, Formulas, Language, Named, Names, TableDef, Tables } from "./language.ts";
+import type { Formula, Formulas, Hidden, Language, Named, Names, TableDef, Tables } from "./language.ts";
 import type { Addr } from "./address.ts";
 import { show } from "./format.ts";
 
@@ -109,6 +109,9 @@ export interface Context {
   // names as given, in tab order (a sheet alone is its own book).
   input?(key: string): string;
   sheets?(): readonly string[];
+  // Whether a cell's row (its key qualified) is hidden by hand, by a
+  // filter, or not.
+  hidden?(key: string): Hidden;
 }
 
 // A sheet on its own: no other sheet to read.
@@ -398,6 +401,7 @@ export class Sheet {
         const sheets = this.#context.sheets?.() ?? [this.#context.name];
         return { sheets, here: Math.max(0, sheets.findIndex((s) => s.toUpperCase() === this.#context.name)) };
       },
+      hidden: (k: string) => { const local = this.#local(k); return this.#context.hidden?.(local === null ? k : `${this.#context.name}!${local}`) ?? null; },
     };
   }
 

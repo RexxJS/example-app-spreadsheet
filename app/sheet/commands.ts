@@ -502,6 +502,7 @@ function hiding(rows: boolean, hide: boolean) {
     const page = wb.page(wb.active)!, { at, said } = spanOf(rangeOf(p.range), rows);
     const set = rows ? page.hiddenRows : page.hiddenCols;
     for (const i of at) if (hide) set.add(i); else set.delete(i);
+    if (rows) await wb.hiddenChanged();
     return changedBy(wb, wb.sheet.keys(), `${hide ? "hid" : "showed"} ${said}`);
   };
 }
@@ -1140,6 +1141,7 @@ const SPECS: readonly Spec[] = [
       const r = rangeOf(p.range), col = columnOf(p.column);
       if (col < Math.min(r[0].col, r[1].col) || col > Math.max(r[0].col, r[1].col)) refuse(`${p.column} is not a column of ${named(r)}`);
       const hidden = filtering(wb.page(wb.active)!, { range: r, column: col, criterion: p.criterion });
+      await wb.hiddenChanged();
       return changedBy(wb, wb.sheet.keys(), `filtered ${named(r)} by ${colName(col)} ${p.criterion}: ${hidden.size} row${hidden.size === 1 ? "" : "s"} hidden`);
     },
   },
@@ -1151,6 +1153,7 @@ const SPECS: readonly Spec[] = [
       const n = [...page.filtered!].filter((r) => !page.hiddenRows.has(r)).length;
       page.filtered = null;
       page.filter = null;
+      await wb.hiddenChanged();
       return changedBy(wb, wb.sheet.keys(), `filter cleared: ${n} row${n === 1 ? "" : "s"} shown`);
     },
   },
