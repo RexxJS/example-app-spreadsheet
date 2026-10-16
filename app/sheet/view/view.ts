@@ -125,9 +125,26 @@ export class SheetView {
   }
 
   // The selection as a command's range parameter: "F4:G7", or the cell.
+  // With several areas (a Ctrl/Cmd click added one), each, the current
+  // one last: "A1:B2,D4:D9".
   range(): string {
     const s = this.selection();
-    return s ? `${keyOf(s[0])}:${keyOf(s[1])}` : this.here();
+    const one = s ? `${keyOf(s[0])}:${keyOf(s[1])}` : this.here();
+    return [...this.areas().map(([a, b]) => `${keyOf(a)}:${keyOf(b)}`), one].join(",");
+  }
+
+  // The selection's areas before the current one, as sheet corners.
+  areas(): [Addr, Addr][] {
+    if (!this.grid) return [];
+    const corner = (row: number, col: number): Addr | null => {
+      const m = Math.max(1, ui.datagrid_col_model(this.grid, col));
+      return row >= 0 && m <= COLS ? { col: m - 1, row } : null;
+    };
+    return String(ui.datagrid_areas(this.grid)).split(";").filter((x) => x).flatMap((x): [Addr, Addr][] => {
+      const [ar, ac, r, c] = x.split(",").map(Number);
+      const a = corner(ar, ac), b = corner(r, c);
+      return a && b ? [[{ col: Math.min(a.col, b.col), row: Math.min(a.row, b.row) }, { col: Math.max(a.col, b.col), row: Math.max(a.row, b.row) }]] : [];
+    });
   }
 
   // The selected cell's input, status line and notes in their fields.
@@ -135,9 +152,10 @@ export class SheetView {
     const note = this.wb.notes.get(key);
     if (this.grid && !this.wb.selecting) this.wb.selection = this.range();
     const sel = this.grid ? this.selection() : null;
-    const many = sel && (sel[0].col !== sel[1].col || sel[0].row !== sel[1].row);
+    const others = this.areas();
+    const many = sel && (others.length > 0 || sel[0].col !== sel[1].col || sel[0].row !== sel[1].row);
     const cells = this.wb.sheet.keys().length;
-    const bar = [many ? statsLine(this.wb.stats(sel!)) : "Ready", `${cells} cell${cells === 1 ? "" : "s"}`, `Zoom ${this.wb.zoom}%`, this.wb.calculation.manual && this.wb.stale().length ? "Calculate" : "", this.bus ? "Control bus" : ""];
+    const bar = [many ? statsLine(this.wb.stats([...others, sel!])) : "Ready", `${cells} cell${cells === 1 ? "" : "s"}`, `Zoom ${this.wb.zoom}%`, this.wb.calculation.manual && this.wb.stale().length ? "Calculate" : "", this.bus ? "Control bus" : ""];
     batch(() => {
       this.figures.set(bar.filter((x) => x).join("  ·  "));
       this.input.set(this.wb.shownInput(key));
@@ -196,12 +214,14 @@ export class SheetView {
     }
     if (this.grid && this.wb.selecting) {
       this.wb.selecting = false;
-      // The grid selects one area: the first of several.
-      const r = parseRange(this.wb.selection.split(",")[0]);
+      // Several areas: the first selected, each other added after it.
+      const rs = this.wb.selection.split(",").map((x) => parseRange(x)).filter((x): x is [Addr, Addr] => !!x);
+      const r = rs[0];
       // Selected, the grid has the keys (Delete clears it), as after the
       // Name Box.
       if (r) {
         this.select(r);
+        for (const [a, b] of rs.slice(1)) ui.datagrid_add_area(this.grid, a.row, this.viewCol(a.col + 1), b.row, this.viewCol(b.col + 1));
         try { ui.focus(this.grid); } catch { /* a grid sae cannot focus: the keys stay where they were */ }
         this.follow();
       }

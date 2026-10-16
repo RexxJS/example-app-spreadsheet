@@ -705,6 +705,20 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("a Cmd click adds an area: the status bar counts both, Clear cells clears both") callback {
+            g.enter("K66", "3")
+            g.enter("M68", "4")
+            g.goto("K66")
+            g.pick("K", 66)
+            uidriver.click_widget_mods(g.cell_id("M", 68), 8)
+            spec.assert_true(uidriver.wait_body_contains("/widgets", "Average: 3.5  Count: 2  Numerical Count: 2  Min: 3  Max: 4  Sum: 7", 40), "both areas on the status bar")
+            b.click("Clear cells")
+            spec.assert_true(b.wait_for_console("sheet: cleared all of K66:K66: 1 cells set, 1 changed; cleared all of M68:M68"), "Clear cells over both")
+            g.command("edit.undo")
+            spec.assert_true(g.wait_cell("M", 68, "4"), "one step back")
+            g.command("range.clearAll range=K66:M68")
+            g.goto("A1")
+        }
         spec.it("two areas cleared by one command, and undone as one step") callback {
             g.enter("K62", "1")
             g.enter("M64", "2")

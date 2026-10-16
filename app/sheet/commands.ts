@@ -90,6 +90,9 @@ interface Spec {
 const AREAS = new Set(["range.clear", "range.clearFormats", "range.clearComments", "range.clearAll", "format.font", "format.align", "format.fill",
   "format.color", "format.number", "format.border", "format.wrap", "validation.set", "validation.clear", "rows.hide", "rows.unhide", "columns.hide", "columns.unhide"]);
 
+// The commands that take several areas themselves: one answer over all.
+const OWN_AREAS = new Set(["range.stats", "view.select"]);
+
 // A command that cannot run as asked: its message is the Outcome's.
 class Refused extends Error {}
 const refuse = (message: string): never => { throw new Refused(message); };
@@ -2126,6 +2129,7 @@ export class Commands {
       // over each, every one read first, as one step and one line.
       const areas = AREAS.has(id) && params.range?.includes(",") ? params.range.split(",").map((a) => a.trim()) : null;
       if (areas) for (const a of areas) rangeOf(a);
+      if (!AREAS.has(id) && !OWN_AREAS.has(id) && params.range?.includes(",")) refuse(`${spec!.label} cannot be used on several areas (${params.range})`);
       const outcome = areas ? await this.#overAreas(spec!, params, areas) : await spec!.run(this.#wb, params, this.#store);
       if (outcome.ok && before) this.#wb.changed(before, spec!.label);
       if (outcome.ok && spec!.journaled) this.#journal.push(lineOf(id, params));
