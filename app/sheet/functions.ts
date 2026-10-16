@@ -822,6 +822,162 @@ def("STDEVP", 1, Infinity, (args) => {
   return ns.length ? Math.sqrt(squares(ns) / ns.length) : fail("#DIV/0!", "STDEVP of no numbers");
 });
 
+// --- statistics, descriptive (2.7) ---
+
+const mean = (ns: readonly number[]): number => sum(ns) / ns.length;
+// Numbers from the arguments, at least `least` of them, else #DIV/0!.
+const atLeast = (name: string, args: readonly Arg[], least: number): number[] => {
+  const ns = numbers(args);
+  return ns.length < least ? fail("#DIV/0!", `${name} needs ${plural(least)} or more`) : ns;
+};
+def("STDEV.S", 1, Infinity, (args) => call("STDEV", args));
+def("STDEV.P", 1, Infinity, (args) => call("STDEVP", args));
+def("VAR.S", 1, Infinity, (args) => call("VAR", args));
+def("VAR.P", 1, Infinity, (args) => call("VARP", args));
+def("AVEDEV", 1, Infinity, (args) => { const ns = atLeast("AVEDEV", args, 1), m = mean(ns); return mean(ns.map((n) => Math.abs(n - m))); });
+def("DEVSQ", 1, Infinity, (args) => squares(atLeast("DEVSQ", args, 1)));
+def("GEOMEAN", 1, Infinity, (args) => {
+  const ns = atLeast("GEOMEAN", args, 1);
+  return ns.some((n) => n <= 0) ? fail("#NUM!", "GEOMEAN of a number that is not positive") : Math.exp(mean(ns.map(Math.log)));
+});
+def("HARMEAN", 1, Infinity, (args) => {
+  const ns = atLeast("HARMEAN", args, 1);
+  return ns.some((n) => n <= 0) ? fail("#NUM!", "HARMEAN of a number that is not positive") : ns.length / sum(ns.map((n) => 1 / n));
+});
+// TRIMMEAN(numbers, percent): the mean with that share of the numbers
+// cut off, half from each end (rounded down to a pair).
+def("TRIMMEAN", 2, 2, (args) => {
+  const ns = sorted(args, 0), p = num(args, 1);
+  if (p < 0 || p >= 1) return fail("#NUM!", `TRIMMEAN's percent is 0 up to 1, not ${p}`);
+  if (!ns.length) return fail("#DIV/0!", "TRIMMEAN of no numbers");
+  const cut = Math.floor((ns.length * p) / 2);
+  return mean(ns.slice(cut, ns.length - cut));
+});
+// SKEW and KURT, the sample formulas Excel documents.
+def("SKEW", 1, Infinity, (args) => {
+  const ns = atLeast("SKEW", args, 3), n = ns.length, m = mean(ns), s = Math.sqrt(squares(ns) / (n - 1));
+  if (s === 0) return fail("#DIV/0!", "SKEW of numbers all alike");
+  return (n / ((n - 1) * (n - 2))) * sum(ns.map((x) => ((x - m) / s) ** 3));
+});
+def("KURT", 1, Infinity, (args) => {
+  const ns = atLeast("KURT", args, 4), n = ns.length, m = mean(ns), s = Math.sqrt(squares(ns) / (n - 1));
+  if (s === 0) return fail("#DIV/0!", "KURT of numbers all alike");
+  return ((n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))) * sum(ns.map((x) => ((x - m) / s) ** 4)) - (3 * (n - 1) ** 2) / ((n - 2) * (n - 3));
+});
+// Pairs of numbers, where both of a pair are numbers; the two ranges must
+// be the same size.
+function pairs(name: string, args: readonly Arg[], yi: number, xi: number, least: number): [number[], number[]] {
+  const ys = args[yi].values, xs = args[xi].values;
+  if (ys.length !== xs.length) return fail("#N/A", `${name}'s ranges differ in size`);
+  const y: number[] = [], x: number[] = [];
+  for (let i = 0; i < ys.length; i++) {
+    const a = scalar(ys[i]), b = scalar(xs[i]);
+    if (typeof a === "number" && typeof b === "number") { y.push(a); x.push(b); }
+  }
+  return y.length < least ? fail("#DIV/0!", `${name} needs ${plural(least)} or more`) : [y, x];
+}
+interface Fit { readonly slope: number; readonly intercept: number; readonly sxx: number; readonly syy: number; readonly sxy: number; readonly n: number }
+function fit(name: string, y: number[], x: number[]): Fit {
+  const mx = mean(x), my = mean(y);
+  const sxx = sum(x.map((v) => (v - mx) ** 2)), syy = sum(y.map((v) => (v - my) ** 2)), sxy = sum(x.map((v, i) => (v - mx) * (y[i] - my)));
+  if (sxx === 0) return fail("#DIV/0!", `${name}: the x values are all alike`);
+  const slope = sxy / sxx;
+  return { slope, intercept: my - slope * mx, sxx, syy, sxy, n: x.length };
+}
+const correl = (name: string, args: readonly Arg[]): number => {
+  const [y, x] = pairs(name, args, 0, 1, 2), f = fit(name, y, x);
+  return f.syy === 0 ? fail("#DIV/0!", `${name}: the y values are all alike`) : f.sxy / Math.sqrt(f.sxx * f.syy);
+};
+def("CORREL", 2, 2, (args) => correl("CORREL", args));
+def("PEARSON", 2, 2, (args) => correl("PEARSON", args));
+def("RSQ", 2, 2, (args) => correl("RSQ", args) ** 2);
+def("COVARIANCE.P", 2, 2, (args) => { const [y, x] = pairs("COVARIANCE.P", args, 0, 1, 1), mx = mean(x), my = mean(y); return mean(x.map((v, i) => (v - mx) * (y[i] - my))); });
+def("COVARIANCE.S", 2, 2, (args) => { const [y, x] = pairs("COVARIANCE.S", args, 0, 1, 2), mx = mean(x), my = mean(y); return sum(x.map((v, i) => (v - mx) * (y[i] - my))) / (x.length - 1); });
+// The line through (known_x, known_y) by least squares: SLOPE, INTERCEPT,
+// STEYX (the standard error of a y), FORECAST.LINEAR, TREND, LINEST
+// ({slope, intercept}); GROWTH fits the exponential (a line through the
+// logarithms). known_x left out is 1, 2, 3 ...
+const counting = (n: number): Arg => ({ values: Array.from({ length: n }, (_, i) => i + 1), cols: 1 });
+const known = (args: readonly Arg[], xi: number): readonly Arg[] => (absent(args, xi) ? [args[0], counting(args[0].values.length)] : [args[0], args[xi]]);
+def("SLOPE", 2, 2, (args) => { const [y, x] = pairs("SLOPE", args, 0, 1, 2); return fit("SLOPE", y, x).slope; });
+def("INTERCEPT", 2, 2, (args) => { const [y, x] = pairs("INTERCEPT", args, 0, 1, 2); return fit("INTERCEPT", y, x).intercept; });
+def("STEYX", 2, 2, (args) => {
+  const [y, x] = pairs("STEYX", args, 0, 1, 3), f = fit("STEYX", y, x);
+  return Math.sqrt((f.syy - f.slope * f.sxy) / (f.n - 2));
+});
+def("FORECAST.LINEAR", 3, 3, (args) => {
+  const [y, x] = pairs("FORECAST.LINEAR", [args[1], args[2]], 0, 1, 2), f = fit("FORECAST.LINEAR", y, x);
+  return f.intercept + f.slope * num(args, 0);
+});
+def("FORECAST", 3, 3, (args) => call("FORECAST.LINEAR", args));
+const line = (name: string, args: readonly Arg[], log: boolean): Result => {
+  const [y0, x] = pairs(name, known(args, 1), 0, 1, 2);
+  if (log && y0.some((v) => v <= 0)) return fail("#NUM!", `${name} of a y that is not positive`);
+  const f = fit(name, log ? y0.map(Math.log) : y0, x);
+  const at = absent(args, 2) ? { values: x, cols: 1 } : args[2];
+  const out = at.values.map((v) => { const t = f.intercept + f.slope * toNumber(v); return log ? Math.exp(t) : t; });
+  return out.length === 1 ? out[0] : array(out.length / at.cols, at.cols, out);
+};
+def("TREND", 1, 3, (args) => line("TREND", args, false));
+def("GROWTH", 1, 3, (args) => line("GROWTH", args, true));
+def("LINEST", 1, 2, (args) => { const [y, x] = pairs("LINEST", known(args, 1), 0, 1, 2), f = fit("LINEST", y, x); return array(1, 2, [f.slope, f.intercept]); });
+// FREQUENCY(data, bins): how many fall in each bin (up to and including
+// its bound, above the one before), and one more for what is past the last.
+def("FREQUENCY", 2, 2, (args) => {
+  const ns = numbersIn(args[0].values), bins = sorted(args, 1);
+  const counts = bins.map(() => 0).concat([0]);
+  for (const n of ns) {
+    const i = bins.findIndex((b) => n <= b);
+    counts[i < 0 ? bins.length : i]++;
+  }
+  return array(counts.length, 1, counts);
+});
+def("RANK.EQ", 2, 3, (args) => call("RANK", args));
+// RANK.AVG: numbers that tie share the average of the places they take.
+def("RANK.AVG", 2, 3, (args) => {
+  const x = num(args, 0), ns = sorted(args, 1), ascending = num(args, 2, 0) !== 0;
+  if (!ns.includes(x)) return notFound(x);
+  const before = ns.filter((n) => (ascending ? n < x : n > x)).length, ties = ns.filter((n) => n === x).length;
+  return before + (ties + 1) / 2;
+});
+// PERCENTRANK.INC(numbers, x, [digits]) and .EXC: where x falls in the
+// numbers, 0 to 1 (.INC: the smallest 0, the largest 1; .EXC: ranked out
+// of n + 1), between two of them by interpolation, cut to `digits` places.
+const percentRank = (name: string, args: readonly Arg[], exclusive: boolean): number => {
+  const ns = sorted(args, 0), x = num(args, 1), digits = Math.trunc(num(args, 2, 3)), n = ns.length;
+  if (digits < 1) return fail("#NUM!", `${name}'s significance is 1 or more, not ${digits}`);
+  if (!n) return fail("#NUM!", `${name} of no numbers`);
+  if (x < ns[0] || x > ns[n - 1]) return fail("#N/A", `${x} lies outside the numbers`);
+  const rank = (i: number) => (exclusive ? (i + 1) / (n + 1) : n === 1 ? 0 : i / (n - 1));
+  let r: number;
+  const at = ns.indexOf(x);
+  if (at >= 0) r = rank(at);
+  else {
+    const hi = ns.findIndex((v) => v > x), lo = hi - 1;
+    r = rank(lo) + ((x - ns[lo]) / (ns[hi] - ns[lo])) * (rank(hi) - rank(lo));
+  }
+  const f = 10 ** digits;
+  return Math.trunc(Number((r * f).toPrecision(15))) / f;
+};
+def("PERCENTRANK.INC", 2, 3, (args) => percentRank("PERCENTRANK.INC", args, false));
+def("PERCENTRANK.EXC", 2, 3, (args) => percentRank("PERCENTRANK.EXC", args, true));
+def("PERCENTRANK", 2, 3, (args) => call("PERCENTRANK.INC", args));
+def("MODE.SNGL", 1, Infinity, (args) => call("MODE", args));
+// MODE.MULT: every number that repeats most, a column, in the order they
+// first appear.
+def("MODE.MULT", 1, Infinity, (args) => {
+  const ns = numbers(args), counts = new Map<number, number>();
+  for (const n of ns) counts.set(n, (counts.get(n) ?? 0) + 1);
+  const most = Math.max(0, ...counts.values());
+  if (most < 2) return fail("#N/A", "MODE.MULT: no number repeats");
+  const modes = [...counts].filter(([, c]) => c === most).map(([n]) => n);
+  return modes.length === 1 ? modes[0] : array(modes.length, 1, modes);
+});
+def("STANDARDIZE", 3, 3, (args) => {
+  const sd = num(args, 2);
+  return sd <= 0 ? fail("#NUM!", `STANDARDIZE's standard deviation is ${sd}: not positive`) : (num(args, 0) - num(args, 1)) / sd;
+});
+
 // --- dates and times (dates.ts) ---
 
 // Argument i as a serial: a number, or a date written as text.
