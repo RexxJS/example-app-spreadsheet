@@ -1,6 +1,6 @@
 # Ask (aether-ui): drag within the app, to reorder (a spreadsheet's sheet tabs)
 
-**Open**, 2026-10-15. Wanted by the spreadsheet's To do 13
+**Resolved**, 2026-10-16: aether-ui answered with drag within a stack (`asks/REPLY-drag-to-reorder.md` there), and sae 2ffe269 gives pages `ui.reorderable(h, (from, to) => ...)`; the sheet tabs use it (`app/sheet/view/sheettabs.ts`). Opened 2026-10-15. Wanted by the spreadsheet's To do 13
 (`docs/spreadsheet_demo_done_and_todo.md`): dragging a sheet's tab to
 move the sheet, as in Excel.
 

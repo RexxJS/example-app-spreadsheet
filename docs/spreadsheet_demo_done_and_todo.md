@@ -1083,7 +1083,7 @@ Tested headless (`sheet_undo.ts`) and on the page (`spec_sheet`).
 
 Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
 
-### 13. Names and sheets (done but for dragging a tab, 2026-10-15)
+### 13. Names and sheets (done, 2026-10-15; dragging a tab, 2026-10-16)
 
 - `Costs!QTY`, `'My Costs'!QTY`: another sheet's own name (a name defined
   with `scope=sheet` there), written from here, in Excel formulas. The
@@ -1094,10 +1094,13 @@ Tested headless (`sheet_correctness.ts`) and on the page (`spec_sheet`).
   new name when it needs it); an unknown name, or the sheet deleted, is
   #NAME?. Not in RexxJS formulas, which name another sheet's cells as
   Costs_B2. Tested headless (`sheet_qualified_names.ts`) and on the page.
-- Dragging a tab to move a sheet waits on aether-ui: it can drag a file
-  out to another app, but has no drag within the app. The ask is
-  `asks/aether-ui-drag-to-reorder.md`. Until it lands, Move left, Move
-  right and `sheet.move to=` do the same.
+- Dragging a tab moves its sheet (2026-10-16): sae's
+  `ui.reorderable(each(v.sheets, ...), (from, to) => ...)` runs
+  `sheet.move to=` with the tab's place after the drop, which aether-ui's
+  drag within a stack gives (the ask, `asks/aether-ui-drag-to-reorder.md`,
+  answered). spec_sheet drags a tab past two others and back, over the
+  driver's `POST /widget/{child}/drag`. Move left, Move right and
+  `sheet.move to=` stay.
 
 ### 14. An MCP server over the control bus (done, 2026-10-15)
 

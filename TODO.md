@@ -21,7 +21,7 @@ What came before (demo 18's To do 1 to 15) is in
 | 1.2 | Multi-area selection (Ctrl/Cmd+click, Ctrl+drag), commands over every area | headless: `range.clear` over two areas is one step; spec | `SELECTRANGE("A1:B2,D4:D9")` |
 | 1.3 | Go To Special: formulas, constants, blanks, errors, comments, validation, conditional formats | headless: each category's cells, on a sample sheet | `GOTOSPECIAL("blanks")` gives the stem of cells |
 | 1.4 | A bigger sheet: sparse cells up to 16,384 x 1,048,576 as an address space (storage already sparse? check `sheet.ts`), the grid virtual over it (aether-ui datagrid: an ask if it pages) | headless: `XFD1048576` sets and reads; spec: scroll far, type, formula back | `SETCELL("ZZ100000", 1)` |
-| 1.5 | Sheet tab colour and hiding, move/copy sheet (copy a sheet with its cells and looks) | headless: `sheet.copy`, undo restores; spec: the tab | `SETSHEETCOLOR`, `HIDESHEET`, `COPYSHEET` |
+| 1.5 | Sheet tab colour and hiding, ~~move~~/copy sheet (copy a sheet with its cells and looks) (move done 2026-10-16: a tab dragged among the others moves its sheet, sae's `ui.reorderable` over the tabs' `each` row running `sheet.move`; colour, hiding and copy to do) | headless: `sheet.copy`, undo restores; spec: the tab (spec_sheet: a tab dragged, and back) | `SETSHEETCOLOR`, `HIDESHEET`, `COPYSHEET` |
 | 1.6 | 1904 date system as a workbook setting, honoured by the serial conversions | headless: the same serial, two dates | `SETDATESYSTEM(1904)` |
 
 ### Stage 2: calculation

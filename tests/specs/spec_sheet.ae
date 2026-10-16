@@ -20,6 +20,58 @@ import uidriver
 const TRIES = 60
 const POLL_MS = 50
 
+// A sheet tab: the newest button with the sheet's name.
+tab(name: string) -> int { return uidriver.widget_id_last_of("button", name) }
+
+// Drag tab `a` so it is released just past the middle of tab `c`, to its
+// right (the driver's drag, by the tabs' real geometry, as sae's
+// spec_reorder does).
+drag_tab_past(a: int, c: int, what: string) {
+    ax = uidriver.widget_int_field_by_id(a, "x")
+    aw = uidriver.widget_int_field_by_id(a, "w")
+    ah = uidriver.widget_int_field_by_id(a, "h")
+    cx = uidriver.widget_int_field_by_id(c, "x")
+    cw = uidriver.widget_int_field_by_id(c, "w")
+    spec.assert_gt(aw, 0, "${what}: the dragged tab is laid out")
+    spec.assert_gt(cx, ax, "${what}: the target is to the right")
+    px = aw / 2
+    dx = (cx + cw / 2 + 2) - (ax + px)
+    uidriver.post_ok("/widget/${a}/drag?x=${px}&y=${ah / 2}&dx=${dx}&dy=0", what)
+}
+
+// Drag tab `d` so it is released just inside the left edge of tab `t`.
+drag_tab_before(d: int, t: int, what: string) {
+    dx0 = uidriver.widget_int_field_by_id(d, "x")
+    dw = uidriver.widget_int_field_by_id(d, "w")
+    dh = uidriver.widget_int_field_by_id(d, "h")
+    tx = uidriver.widget_int_field_by_id(t, "x")
+    px = dw / 2
+    dx = (tx + 1) - (dx0 + px)
+    uidriver.post_ok("/widget/${d}/drag?x=${px}&y=${dh / 2}&dx=${dx}&dy=0", what)
+}
+
+// The rebuilt row of tabs is laid out on a later pass, its new buttons
+// reading x 0, w 0 for a moment: wait until the three sit left to right in
+// this order, each with a width. 1 when they do.
+wait_tabs(l1: string, l2: string, l3: string) -> int {
+    i = 0
+    while i < 40 {
+        a = tab(l1)
+        m = tab(l2)
+        c = tab(l3)
+        if a > 0 && m > 0 && c > 0 {
+            ax = uidriver.widget_int_field_by_id(a, "x")
+            mx = uidriver.widget_int_field_by_id(m, "x")
+            cx = uidriver.widget_int_field_by_id(c, "x")
+            cw = uidriver.widget_int_field_by_id(c, "w")
+            if ax < mx && mx < cx && cw > 0 { return 1 }
+        }
+        sleep(100)
+        i = i + 1
+    }
+    return 0
+}
+
 main() {
     fw = spec.init()
     uidriver.wait_server()
@@ -375,6 +427,34 @@ main() {
             b.click("Other")
             b.click("Delete sheet")
             spec.assert_true(b.wait_for_console("sheet: deleted Other"), "gone again")
+        }
+        spec.it("a sheet tab dragged among the others moves its sheet; dragged back, and a tab still clicks") callback {
+            b.set_field_by("sheet", "North")
+            b.click("Add sheet")
+            spec.assert_true(b.wait_for_console("sheet: added North"), "North added")
+            b.set_field_by("sheet", "South")
+            b.click("Add sheet")
+            spec.assert_true(b.wait_for_console("sheet: added South"), "South added")
+            spec.assert_true(wait_tabs("Sheet1", "North", "South"), "the tabs in order")
+            // Each tab is in its own item of each(); the row is the stack
+            // of those items.
+            row = uidriver.widget_int_field_by_id(uidriver.widget_int_field_by_id(tab("Sheet1"), "parent"), "parent")
+            spec.assert_true(string.contains(uidriver.get_body("/widget/${row}"), "\"reorderable\":true"), "the row of tabs is reorderable")
+            drag_tab_past(tab("Sheet1"), tab("South"), "drag Sheet1 past South")
+            spec.assert_true(b.wait_for_console("sheet: Sheet1 is sheet 3 of 3"), "sheet.move to 3")
+            spec.assert_true(wait_tabs("North", "South", "Sheet1"), "the tabs rebuilt in the new order")
+            drag_tab_before(tab("Sheet1"), tab("North"), "drag Sheet1 to the front")
+            spec.assert_true(b.wait_for_console("sheet: Sheet1 is sheet 1 of 3"), "back to 1")
+            spec.assert_true(wait_tabs("Sheet1", "North", "South"), "and laid out so")
+            b.click("North")
+            spec.assert_true(b.wait_for_text("On North:"), "a tab still clicks")
+            b.click("Delete sheet")
+            spec.assert_true(b.wait_for_console("sheet: deleted North"), "North gone")
+            b.click("South")
+            b.click("Delete sheet")
+            spec.assert_true(b.wait_for_console("sheet: deleted South"), "South gone")
+            b.click("Sheet1")
+            spec.assert_true(b.wait_for_text("On Sheet1:"), "back on Sheet1")
         }
         spec.it("Fill series, AutoSum and Paste values, from the edit bar") callback {
             g.enter("A14", "Mon")
