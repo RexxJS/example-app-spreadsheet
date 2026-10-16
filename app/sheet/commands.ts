@@ -8,7 +8,7 @@
 // script.ts), and the specs, headless and in the browser (the page's
 // command bar). The commands that change the workbook are journaled as
 // command lines, which replay.
-import { COLS, ROWS, cellAddr, colName, colOf, keyOf, parseRange, range, sheetPrefix, splitKey } from "./address.ts";
+import { COLS, ROWS, cellAddr, colName, colOf, keyOf, order, parseRange, range, sheetPrefix, splitKey } from "./address.ts";
 import { evaluationSteps } from "./audit.ts";
 import type { Addr } from "./address.ts";
 import { copied, filled, pasted } from "./copy.ts";
@@ -1665,6 +1665,39 @@ const SPECS: readonly Spec[] = [
       else refuse("view.zoom needs percent= or by=in|out");
       wb.zoom = z;
       return { ok: true, message: `zoom ${z}%`, changed: wb.sheet.keys(), output: z };
+    },
+  },
+  {
+    // Go To Special: the cells of a kind, in sheet order, over a range or
+    // the used range (A1 to Ctrl+End's cell): formulas, constants (either
+    // narrowed by type=numbers|text|logicals|errors), blanks, errors,
+    // comments, validation, conditional formats.
+    id: "edit.goToSpecial", label: "Go To Special", params: ["what"], optional: ["range", "type"], journaled: false,
+    run: async (wb, p) => {
+      const kinds = ["formulas", "constants", "blanks", "errors", "comments", "validation", "conditional"];
+      const what = p.what.trim().toLowerCase().replace(/^conditional formats?$/, "conditional");
+      if (!kinds.includes(what)) refuse(`${p.what} is not one of ${kinds.join(", ")}`);
+      const types = ["numbers", "text", "logicals", "errors"], type = p.type?.trim().toLowerCase();
+      if (type !== undefined && !types.includes(type)) refuse(`${p.type} is not a type (${types.join(", ")})`);
+      const keys = wb.sheet.keys();
+      const r: [Addr, Addr] = p.range ? rangeOf(p.range) : [{ col: 0, row: 0 }, { col: Math.max(0, ...keys.map((k) => cellAddr(k)!.col)), row: Math.max(0, ...keys.map((k) => cellAddr(k)!.row)) }];
+      const page = wb.page(wb.active)!;
+      const ofType = (v: Value) => !type || (type === "numbers" ? typeof v === "number" : type === "text" ? typeof v === "string" : type === "logicals" ? typeof v === "boolean" : v instanceof CellError);
+      const is = (k: string): boolean => {
+        const input = wb.sheet.input(k), v = wb.sheet.value(k), n = wb.notes.get(k), a = cellAddr(k)!;
+        switch (what) {
+          case "formulas": return input.startsWith("=") && ofType(v);
+          case "constants": return input !== "" && !input.startsWith("=") && ofType(v);
+          case "blanks": return input === "" && (v === null || v === "");
+          case "errors": return v instanceof CellError;
+          case "comments": return !!n.comment;
+          case "validation": return !!n.validation;
+          default: return page.rules.some((rule) => a.col >= Math.min(rule.range[0].col, rule.range[1].col) && a.col <= Math.max(rule.range[0].col, rule.range[1].col)
+            && a.row >= Math.min(rule.range[0].row, rule.range[1].row) && a.row <= Math.max(rule.range[0].row, rule.range[1].row));
+        }
+      };
+      const found = [...range(r[0], r[1])].filter(is).sort((x, y) => order(cellAddr(x)!) - order(cellAddr(y)!));
+      return { ok: true, message: found.length ? `${found.length} ${what}: ${found.join(", ")}` : `no ${what} in ${rangeName(r)}`, changed: [], output: found };
     },
   },
   {

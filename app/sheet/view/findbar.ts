@@ -20,6 +20,15 @@ export function findBar(v: SheetView): void {
     v.action("Find field", () => ui.focus(field));
     bind(ui.textfield("replace with", () => {}), by);
     v.btn("Find", find);
+    // Go To Special: the kind typed in the find field (blanks, formulas,
+    // constants, errors, comments, validation, conditional), its cells
+    // listed and the first selected.
+    v.btn("Go To Special", async () => {
+      const o = await v.run("edit.goToSpecial", { what: text.value.trim() || "blanks" });
+      const keys = (o.output ?? []) as string[];
+      if (keys.length) v.address.set(keys[0]);
+      if (o.ok) v.status.set(o.message);
+    });
     v.btn("Replace all", () => v.run("edit.replace", { ...params(), with: by.value }));
     ui.toggle("Match case", (on: boolean) => { options.matchCase = !!on; });
     ui.toggle("Whole cell", (on: boolean) => { options.wholeCell = !!on; });

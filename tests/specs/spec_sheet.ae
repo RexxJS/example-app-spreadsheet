@@ -692,6 +692,20 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
             g.goto("A1")
         }
+        spec.it("Go To Special: the kind typed, its cells listed and the first selected") callback {
+            g.command("formulas.use language=Excel")
+            spec.assert_true(b.wait_for_console("sheet: Excel formulas"), "Excel formulas")
+            g.enter("K140", "=1/0")
+            b.set_field_by("find", "errors")
+            b.click("Go To Special")
+            spec.assert_true(b.wait_for_console("sheet: 1 errors: K140"), "found")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.field("cell")}", "\"text\":\"K140\"", 40), "and selected")
+            b.set_field_by("find", "")
+            g.command("range.clear range=K140")
+            g.command("formulas.use language=RexxJS")
+            spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
+            g.goto("A1")
+        }
         spec.it("Zoom: the grid's columns scaled, and the status bar says it") callback {
             w0 = uidriver.widget_int_field_by_id(g.header_id("C"), "w")
             b.click("Zoom in")

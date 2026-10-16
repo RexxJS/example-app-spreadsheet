@@ -257,6 +257,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Zoom: SETZOOM(150), SETZOOM("in"), SETZOOM("out"); GETZOOM().
   SETZOOM: async (exec, z) => (await must(exec, "view.zoom", /^(in|out)$/i.test(text(z).trim()) ? { by: text(z).trim().toLowerCase() } : { percent: text(z).trim() })).output,
   GETZOOM: async (exec) => (await state(exec)).zoom,
+  // Go To Special: a stem of the cells of a kind (GOTOSPECIAL("blanks"),
+  // GOTOSPECIAL("constants", "B2:D9", "numbers")).
+  GOTOSPECIAL: async (exec, what, r, type) => stem((await must(exec, "edit.goToSpecial", { what: text(what), ...(text(r).trim() ? { range: text(r) } : {}), ...(text(type).trim() ? { type: text(type) } : {}) })).output as string[]),
   // Ctrl+End's cell, and the keyboard map ("Ctrl+C | copy | edit.copy").
   GETLASTCELL: async (exec) => (await must(exec, "sheet.lastCell")).output,
   LISTKEYS: async (exec) => stem((await must(exec, "keys.list")).output as string[]),

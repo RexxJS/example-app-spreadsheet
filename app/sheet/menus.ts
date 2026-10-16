@@ -43,7 +43,7 @@ export const MENUS: readonly Menu[] = [
     i("Fill Down", "edit.fillDown", "Ctrl+D"), i("Fill Right", "edit.fillRight", "Ctrl+R"), i("Fill Up", "edit.fillUp"), i("Fill Left", "edit.fillLeft"), i("Fill series", "edit.fillSeries"), "-",
     i("Clear contents", "range.clear", "Delete"), i("Clear cells", "range.clearAll"), i("Clear formats", "range.clearFormats"), i("Clear comments", "range.clearComments"), "-",
     i("Delete row", "rows.delete"), i("Delete column", "columns.delete"), i("Delete sheet", "sheet.delete"), "-",
-    i("Find", "edit.find"), i("Replace all", "edit.replace"),
+    i("Find", "edit.find"), i("Replace all", "edit.replace"), i("Go To Special", "edit.goToSpecial"),
   ] },
   { label: "View", items: [
     ...PANELS.map((p) => i(panelItem(p.label), "view.panel")), "-",
