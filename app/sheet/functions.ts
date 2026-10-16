@@ -11,6 +11,7 @@ import { sparkline } from "./charts.ts";
 import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
 import { db, depreciation, fv, ipmt, irr, mirr, nper, npv, pmt, ppmt, pv, rate, vdb, xirr, xnpv } from "./finance.ts";
 import * as D from "./distributions.ts";
+import * as B from "./bonds.ts";
 import { colName, sheetPrefix } from "./address.ts";
 
 export interface Arg {
@@ -1799,4 +1800,168 @@ def("VLOOKUP", 3, 4, (args) => {
   const firsts = values.filter((_, i) => i % cols === 0);
   const r = position(x, firsts, num(args, 3, 1) !== 0 ? 1 : 0);
   return r < 0 ? notFound(x) : values[r * cols + c - 1];
+});
+
+// --- bonds and bills (2.9b: bonds.ts) ---
+
+// A bond function: its dates whole days, frequency and basis checked; a
+// RangeError from bonds.ts is #NUM!.
+const defBond = (name: string, min: number, max: number, fn: Fn): void => {
+  def(name, min, max, (args) => {
+    try {
+      return fn(args);
+    } catch (e) {
+      if (e instanceof RangeError) return fail("#NUM!", `${name}: ${e.message}`);
+      throw e;
+    }
+  });
+};
+const day = (args: readonly Arg[], i: number): number => Math.floor(date(args, i));
+const basisAt = (args: readonly Arg[], i: number): B.Basis => {
+  const b = Math.trunc(num(args, i, 0));
+  B.checkBasis(b);
+  return b;
+};
+// settlement, maturity, frequency, basis at the given places.
+const bond = (args: readonly Arg[], f: number, b: number): [number, number, number, B.Basis] => {
+  const settle = day(args, 0), maturity = day(args, 1), freq = Math.trunc(num(args, f)), basis = basisAt(args, b);
+  B.checkBond(settle, maturity, freq, basis);
+  return [settle, maturity, freq, basis];
+};
+const nonNegative = (x: number, what: string): void => {
+  if (x < 0) throw new RangeError(`${what} is not negative, not ${x}`);
+};
+const above0 = (x: number, what: string): void => {
+  if (!(x > 0)) throw new RangeError(`${what} must be positive, not ${x}`);
+};
+
+defBond("COUPPCD", 3, 4, (args) => { const [s, m, f] = bond(args, 2, 3); return B.coupons(s, m, f).previous; });
+defBond("COUPNCD", 3, 4, (args) => { const [s, m, f] = bond(args, 2, 3); return B.coupons(s, m, f).next; });
+defBond("COUPNUM", 3, 4, (args) => { const [s, m, f] = bond(args, 2, 3); return B.coupons(s, m, f).count; });
+defBond("COUPDAYBS", 3, 4, (args) => B.couponDays(...bond(args, 2, 3)).before);
+defBond("COUPDAYS", 3, 4, (args) => B.couponDays(...bond(args, 2, 3)).period);
+defBond("COUPDAYSNC", 3, 4, (args) => B.couponDays(...bond(args, 2, 3)).after);
+// PRICE(settlement, maturity, rate, yld, redemption, frequency, [basis])
+// and YIELD(settlement, maturity, rate, pr, redemption, frequency, [basis]).
+defBond("PRICE", 6, 7, (args) => {
+  const [s, m, f, b] = bond(args, 5, 6), rate = num(args, 2), yld = num(args, 3), red = num(args, 4);
+  nonNegative(rate, "the rate"); nonNegative(yld, "the yield"); above0(red, "the redemption");
+  return B.price(s, m, rate, yld, red, f, b);
+});
+defBond("YIELD", 6, 7, (args) => {
+  const [s, m, f, b] = bond(args, 5, 6), rate = num(args, 2), pr = num(args, 3), red = num(args, 4);
+  nonNegative(rate, "the rate"); above0(pr, "the price"); above0(red, "the redemption");
+  return B.yieldOf(s, m, rate, pr, red, f, b);
+});
+defBond("DURATION", 5, 6, (args) => {
+  const [s, m, f, b] = bond(args, 4, 5), c = num(args, 2), y = num(args, 3);
+  nonNegative(c, "the coupon"); nonNegative(y, "the yield");
+  return B.duration(s, m, c, y, f, b);
+});
+defBond("MDURATION", 5, 6, (args) => {
+  const [s, m, f, b] = bond(args, 4, 5), c = num(args, 2), y = num(args, 3);
+  nonNegative(c, "the coupon"); nonNegative(y, "the yield");
+  return B.duration(s, m, c, y, f, b) / (1 + y / f);
+});
+// Treasury bills: a discount on a 360-day year; within a year of
+// settlement.
+const bill = (args: readonly Arg[]): [number, number, number] => {
+  const s = day(args, 0), m = day(args, 1), dsm = m - s;
+  if (!(dsm > 0) || dsm > 366 || m > B.addMonthsKeep(s, 12, false)) throw new RangeError("maturity is after settlement, within a year");
+  return [s, m, dsm];
+};
+defBond("TBILLPRICE", 3, 3, (args) => { const [, , dsm] = bill(args), d = num(args, 2); above0(d, "the discount"); return 100 * (1 - (d * dsm) / 360); });
+defBond("TBILLYIELD", 3, 3, (args) => { const [, , dsm] = bill(args), pr = num(args, 2); above0(pr, "the price"); return ((100 - pr) / pr) * (360 / dsm); });
+defBond("TBILLEQ", 3, 3, (args) => {
+  const [, , dsm] = bill(args), d = num(args, 2);
+  above0(d, "the discount");
+  if (dsm <= 182) return (365 * d) / (360 - d * dsm);
+  // Past half a year, the bond-equivalent yield of a semiannual coupon.
+  const price = 1 - (d * dsm) / 360, t = dsm / 365;
+  return (-2 * t + 2 * Math.sqrt(t * t - (2 * t - 1) * (1 - 1 / price))) / (2 * t - 1);
+});
+// Discounted and at-maturity securities: their days on the basis, over
+// the basis's year.
+const span2 = (args: readonly Arg[], b: number): [number, number, B.Basis, number, number] => {
+  const s = day(args, 0), m = day(args, 1), basis = basisAt(args, b);
+  if (!(s < m)) throw new RangeError("settlement is on or after maturity");
+  return [s, m, basis, B.dayCount(s, m, basis), B.yearDays(s, m, basis)];
+};
+defBond("PRICEDISC", 4, 5, (args) => { const [, , , dsm, yb] = span2(args, 4), d = num(args, 2), red = num(args, 3); above0(d, "the discount"); above0(red, "the redemption"); return red - (d * red * dsm) / yb; });
+defBond("YIELDDISC", 4, 5, (args) => { const [, , , dsm, yb] = span2(args, 4), pr = num(args, 2), red = num(args, 3); above0(pr, "the price"); above0(red, "the redemption"); return ((red - pr) / pr) * (yb / dsm); });
+defBond("DISC", 4, 5, (args) => { const [, , , dsm, yb] = span2(args, 4), pr = num(args, 2), red = num(args, 3); above0(pr, "the price"); above0(red, "the redemption"); return ((red - pr) / red) * (yb / dsm); });
+defBond("INTRATE", 4, 5, (args) => { const [, , , dim, yb] = span2(args, 4), inv = num(args, 2), red = num(args, 3); above0(inv, "the investment"); above0(red, "the redemption"); return ((red - inv) / inv) * (yb / dim); });
+defBond("RECEIVED", 4, 5, (args) => {
+  const [, , , dim, yb] = span2(args, 4), inv = num(args, 2), d = num(args, 3);
+  above0(inv, "the investment"); above0(d, "the discount");
+  const back = 1 - (d * dim) / yb;
+  if (!(back > 0)) throw new RangeError("the discount takes it all");
+  return inv / back;
+});
+// PRICEMAT and YIELDMAT: interest paid at maturity, from issue.
+const atMaturity = (args: readonly Arg[]): { dsm: number; dim: number; a: number; yb: number; rate: number } => {
+  const s = day(args, 0), m = day(args, 1), issue = day(args, 2), basis = basisAt(args, 5), rate = num(args, 3);
+  if (!(issue < s && s < m)) throw new RangeError("issue < settlement < maturity");
+  nonNegative(rate, "the rate");
+  return { dsm: B.dayCount(s, m, basis), dim: B.dayCount(issue, m, basis), a: B.dayCount(issue, s, basis), yb: B.yearDays(issue, m, basis), rate };
+};
+defBond("PRICEMAT", 5, 6, (args) => {
+  const { dsm, dim, a, yb, rate } = atMaturity(args), y = num(args, 4);
+  nonNegative(y, "the yield");
+  return (100 + (dim / yb) * rate * 100) / (1 + (dsm / yb) * y) - (a / yb) * rate * 100;
+});
+defBond("YIELDMAT", 5, 6, (args) => {
+  const { dsm, dim, a, yb, rate } = atMaturity(args), pr = num(args, 4);
+  above0(pr, "the price");
+  const paid = pr / 100 + (a / yb) * rate;
+  return ((1 + (dim / yb) * rate - paid) / paid) * (yb / dsm);
+});
+// ACCRINT(issue, first interest, settlement, rate, par, frequency, [basis],
+// [from issue]): interest accrued, quasi-coupon period by period, from
+// issue (or, told FALSE, from the last coupon before settlement);
+// ACCRINTM(issue, settlement, rate, par, [basis]): to a single payment
+// at maturity.
+defBond("ACCRINT", 6, 8, (args) => {
+  const issue = day(args, 0), first = day(args, 1), settle = day(args, 2), rate = num(args, 3), par = num(args, 4, 1000), freq = Math.trunc(num(args, 5)), basis = basisAt(args, 6);
+  const fromIssue = absent(args, 7) ? true : toNumber(val(args, 7)) !== 0;
+  if (!(issue < settle)) throw new RangeError("issue is on or after settlement");
+  if (freq !== 1 && freq !== 2 && freq !== 4) throw new RangeError(`frequency is 1, 2 or 4, not ${freq}`);
+  above0(rate, "the rate"); above0(par, "the par");
+  const from = !fromIssue && settle > first ? B.coupons(settle, B.addMonthsKeep(first, 12 * 100, false), freq).previous : issue;
+  return B.accrued(from, settle, first, rate, par, freq, basis);
+});
+defBond("ACCRINTM", 4, 5, (args) => {
+  const issue = day(args, 0), settle = day(args, 1), rate = num(args, 2), par = num(args, 3), basis = basisAt(args, 4);
+  if (!(issue < settle)) throw new RangeError("issue is on or after settlement");
+  above0(rate, "the rate"); above0(par, "the par");
+  return (par * rate * B.dayCount(issue, settle, basis)) / B.yearDays(issue, settle, basis);
+});
+// The odd periods: ODDFPRICE and ODDFYIELD(settlement, maturity, issue,
+// first coupon, rate, yld or pr, redemption, frequency, [basis]);
+// ODDLPRICE and ODDLYIELD(settlement, maturity, last interest, rate, yld
+// or pr, redemption, frequency, [basis]).
+const oddArgs = (args: readonly Arg[], f: number): [number, B.Basis] => {
+  const freq = Math.trunc(num(args, f)), basis = basisAt(args, f + 1);
+  if (freq !== 1 && freq !== 2 && freq !== 4) throw new RangeError(`frequency is 1, 2 or 4, not ${freq}`);
+  return [freq, basis];
+};
+defBond("ODDFPRICE", 8, 9, (args) => {
+  const [f, b] = oddArgs(args, 7), rate = num(args, 4), y = num(args, 5), red = num(args, 6);
+  nonNegative(rate, "the rate"); nonNegative(y, "the yield"); above0(red, "the redemption");
+  return B.oddFirstPrice(day(args, 0), day(args, 1), day(args, 2), day(args, 3), rate, y, red, f, b);
+});
+defBond("ODDFYIELD", 8, 9, (args) => {
+  const [f, b] = oddArgs(args, 7), rate = num(args, 4), pr = num(args, 5), red = num(args, 6);
+  nonNegative(rate, "the rate"); above0(pr, "the price"); above0(red, "the redemption");
+  return B.oddFirstYield(day(args, 0), day(args, 1), day(args, 2), day(args, 3), rate, pr, red, f, b);
+});
+defBond("ODDLPRICE", 7, 8, (args) => {
+  const [f, b] = oddArgs(args, 6), rate = num(args, 3), y = num(args, 4), red = num(args, 5);
+  nonNegative(rate, "the rate"); nonNegative(y, "the yield"); above0(red, "the redemption");
+  return B.oddLastPrice(day(args, 0), day(args, 1), day(args, 2), rate, y, red, f, b);
+});
+defBond("ODDLYIELD", 7, 8, (args) => {
+  const [f, b] = oddArgs(args, 6), rate = num(args, 3), pr = num(args, 4), red = num(args, 5);
+  nonNegative(rate, "the rate"); above0(pr, "the price"); above0(red, "the redemption");
+  return B.oddLastYield(day(args, 0), day(args, 1), day(args, 2), rate, pr, red, f, b);
 });
