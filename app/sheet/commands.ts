@@ -173,6 +173,7 @@ const SAMPLES: Record<string, unknown> = { budget: SAMPLE_BUDGET, test: TEST_SHE
 async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   const before = wb.sheet.keys();
   wb.reset(file.sheets[0].name);
+  if (file.dateSystem === 1904) await wb.setDateSystem(1904);
   // Worked out as it opens, iterating if the file does; manual after.
   wb.calculation = { ...file.calculation, manual: false };
   const failed = file.language === "RexxJS" ? await wb.rexx.setup(file.setupScript) : null;
@@ -1635,6 +1636,18 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // The 1904 date system (Excel's "Use 1904 date system"), or 1900: the
+    // serials stay, so a date typed as a number shows four years and a day
+    // on; what DATE and the other date functions give follows it.
+    id: "workbook.dateSystem", label: "Date System", params: ["system"], journaled: true, unstepped: true,
+    run: async (wb, p) => {
+      const sys = Number(p.system);
+      if (sys !== 1900 && sys !== 1904) refuse(`${p.system} is not a date system (1900, 1904)`);
+      await wb.setDateSystem(sys as 1900 | 1904);
+      return changedBy(wb, wb.sheet.keys(), `the ${sys} date system`);
+    },
+  },
+  {
     // Zoom: the sheet drawn at a percentage, 10 to 400, as Excel's; or in
     // or out a step (Excel's 10, 25, 50, 75, 100, 125, 150, 200, 400). A
     // view, not a step to undo, not saved.
@@ -1838,7 +1851,7 @@ const SPECS: readonly Spec[] = [
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
         language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
-        panel: wb.panel ?? "", zoom: wb.zoom, calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
+        panel: wb.panel ?? "", zoom: wb.zoom, dateSystem: wb.dateSystem, calculation: wb.calculation.manual ? "Manual" : "Automatic", iteration: wb.calculation.iterate, stale: wb.stale(),
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

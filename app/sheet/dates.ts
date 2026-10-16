@@ -2,9 +2,16 @@
 // 1899-12-31, which Excel calls 1900-01-01; the two agree from 1900-03-01
 // on, Excel counting a 29 February 1900 that never was), a time the
 // fraction of a day. Pure date arithmetic, for the library's date functions
-// and numfmt.ts.
-const EPOCH = Date.UTC(1899, 11, 30);
+// and numfmt.ts. Or, in the 1904 date system (a workbook's setting, as
+// old Mac Excel's), days since 1904-01-01, 0 that day: setDateSystem
+// moves the epoch every function here counts from.
+let EPOCH = Date.UTC(1899, 11, 30);
 const DAY = 86_400_000;
+
+export type DateSystem = 1900 | 1904;
+export function setDateSystem(system: DateSystem): void {
+  EPOCH = system === 1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
+}
 
 export const serial = (y: number, m: number, d: number): number => (Date.UTC(y, m - 1, d) - EPOCH) / DAY;
 

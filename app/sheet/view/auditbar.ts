@@ -34,6 +34,7 @@ export function auditBar(v: SheetView): void {
     v.btn("Calculate sheet", () => v.run("formulas.calculateSheet"));
     v.btn("Iterative calculation", () => v.run("formulas.iteration", v.wb.calculation.iterate ? { off: "1" } : {}));
     v.btn("Error checking", check);
+    v.btn("1904 date system", () => v.run("workbook.dateSystem", { system: v.wb.dateSystem === 1904 ? "1900" : "1904" }));
   });
   each(findings, (f: Finding) => `${f.cell} ${f.check}`, (f: Finding) => ui.hstack(() => {
     ui.text(`${f.cell} ${f.check}: ${f.message}`);

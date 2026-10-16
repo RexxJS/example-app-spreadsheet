@@ -46,6 +46,7 @@ interface State {
   readonly referenceStyle: string;
   readonly panel: string;
   readonly zoom: number;
+  readonly dateSystem: number;
   readonly calculation: string;
   readonly iteration: { readonly max: number; readonly change: number } | null;
   readonly stale: readonly string[];
@@ -242,6 +243,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const r = rows ? `A${parts[0]}:A${parts[1] ?? parts[0]}` : `${parts[0]}1:${parts[1] ?? parts[0]}1`;
     return (await must(exec, rows ? "rows.autofit" : "columns.autofit", { range: r })).message;
   },
+  // The date system: SETDATESYSTEM(1904), GETDATESYSTEM().
+  SETDATESYSTEM: async (exec, sys) => (await must(exec, "workbook.dateSystem", { system: text(sys).trim() }), (await state(exec)).dateSystem),
+  GETDATESYSTEM: async (exec) => (await state(exec)).dateSystem,
   // Zoom: SETZOOM(150), SETZOOM("in"), SETZOOM("out"); GETZOOM().
   SETZOOM: async (exec, z) => (await must(exec, "view.zoom", /^(in|out)$/i.test(text(z).trim()) ? { by: text(z).trim().toLowerCase() } : { percent: text(z).trim() })).output,
   GETZOOM: async (exec) => (await state(exec)).zoom,

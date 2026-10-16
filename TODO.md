@@ -22,7 +22,7 @@ What came before (demo 18's To do 1 to 15) is in
 | 1.3 | Go To Special: formulas, constants, blanks, errors, comments, validation, conditional formats | headless: each category's cells, on a sample sheet | `GOTOSPECIAL("blanks")` gives the stem of cells |
 | 1.4 | A bigger sheet: sparse cells up to 16,384 x 1,048,576 as an address space (storage already sparse? check `sheet.ts`), the grid virtual over it (aether-ui datagrid: an ask if it pages) | headless: `XFD1048576` sets and reads; spec: scroll far, type, formula back | `SETCELL("ZZ100000", 1)` |
 | 1.5 | Sheet tab colour and hiding, ~~move~~/copy sheet (copy a sheet with its cells and looks) (move done 2026-10-16: a tab dragged among the others moves its sheet, sae's `ui.reorderable` over the tabs' `each` row running `sheet.move`; colour, hiding and copy to do) | headless: `sheet.copy`, undo restores; spec: the tab (spec_sheet: a tab dragged, and back) | `SETSHEETCOLOR`, `HIDESHEET`, `COPYSHEET` |
-| 1.6 | 1904 date system as a workbook setting, honoured by the serial conversions | headless: the same serial, two dates | `SETDATESYSTEM(1904)` |
+| 1.6 | ~~1904 date system as a workbook setting, honoured by the serial conversions~~ (done 2026-10-16: `dates.ts`'s epoch moved by `setDateSystem`, so every date function and number format counts from 1904-01-01; `workbook.dateSystem`, saved as `dateSystem: 1904`, a new workbook 1900; the Audit panel's 1904 date system. Serials stay as they are when switched, as Excel's do. The epoch is the page's, one workbook open at a time) | headless: the same serial, two dates | `SETDATESYSTEM(1904)` |
 
 ### Stage 2: calculation
 

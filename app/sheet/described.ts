@@ -65,6 +65,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SETCOMMENT: fn([CELL, p("text", "text")], "Sets a cell's comment", "the comment"),
   GETCOMMENT: fn([CELL], "Reads a cell's comment", "the comment, or \"\""),
   AUTOFIT: fn([p("what", "text", "a column (\"B\", \"B:D\") or a row (3, \"3:5\")")], "AutoFit: columns as wide as their text, or rows as tall", "what it did"),
+  SETDATESYSTEM: fn([p("system", "number", "1900 or 1904")], "The workbook's date system: serials count from 1900-01-00, or from 1904-01-01", "the system now"),
+  GETDATESYSTEM: fn([], "The workbook's date system", "1900 or 1904"),
   SETZOOM: fn([p("zoom", "text", "a percentage, 10 to 400, or in or out a step")], "Zooms the sheet", "the zoom now"),
   GETZOOM: fn([], "The sheet's zoom", "a percentage"),
   GETLASTCELL: fn([], "Ctrl+End's cell: the last row used and the last column used", "a cell, e.g. D12"),

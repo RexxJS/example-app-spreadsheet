@@ -79,7 +79,7 @@ export const MENUS: readonly Menu[] = [
     i("Excel formulas", "formulas.use"), i("RexxJS formulas", "formulas.use"), "-",
     i("Trace precedents", "formulas.tracePrecedents"), i("Trace dependents", "formulas.traceDependents"), i("Remove arrows", "formulas.removeArrows"),
     i("Evaluate formula", "formulas.evaluate"), i("Error checking", "formulas.errorCheck"), "-",
-    i("Calculate now", "formulas.recalculate", "F9"), i("Calculate sheet", "formulas.calculateSheet", "Shift+F9"),
+    i("1904 date system", "workbook.dateSystem"), i("Calculate now", "formulas.recalculate", "F9"), i("Calculate sheet", "formulas.calculateSheet", "Shift+F9"),
     i("Manual calculation", "formulas.calculation"), i("Iterative calculation", "formulas.iteration"),
   ] },
   { label: "Review", items: [

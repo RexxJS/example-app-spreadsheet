@@ -16,6 +16,8 @@ import { REFERENCE_COLOURS } from "./typing.ts";
 import type { Addr } from "./address.ts";
 import type { PivotFields } from "./pivot.ts";
 import { EXCEL, fromR1C1, toR1C1 } from "./excel.ts";
+import { setDateSystem as setDates } from "./dates.ts";
+import type { DateSystem } from "./dates.ts";
 import { describe, show } from "./format.ts";
 import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
 import type { Language } from "./language.ts";
@@ -219,6 +221,16 @@ export class Workbook {
   // Circle Invalid: on, the cells whose input breaks their rule are marked.
   circling = false;
   #circled = new Set<string>();
+  // The date system serials count from (1900, or 1904: dates.ts), saved
+  // with the file. Set through setDateSystem, which works everything out.
+  #dateSystem: DateSystem = 1900;
+  get dateSystem(): DateSystem { return this.#dateSystem; }
+  async setDateSystem(system: DateSystem): Promise<void> {
+    this.#dateSystem = system;
+    setDates(system);
+    await this.#recalculate();
+    await this.settle();
+  }
   // The zoom, in percent (10 to 400, as Excel's): a view of the sheet.
   zoom = 100;
   // The panel open under the grid (menus.ts's PANELS), or null: a view.
@@ -242,6 +254,7 @@ export class Workbook {
   #names = new Map<string, BookName>();
 
   constructor() {
+    setDates(1900);
     this.#active = this.#make("Sheet1", EXCEL);
     this.#pages.push(this.#active);
   }
@@ -401,6 +414,8 @@ export class Workbook {
     this.#pages = [this.#active];
     this.#names = new Map();
     this.calculation = AUTOMATIC;
+    this.#dateSystem = 1900;
+    setDates(1900);
     this.#pending.clear();
     this.#undo.length = 0;
     this.#redo.length = 0;
