@@ -9,7 +9,7 @@ import { Commands } from "../commands.ts";
 import type { Outcome, Params } from "../commands.ts";
 import type { Problem } from "../sheet.ts";
 import { Workbook } from "../workbook.ts";
-import { COLUMN_WIDTH } from "./grid.ts";
+import { COLUMN_WIDTH, ROWS_WITH_PANEL, ROW_PX } from "./grid.ts";
 
 // aether-ui's datagrid's own row height, which a zoom scales.
 const ROW_HEIGHT = 24;
@@ -210,6 +210,11 @@ export class SheetView {
     });
     if (this.wb.panel !== this.#shownPanel) {
       for (const [n, h] of this.#panels) ui.set_visible(h, n === this.wb.panel);
+      // The grid takes the height back when no panel is open.
+      if (this.grid && (this.wb.panel === null) !== (this.#shownPanel === null)) {
+        ui.datagrid_set_height(this.grid, this.wb.panel ? ROWS_WITH_PANEL * ROW_PX : 0);
+        print(`sheet: the grid ${Math.round(ui.datagrid_height(this.grid) / ROW_PX)} rows high`);
+      }
       this.#shownPanel = this.wb.panel;
     }
     if (this.grid && this.wb.selecting) {

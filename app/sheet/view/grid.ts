@@ -25,7 +25,10 @@ const SHIFT = 1, CTRL = 2, SUPER = 8;
 // A column's width until one is set (columns.width).
 export const COLUMN_WIDTH = 80;
 // The window of cells on screen at once: the grid scrolls over the rest.
-const SHOWN_ROWS = 25, SHOWN_COLS = 10;
+// Rows made for the grid to show, and how many it shows with a panel open
+// under it (view.ts gives it the rest of the height when none is).
+const SHOWN_ROWS = 36, SHOWN_COLS = 10;
+export const ROWS_WITH_PANEL = 22, ROW_PX = 24;
 
 export function sheetGrid(v: SheetView): void {
   const { cells, headers, edit_text, cell_style, on_cell_select, on_cell_edit, on_col_resize, column_width } = ui;
