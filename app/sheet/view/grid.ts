@@ -50,7 +50,7 @@ export function sheetGrid(v: SheetView): void {
     edit_text((r: number, c: number) => {
       if (held && held.r === r && held.c === c) return held.text;
       const key = keyAt(r, c);
-      return key ? v.wb.sheet.input(key) : "";
+      return key ? v.wb.shownInput(key) : "";
     });
     cell_style((r: number, c: number) => {
       const key = keyAt(r, c);
@@ -77,7 +77,7 @@ export function sheetGrid(v: SheetView): void {
           if (held && held.r === r && held.c === c) {
             held = null;
             v.wb.typing(null);
-            v.run("cell.set", { cell: key, input: t.trim() });
+            v.run("cell.set", { cell: key, input: v.wb.enteredInput(key, t.trim()) });
           }
         }, 0);
         return;
@@ -86,7 +86,7 @@ export function sheetGrid(v: SheetView): void {
       v.wb.typing(null);
       if (key) {
         v.address.set(key);
-        v.run("cell.set", { cell: key, input: t.trim() });
+        v.run("cell.set", { cell: key, input: v.wb.enteredInput(key, t.trim()) });
       }
     });
     on_col_resize((c: number, w: number) => {

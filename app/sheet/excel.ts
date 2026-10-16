@@ -3,7 +3,7 @@
 // references and ranges name; it is rewritten token by token, so only
 // references change ($ fixes a column or row in a copy, and a reference
 // moved off the sheet, or into what was deleted, is #REF!).
-import { cellAddr, colName, range, sheetPrefix, span, splitKey } from "./address.ts";
+import { COLS, ROWS, cellAddr, colName, range, sheetPrefix, span, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
 import { movedBy } from "./shift.ts";
 import type { Edit, Fixed } from "./shift.ts";
@@ -165,6 +165,69 @@ function renamed(input: string, from: string, to: string): string {
     at = t.at + t.text.length;
   }
   return out + input.slice(at);
+}
+
+// A formula's references written R1C1, relative to the cell `at` it is
+// in: an absolute row or column as its number (R3C3), a relative one as an
+// offset in brackets (R[-1]C[2]), the cell's own row or column bare (RC).
+// Token by token, so strings stay as written; a constant is unchanged.
+export function toR1C1(input: string, at: string): string {
+  const here = cellAddr(at);
+  if (!input.startsWith("=") || !here) return input;
+  let toks: Token[];
+  try {
+    toks = [...tokens(input.slice(1), 1)];
+  } catch (e) {
+    if (e instanceof FormulaError) return input;
+    throw e;
+  }
+  let out = "", from = 0;
+  for (const t of toks) {
+    if (t.kind !== "ref") continue;
+    const a = cellAddr(t.name);
+    if (!a) continue;
+    const part = (letter: string, fixed: boolean, n: number, mine: number) => (fixed ? `${letter}${n + 1}` : n === mine ? letter : `${letter}[${n - mine}]`);
+    const sheet = t.text.slice(0, t.text.lastIndexOf("!") + 1);
+    out += input.slice(from, t.at) + sheet + part("R", t.fixRow, a.row, here.row) + part("C", t.fixCol, a.col, here.col) + (t.spill ? "#" : "");
+    from = t.at + t.text.length;
+  }
+  return out + input.slice(from);
+}
+
+// An R1C1 reference's text, at the start of a match: a sheet perhaps,
+// then R and C, each a number, an offset in brackets, or nothing.
+const R1C1 = /((?:[A-Za-z_]\w*(?::[A-Za-z_]\w*)?|'[^']+')!)?R(\[-?\d+\]|\d+)?C(\[-?\d+\]|\d+)?(?![A-Za-z0-9_([.])/iy;
+
+// A formula typed in R1C1 written A1, from the cell `at` it is in (what
+// falls off the sheet is #REF!); text in quotes stays as written.
+export function fromR1C1(input: string, at: string): string {
+  const here = cellAddr(at);
+  if (!input.startsWith("=") || !here) return input;
+  let out = "=";
+  for (let i = 1; i < input.length;) {
+    const c = input[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < input.length && !(input[j] === '"' && input[j + 1] !== '"')) j += input[j] === '"' ? 2 : 1;
+      out += input.slice(i, j + 1);
+      i = j + 1;
+      continue;
+    }
+    const before = out[out.length - 1] ?? "";
+    R1C1.lastIndex = i;
+    const m = /[A-Za-z0-9_.\]'$]/.test(before) ? null : R1C1.exec(input);
+    if (!m) {
+      out += c;
+      i++;
+      continue;
+    }
+    const pick = (part: string | undefined, mine: number): [number, boolean] =>
+      part === undefined ? [mine, false] : part.startsWith("[") ? [mine + Number(part.slice(1, -1)), false] : [Number(part) - 1, true];
+    const [row, rowFixed] = pick(m[2], here.row), [col, colFixed] = pick(m[3], here.col);
+    out += row < 0 || row >= ROWS || col < 0 || col >= COLS ? "#REF!" : `${m[1] ?? ""}${colFixed ? "$" : ""}${colName(col)}${rowFixed ? "$" : ""}${row + 1}`;
+    i += m[0].length;
+  }
+  return out;
 }
 
 // A cell's input as it reads copied `by` cells.

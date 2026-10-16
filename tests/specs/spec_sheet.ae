@@ -20,6 +20,17 @@ import uidriver
 const TRIES = 60
 const POLL_MS = 50
 
+// The formula bar comes to `want`, after a selection's follow. 1 if so.
+wait_formula(want: string) -> int {
+    i = 0
+    while i < 40 {
+        if string.equals(uidriver.widget_text_by_id(g.formula_field()), want) == 1 { return 1 }
+        sleep(100)
+        i = i + 1
+    }
+    return 0
+}
+
 // A sheet tab: the newest button with the sheet's name.
 tab(name: string) -> int { return uidriver.widget_id_last_of("button", name) }
 
@@ -455,6 +466,28 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: deleted South"), "South gone")
             b.click("Sheet1")
             spec.assert_true(b.wait_for_text("On Sheet1:"), "back on Sheet1")
+        }
+        spec.it("R1C1 on the formula bar: a formula shown so, one typed so stored A1, and A1 again") callback {
+            // R1C1 is for Excel formulas (the page is in RexxJS ones here).
+            g.command("formulas.use language=Excel")
+            spec.assert_true(b.wait_for_console("sheet: Excel formulas"), "Excel formulas")
+            g.enter("K30", "5")
+            g.enter("L31", "=K30*2")
+            spec.assert_true(g.wait_cell("L", 31, "10"), "an A1 formula")
+            b.click("R1C1")
+            spec.assert_true(b.wait_for_console("sheet: R1C1 references"), "switched")
+            g.goto("L31")
+            spec.assert_true(wait_formula("=R[-1]C[-1]*2"), "the formula bar shows it R1C1")
+            g.enter("M32", "=R[-1]C[-1]+1")
+            spec.assert_true(g.wait_cell("M", 32, "11"), "one typed R1C1 works out")
+            b.click("R1C1")
+            spec.assert_true(b.wait_for_console("sheet: A1 references"), "switched back")
+            g.goto("M32")
+            spec.assert_true(wait_formula("=L31+1"), "stored A1, shown A1")
+            g.command("range.clear range=K30:M32")
+            g.command("formulas.use language=RexxJS")
+            spec.assert_true(b.wait_for_console("sheet: RexxJS formulas"), "RexxJS formulas again")
+            g.goto("A1")
         }
         spec.it("Fill series, AutoSum and Paste values, from the edit bar") callback {
             g.enter("A14", "Mon")

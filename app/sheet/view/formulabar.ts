@@ -2,7 +2,8 @@
 // both bound two-way. The address is also the Name Box: Return on a named
 // range's name selects it (going to its sheet, for a workbook's name of
 // another one); Return on a cell moves to the formula. Return in the
-// formula sets the cell.
+// formula sets the cell. R1C1 switches how Excel formulas are shown and
+// typed (formulas.style), and back.
 import { addrOf } from "../address.ts";
 import type { SheetView } from "./view.ts";
 
@@ -19,8 +20,12 @@ export function formulaBar(v: SheetView): void {
       v.status.set(`${name} is ${listed[1]}`);
     });
     ui.on_submit(formula, () => {
-      if (addrOf(v.address.value)) v.run("cell.set", { cell: v.here(), input: v.input.value.trim() });
+      if (addrOf(v.address.value)) v.run("cell.set", { cell: v.here(), input: v.wb.enteredInput(v.here(), v.input.value.trim()) });
       else v.status.set(`${v.address.value}: not a cell on this sheet`);
+    });
+    ui.btn("R1C1", async () => {
+      await v.run("formulas.style", { style: v.wb.referenceStyle === "A1" ? "R1C1" : "A1" });
+      v.follow();
     });
   });
 }

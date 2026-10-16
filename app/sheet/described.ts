@@ -187,6 +187,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SPREADSHEET_VERSION: fn([], "The app's version", "e.g. \"sae demo 18\""),
   SETFORMULALANGUAGE: fn([p("language", "text", "Excel or RexxJS")], "Sets the language formulas are written in", "the language now"),
   GETFORMULALANGUAGE: fn([], "The language formulas are written in", "Excel or RexxJS"),
+  SETREFERENCESTYLE: fn([p("style", "text", "A1 or R1C1")], "Sets how the page shows Excel formulas and takes them typed (stored A1 either way)", "the style now"),
+  GETREFERENCESTYLE: fn([], "How the page shows Excel formulas", "A1 or R1C1"),
   EVALUATE: fn([p("formula", "text", "in the formula language, without the =")], "Works a formula out against the sheet, in no cell", "its value"),
   RECALCULATE: fn([], "Works every formula out again", "how many there were"),
   EXPORT: fn([], "The whole workbook as its file", "the file's JSON"),

@@ -1505,6 +1505,16 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // How Excel formulas are shown and typed on the page: A1 or R1C1. A
+    // view of them: what is stored, and what cell.set takes, stays A1.
+    id: "formulas.style", label: "Reference style", params: ["style"], journaled: false,
+    run: async (wb, p) => {
+      const style = ({ a1: "A1", r1c1: "R1C1" } as Record<string, "A1" | "R1C1">)[p.style.toLowerCase()] ?? refuse(`${p.style} is not a reference style (A1, R1C1)`);
+      wb.referenceStyle = style;
+      return changedBy(wb, wb.sheet.keys(), `${style} references`);
+    },
+  },
+  {
     id: "sheet.add", label: "Insert Sheet", params: [], optional: ["name"], journaled: true,
     run: async (wb, p) => {
       let name = p.name;
@@ -1528,7 +1538,7 @@ const SPECS: readonly Spec[] = [
         filter: page.filter && { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion },
         canUndo: wb.canUndo ? 1 : 0, canRedo: wb.canRedo ? 1 : 0,
         autoId: page.autoId && { column: colName(page.autoId.column), next: `${page.autoId.prefix}${page.autoId.next}` },
-        language: wb.sheet.language.name,
+        language: wb.sheet.language.name, referenceStyle: wb.referenceStyle,
       };
       return { ok: true, message: JSON.stringify(state), changed: [], output: state };
     },

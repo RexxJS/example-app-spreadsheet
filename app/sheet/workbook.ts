@@ -15,7 +15,7 @@ import { cellAddr, keyOf, order, parseRange, splitKey } from "./address.ts";
 import { REFERENCE_COLOURS } from "./typing.ts";
 import type { Addr } from "./address.ts";
 import type { PivotFields } from "./pivot.ts";
-import { EXCEL } from "./excel.ts";
+import { EXCEL, fromR1C1, toR1C1 } from "./excel.ts";
 import { describe, show } from "./format.ts";
 import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
 import type { Language } from "./language.ts";
@@ -186,6 +186,9 @@ const ROUNDS = 20;
 export class Workbook {
   readonly rexx = new RexxLanguage();
   readonly #turns = new Turns();
+  // How Excel formulas are shown and typed (a view of them: they are
+  // stored A1 either way, and RexxJS formulas are shown as written).
+  referenceStyle: "A1" | "R1C1" = "A1";
   #pages: Page[] = [];
   #active: Page;
   // Each sheet's cells (by its name in upper case) whose value changed
@@ -227,6 +230,17 @@ export class Workbook {
   get active(): string { return this.#active.name; }
 
   sheetNames(): string[] { return this.#pages.map((p) => p.name); }
+
+  // A cell's input as the reference style shows it.
+  shownInput(key: string): string {
+    const input = this.sheet.input(key);
+    return this.referenceStyle === "R1C1" && this.sheet.language.name === "Excel" ? toR1C1(input, key) : input;
+  }
+
+  // What was typed into a cell, in the reference style, as it is stored.
+  enteredInput(key: string, text: string): string {
+    return this.referenceStyle === "R1C1" && this.sheet.language.name === "Excel" ? fromR1C1(text, key) : text;
+  }
   pages(): readonly Page[] { return this.#pages; }
 
   // A sheet by its name, any case.

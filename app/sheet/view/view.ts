@@ -81,7 +81,7 @@ export class SheetView {
   follow(key = this.here()): void {
     const note = this.wb.notes.get(key);
     batch(() => {
-      this.input.set(this.wb.sheet.input(key));
+      this.input.set(this.wb.shownInput(key));
       this.status.set(this.wb.describe(key));
       this.comment.set(note.comment ?? "");
       this.format.set(note.format ?? "");
