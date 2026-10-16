@@ -14,6 +14,7 @@ import type { Value } from "./sheet/values.ts";
 import { Commands } from "./sheet/commands.ts";
 import { Workbook } from "./sheet/workbook.ts";
 import { eq } from "./lib/check.ts";
+import { print } from "./sheet/audit.ts";
 
 const cells = new Map<string, Value>([
   ["A1", 1], ["A2", 2], ["A3", 3], ["B1", 10], ["C1", 20],
@@ -40,6 +41,26 @@ eq("UNIQUE, any case; or what is there exactly once", ev("UNIQUE(F1:F5)", "UNIQU
 eq("TRANSPOSE", ev("TRANSPOSE(A1:A3)", "TRANSPOSE(G1:H2)"), ["1,2,3", "1,3;2,4"]);
 eq("XLOOKUP's return as a row", ev('XLOOKUP("b",D1:D4,D1:E4)'), ["b,3"]);
 eq("MAP, REDUCE, SCAN", ev("MAP(A1:A3,LAMBDA(x,x*x))", "REDUCE(0,A1:A3,LAMBDA(a,x,a+x))", "SCAN(0,A1:A3,LAMBDA(a,x,a+x))", "MAP(A1:A2,B1:C1,LAMBDA(x,y,x+y))"), ["1;4;9", "6", "1;3;6", "#VALUE! MAP's arrays differ in size"]);
+// 2.12: optional parameters and ISOMITTED; trim refs and TRIMRANGE;
+// implicit intersection.
+const at = (cell: string, ...srcs: string[]): string[] => srcs.map((src) => {
+  const v = evaluate(parse(src, () => null), env, cell);
+  return v instanceof CellError ? `${v.code} ${v.why}` : isArray(v) ? `${v.rows}x${v.cols}` : show(v);
+});
+eq("a LAMBDA's [optional] parameter: left out, or passed as nothing, ISOMITTED says so and it reads as empty", ev(
+  "LET(f, LAMBDA(x, [y], IF(ISOMITTED(y), x, x*y)), f(5))", "LET(f, LAMBDA(x, [y], IF(ISOMITTED(y), x, x*y)), f(5, 2))", "LET(f, LAMBDA(x, [y], IF(ISOMITTED(y), x, x*y)), f(5, ))",
+  "LAMBDA(x, [y], y + 1)(1)", "LAMBDA(x, ISOMITTED(x))(1)", "ISOMITTED(A1)", "LAMBDA(x, [y], [z], x + IF(ISOMITTED(z), 0, z))(1, 2)"), ["5", "10", "5", "1", "FALSE", "FALSE", "1"]);
+eq("its errors: too few or too many, optional ones first, brackets elsewhere", ev("LAMBDA(x, [y], x)()", "LAMBDA(x, [y], x)(1, 2, 3)"), ["#VALUE! LAMBDA takes 1 to 2 values, given 0", "#VALUE! LAMBDA takes 1 to 2 values, given 3"]);
+eq("and what does not parse", ["LAMBDA([x], y, x)", "LET([x], 1, x)", "[x] + 1"].map((src) => { try { parse(src, () => null); return "parsed"; } catch (e) { return String((e as Error).message); } }), [
+  "LAMBDA's optional parameters come last: Y follows [X]", "LET's names take no brackets: only a LAMBDA's parameters are optional", "[x]: a name in brackets is a LAMBDA's optional parameter",
+]);
+eq("a trim ref drops empty rows at its end, its start, or both; TRIMRANGE the same", [...ev("ROWS(A1:.A9)", "ROWS(A1:A9)", "SUM(A1:.A9)", "COLUMNS(A1:.J1)", "ROWS(D1:.E9)", "ROWS(TRIMRANGE(A1:A9))", "ROWS(TRIMRANGE(A1:A9, 0))", "COLUMNS(TRIMRANGE(A1:J1, 3, 1))"),
+  ...at("A1", "ROWS(Z1.:Z9)", "ROWS(Z1:Z9)")], ["3", "9", "6", "8", "4", "3", "9", "10", "#REF! Z1:Z9 trims to nothing", "9"]);
+eq("TRIMRANGE's own errors", ev("TRIMRANGE(Z1:Z9)", "TRIMRANGE(A1:A9, 4)"), ["#REF! TRIMRANGE trims to nothing", "#VALUE! TRIMRANGE trims 0 to 3, not 4 and 3"]);
+eq("printed and stepped with its dots", [print(parse("SUM(A1:.A9)", () => null)), print(parse("SUM(A1.:.A9)+@B1:B9", () => null)), print(parse("LAMBDA(x,[y],x)", () => null))], ["SUM(A1:.A9)", "SUM(A1.:.A9)+@B1:B9", "LAMBDA(X,[Y],X)"]);
+eq("@: of a column the cell in the formula's row, of a row its column, of an array its first value", at("Z2", "@A1:A3", "@D1:D4&@E1:E4", "@B1:C1*0+@G1:H1", "@SEQUENCE(3)+1", "@A1", "@A5:A9", "@A1:B3"),
+  ["2", "b3", "#VALUE! @B1:C1 does not meet the formula's row or column", "2", "1", "#VALUE! @A5:A9 does not meet the formula's row or column", "#VALUE! @A1:B3 does not meet the formula's row or column"]);
+eq("and in the formula's column", at("B9", "@A1:C1", "@G1:H2"), ["10", "#VALUE! @G1:H2 does not meet the formula's row or column"]);
 eq("BYROW, BYCOL, MAKEARRAY", ev("BYROW(G1:H2,LAMBDA(r,SUM(r)))", "BYCOL(G1:H2,LAMBDA(c,SUM(c)))", "MAKEARRAY(2,2,LAMBDA(i,j,i*10+j))", "MAP(A1:A2,5)"),
   ["3;7", "4,6", "11,12;21,22", "#VALUE! MAP takes a LAMBDA last"]);
 
@@ -69,6 +90,20 @@ await cmds.run("edit.copy range=B1");
 await cmds.run("edit.paste at=E2");
 eq("A1# moves in a copy", wb.sheet.input("E2"), "=SUM(D2#)");
 eq("a spilled cell is styled as what it shows", wb.styleOf("A2"), "text-align: end");
+// In a sheet: a named LAMBDA with an optional parameter, calling itself; a
+// trim ref that grows as its column fills; @ in a cell.
+await cmds.run('names.define name=TWICES formula="=LAMBDA(n, [acc], IF(n = 0, IF(ISOMITTED(acc), 1, acc), TWICES(n - 1, IF(ISOMITTED(acc), 2, acc * 2))))"');
+await set("K1", "=TWICES(10)");
+await set("K2", "=TWICES(0)");
+await set("L1", "4");
+await set("L2", "5");
+await set("M1", "=SUM(L1:.L50)");
+await set("M2", "=ROWS(L1:.L50)");
+eq("a named LAMBDA with an optional parameter calls itself; a trim ref counts what is there", shown("K1", "K2", "M1", "M2"), ["1024", "1", "9", "2"]);
+await set("L3", "6");
+await set("N3", "=@L1:L50 * 10");
+eq("and grows as the column fills; @ takes its own row", shown("M1", "M2", "N3"), ["15", "3", "60"]);
+
 // expect: ok a range is an array; one of one cell its value
 // expect: ok arithmetic cell by cell, broadcast, #N/A where one runs out
 // expect: ok IF over an array; a function of an array
@@ -79,6 +114,14 @@ eq("a spilled cell is styled as what it shows", wb.styleOf("A2"), "text-align: e
 // expect: ok TRANSPOSE
 // expect: ok XLOOKUP's return as a row
 // expect: ok MAP, REDUCE, SCAN
+// expect: ok a LAMBDA's [optional] parameter: left out, or passed as nothing, ISOMITTED says so and it reads as empty
+// expect: ok its errors: too few or too many, optional ones first, brackets elsewhere
+// expect: ok and what does not parse
+// expect: ok a trim ref drops empty rows at its end, its start, or both; TRIMRANGE the same
+// expect: ok TRIMRANGE's own errors
+// expect: ok printed and stepped with its dots
+// expect: ok @: of a column the cell in the formula's row, of a row its column, of an array its first value
+// expect: ok and in the formula's column
 // expect: ok BYROW, BYCOL, MAKEARRAY
 // expect: ok a formula spills below; its cells are read as any; A1# is all of it
 // expect: ok a bigger spill: what reads it follows
@@ -89,3 +132,5 @@ eq("a spilled cell is styled as what it shows", wb.styleOf("A2"), "text-align: e
 // expect: ok a smaller spill leaves what it left empty
 // expect: ok A1# moves in a copy
 // expect: ok a spilled cell is styled as what it shows
+// expect: ok a named LAMBDA with an optional parameter calls itself; a trim ref counts what is there
+// expect: ok and grows as the column fills; @ takes its own row

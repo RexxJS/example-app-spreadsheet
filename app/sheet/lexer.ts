@@ -12,14 +12,18 @@ export type Token = (
   | { readonly kind: "str"; readonly value: string }
   | { readonly kind: "ref"; readonly name: string; readonly fixCol: boolean; readonly fixRow: boolean; readonly spill: boolean }
   | { readonly kind: "error"; readonly code: ErrorCode }
-  // A name (upper case); another sheet's own name is SHEET!NAME.
-  | { readonly kind: "name"; readonly name: string }
+  // A name (upper case); another sheet's own name is SHEET!NAME. In
+  // brackets, [y], a LAMBDA's optional parameter.
+  | { readonly kind: "name"; readonly name: string; readonly optional?: boolean }
   // A table reference: Sales[Amount], Sales[@Amount], Sales[[#Headers],[Qty]]:
   // the table's name (upper case) and what is between its outer brackets,
   // as written.
   | { readonly kind: "table"; readonly name: string; readonly spec: string }
   | { readonly kind: "op"; readonly op: Op }
-  | { readonly kind: "(" | ")" | "," | ":" | "{" | "}" | ";" }
+  | { readonly kind: "(" | ")" | "," | "{" | "}" | ";" | "@" }
+  // A range's colon; a trim ref's (A1:.E10, A1.:E10, A1.:.E10) says which
+  // ends to trim of empty rows and columns.
+  | { readonly kind: ":"; readonly trim?: "leading" | "trailing" | "both" }
   | { readonly kind: "end" }
 ) & { readonly at: number; readonly text: string };
 
@@ -122,7 +126,19 @@ export function* tokens(formula: string, from = 2): Generator<Token, void, undef
       i = j + 1;
       continue;
     }
-    if (c === "(" || c === ")" || c === "," || c === ":" || c === "{" || c === "}" || c === ";") {
+    const trim = /^(?:\.:\.|\.:|:\.)/.exec(rest)?.[0];
+    if (trim) {
+      yield { kind: ":", trim: trim === ".:." ? "both" : trim === ".:" ? "leading" : "trailing", at, text: trim };
+      i += trim.length;
+      continue;
+    }
+    const optional = /^\[([A-Za-z_][A-Za-z0-9_.]*)\]/.exec(rest);
+    if (optional) {
+      yield { kind: "name", name: optional[1].toUpperCase(), optional: true, at, text: optional[0] };
+      i += optional[0].length;
+      continue;
+    }
+    if (c === "(" || c === ")" || c === "," || c === ":" || c === "{" || c === "}" || c === ";" || c === "@") {
       yield { kind: c, at, text: c };
       i++;
       continue;

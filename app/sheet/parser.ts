@@ -21,7 +21,10 @@ export type Expr =
   | { readonly kind: "str"; readonly value: string }
   | { readonly kind: "bool"; readonly value: boolean }
   | { readonly kind: "ref"; readonly name: string }
-  | { readonly kind: "range"; readonly from: string; readonly to: string }
+  // A trim ref (A1:.E10) trims empty rows and columns from that end.
+  | { readonly kind: "range"; readonly from: string; readonly to: string; readonly trim?: "leading" | "trailing" | "both" }
+  // Implicit intersection: @A1:A9, the cell in the formula's own row.
+  | { readonly kind: "at"; readonly arg: Expr }
   | { readonly kind: "spill"; readonly name: string }
   // A table reference (structured.ts): the table as it was when the formula
   // was compiled (a table defined, moved or deleted compiles every formula
@@ -39,7 +42,9 @@ export type Expr =
   // a call of what an expression comes to, LAMBDA(x, x*2)(5) or f(5).
   | { readonly kind: "local"; readonly name: string }
   | { readonly kind: "let"; readonly bindings: readonly (readonly [string, Expr])[]; readonly body: Expr }
-  | { readonly kind: "lambda"; readonly params: readonly string[]; readonly body: Expr }
+  // `optional`: the parameters written in brackets, LAMBDA(x, [y], ...),
+  // which a call may leave out (ISOMITTED says so).
+  | { readonly kind: "lambda"; readonly params: readonly string[]; readonly body: Expr; readonly optional?: readonly string[] }
   | { readonly kind: "apply"; readonly fn: Expr; readonly args: readonly Expr[] }
   // A named formula (a named LAMBDA): parsed when it is first worked out,
   // so one that calls itself is not parsed for ever.
@@ -154,14 +159,16 @@ class Parser {
 
   // The names a LET or LAMBDA binds: each a name followed by ',' (a cell
   // there is refused); `each` parses what follows a name, if anything.
-  #binding(what: string, each: (name: string) => void): void {
+  #binding(what: string, each: (name: string, optional: boolean) => void): void {
     for (;;) {
       const t = this.#tok;
       if (this.#peek().kind !== "," || (t.kind !== "name" && t.kind !== "ref")) return;
       if (t.kind === "ref") throw new FormulaError(t.at, `${what} are names, not cells: ${t.text}`);
       this.#next();
       this.#next();
-      each((t as { name: string }).name);
+      const named = t as { name: string; optional?: boolean; at: number };
+      if (named.optional && what !== "LAMBDA's parameters") throw new FormulaError(named.at, `${what} take no brackets: only a LAMBDA's parameters are optional`);
+      each(named.name, named.optional === true);
     }
   }
 
@@ -190,13 +197,17 @@ class Parser {
   // LAMBDA(param, ..., body).
   #lambda(): Expr {
     this.#expect("(");
-    const params: string[] = [];
-    this.#binding("LAMBDA's parameters", (name) => params.push(name));
+    const params: string[] = [], optional: string[] = [];
+    this.#binding("LAMBDA's parameters", (name, opt) => {
+      if (!opt && optional.length) throw new FormulaError(this.#tok.at, `LAMBDA's optional parameters come last: ${name} follows [${optional[optional.length - 1]}]`);
+      params.push(name);
+      if (opt) optional.push(name);
+    });
     this.#scopes.push(new Set(params));
     try {
       const body = this.#binary(0);
       this.#expect(")");
-      return { kind: "lambda", params, body };
+      return optional.length ? { kind: "lambda", params, body, optional } : { kind: "lambda", params, body };
     } finally {
       this.#scopes.pop();
     }
@@ -229,6 +240,10 @@ class Parser {
       this.#next();
       const arg = this.#unary();
       return t.op === "-" ? { kind: "neg", arg } : arg;
+    }
+    if (t.kind === "@") {
+      this.#next();
+      return { kind: "at", arg: this.#unary() };
     }
     return this.#primary();
   }
@@ -293,6 +308,7 @@ class Parser {
       case "ref": {
         if (t.spill) return { kind: "spill", name: t.name };
         if (this.#tok.kind !== ":") return { kind: "ref", name: t.name };
+        const trim = (this.#tok as { trim?: "leading" | "trailing" | "both" }).trim;
         this.#next();
         const to = this.#tok;
         if (to.kind !== "ref") throw new FormulaError(to.at, `expected a cell after ':' but found ${shown(to)}`);
@@ -300,9 +316,11 @@ class Parser {
         // Costs!B1:B3 is all on Costs.
         const sheet = splitKey(t.name).sheet, other = splitKey(to.name);
         if (other.sheet !== null && other.sheet !== sheet) throw new FormulaError(to.at, "a range on two sheets");
-        return { kind: "range", from: t.name, to: sheet === null ? other.cell : `${sheet}!${other.cell}` };
+        const to2 = sheet === null ? other.cell : `${sheet}!${other.cell}`;
+        return trim ? { kind: "range", from: t.name, to: to2, trim } : { kind: "range", from: t.name, to: to2 };
       }
       case "name": {
+        if (t.optional) throw new FormulaError(t.at, `${t.text}: a name in brackets is a LAMBDA's optional parameter`);
         // Another sheet's own name: that sheet's range, or #NAME?.
         if (t.name.includes("!")) {
           const r = this.#names?.(t.name);

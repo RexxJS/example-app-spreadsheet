@@ -92,3 +92,22 @@ export function compare(op: Comparison, a: Value, b: Value): boolean {
     default: return op satisfies never;
   }
 }
+
+// A grid with its empty (blank) rows and columns trimmed from the ends
+// `rows` and `cols` say (bit 1 leading, bit 2 trailing: 3 both), or null
+// when nothing is left.
+export function trimmed(g: ArrayValue, rows: number, cols: number): ArrayValue | null {
+  const at = (r: number, c: number) => g.values[r * g.cols + c];
+  const rowEmpty = (r: number) => Array.from({ length: g.cols }, (_, c) => at(r, c)).every((v) => v === null);
+  const colEmpty = (c: number, r0: number, r1: number) => Array.from({ length: r1 - r0 + 1 }, (_, i) => at(r0 + i, c)).every((v) => v === null);
+  let r0 = 0, r1 = g.rows - 1, c0 = 0, c1 = g.cols - 1;
+  if (rows & 1) while (r0 <= r1 && rowEmpty(r0)) r0++;
+  if (rows & 2) while (r1 >= r0 && rowEmpty(r1)) r1--;
+  if (r0 > r1) return null;
+  if (cols & 1) while (c0 <= c1 && colEmpty(c0, r0, r1)) c0++;
+  if (cols & 2) while (c1 >= c0 && colEmpty(c1, r0, r1)) c1--;
+  if (c0 > c1) return null;
+  const values: Value[] = [];
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) values.push(at(r, c));
+  return array(r1 - r0 + 1, c1 - c0 + 1, values);
+}

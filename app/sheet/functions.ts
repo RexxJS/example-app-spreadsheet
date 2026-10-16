@@ -3,7 +3,7 @@
 // range's width (VLOOKUP and INDEX need its shape), or one value. An
 // argument that is an error arrives as that error, so IFERROR and ISERROR
 // can look at it; everything else rethrows it as soon as it reads it.
-import { CellError, array, compare, fail, finite, isArray, scalar, toNumber, toText } from "./values.ts";
+import { CellError, array, compare, fail, finite, isArray, scalar, toNumber, toText, trimmed } from "./values.ts";
 import { numberFormat } from "./numfmt.ts";
 import type { ArrayValue, Comparison, Result, Value } from "./values.ts";
 import { sortOrder } from "./sortfind.ts";
@@ -99,7 +99,7 @@ function lifted(fn: Fn, args: readonly Arg[], over: ReadonlySet<number>): Result
 
 // The evaluator's own forms count too (IF; ROW and COLUMN read references;
 // OFFSET and INDIRECT make them).
-export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS", "INFO", "SUBTOTAL", "AGGREGATE", "GROUPBY", "PIVOTBY"].sort();
+export const names = (): string[] => [...library.keys(), "IF", "ROW", "COLUMN", "OFFSET", "INDIRECT", "FORMULATEXT", "ISFORMULA", "ISREF", "SHEET", "SHEETS", "INFO", "SUBTOTAL", "AGGREGATE", "GROUPBY", "PIVOTBY", "ISOMITTED"].sort();
 
 // --- reading arguments ---
 
@@ -2143,4 +2143,16 @@ def("DGET", 3, 3, (args) => {
   const m = matching("DGET", args, false);
   if (m.count === 0) return fail("#VALUE!", "DGET: no record matches");
   return m.count > 1 ? fail("#NUM!", `DGET: ${m.count} records match, not one`) : m.values[0];
+});
+
+// TRIMRANGE(range, [rows], [cols]): the range without its empty rows and
+// columns at the ends: 0 none, 1 leading, 2 trailing, 3 both (the
+// default); nothing left is #REF!. (A trim ref, A1:.E10, is the same.)
+def("TRIMRANGE", 1, 3, (args) => {
+  const rows = Math.trunc(num(args, 1, 3)), cols = Math.trunc(num(args, 2, 3));
+  if (rows < 0 || rows > 3 || cols < 0 || cols > 3) return fail("#VALUE!", `TRIMRANGE trims 0 to 3, not ${rows} and ${cols}`);
+  const { values, cols: width } = args[0];
+  const t = trimmed(array(values.length / width, width, values), rows, cols);
+  if (!t) return fail("#REF!", "TRIMRANGE trims to nothing");
+  return t.values.length === 1 ? t.values[0] : t;
 });

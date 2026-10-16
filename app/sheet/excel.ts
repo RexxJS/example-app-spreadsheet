@@ -32,7 +32,9 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
     case "table":
       yield* range(e.table.range[0], e.table.range[1]);
       return;
-    case "neg": return yield* refsOf(e.arg, seen);
+    case "neg":
+    case "at":
+      return yield* refsOf(e.arg, seen);
     case "binary":
       yield* refsOf(e.left, seen);
       return yield* refsOf(e.right, seen);
@@ -63,7 +65,9 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
 function calls(e: Expr, forms: ReadonlySet<string>, seen: Set<string> = new Set()): boolean {
   switch (e.kind) {
     case "call": return forms.has(e.name) || e.args.some((a) => calls(a, forms, seen));
-    case "neg": return calls(e.arg, forms, seen);
+    case "neg":
+    case "at":
+      return calls(e.arg, forms, seen);
     case "binary": return calls(e.left, forms, seen) || calls(e.right, forms, seen);
     case "let": return e.bindings.some(([, v]) => calls(v, forms, seen)) || calls(e.body, forms, seen);
     case "lambda": return calls(e.body, forms, seen);

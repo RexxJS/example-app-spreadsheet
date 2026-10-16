@@ -22,7 +22,7 @@ import type { Expr } from "./parser.ts";
 import { call, single } from "./functions.ts";
 import { groupBy, pivotBy } from "./groupby.ts";
 import type { Arg } from "./functions.ts";
-import { CellError, array, collapsed, compare, fail, finite, isArray, toNumber, toText } from "./values.ts";
+import { CellError, array, collapsed, compare, fail, finite, isArray, toNumber, toText, trimmed } from "./values.ts";
 import type { ArrayValue, Result, Value } from "./values.ts";
 import type { Op } from "./lexer.ts";
 
@@ -101,10 +101,16 @@ interface Closure {
   readonly params: readonly string[];
   readonly body: Expr;
   readonly scope: Scope;
+  // How many of the last parameters a call may leave out.
+  readonly optional: number;
 }
 
+// A parameter a call left out (or passed as nothing, f(1,)): ISOMITTED
+// sees it, and anything else reads it as empty.
+const OMITTED = { kind: "omitted" } as const;
+
 // What a name in scope stands for.
-type Bound = Result | Closure;
+type Bound = Result | Closure | typeof OMITTED;
 type Scope = ReadonlyMap<string, Bound>;
 
 const isClosure = (v: Bound): v is Closure => typeof v === "object" && v !== null && (v as Closure).kind === "lambda";
@@ -181,7 +187,7 @@ class Evaluator {
     switch (e.kind) {
       case "local": {
         const v = this.#scope.get(e.name);
-        return v === undefined ? fail("#NAME?", `no name ${e.name}`) : v;
+        return v === undefined ? fail("#NAME?", `no name ${e.name}`) : v === OMITTED ? null : v;
       }
       case "let": {
         const scope = new Map(this.#scope);
@@ -191,7 +197,7 @@ class Evaluator {
         });
       }
       case "lambda":
-        return { kind: "lambda", params: e.params, body: e.body, scope: this.#scope };
+        return { kind: "lambda", params: e.params, body: e.body, scope: this.#scope, optional: e.optional?.length ?? 0 };
       // A named formula is worked out in no scope but its own: what it
       // names is the sheet's, not the caller's.
       case "named":
@@ -199,7 +205,7 @@ class Evaluator {
       case "apply": {
         const fn = this.any(e.fn);
         if (!isClosure(fn)) return fail("#VALUE!", "only a LAMBDA can be called");
-        return this.#invoke(fn, e.args.map((a) => this.any(a)));
+        return this.#invoke(fn, e.args.map((a) => (a.kind === "missing" ? OMITTED : this.any(a))));
       }
       default:
         return this.result(e);
@@ -207,10 +213,13 @@ class Evaluator {
   }
 
   #invoke(fn: Closure, args: readonly Bound[]): Bound {
-    if (args.length !== fn.params.length) return fail("#VALUE!", `LAMBDA takes ${fn.params.length} values, given ${args.length}`);
+    const least = fn.params.length - fn.optional;
+    if (args.length < least || args.length > fn.params.length) {
+      return fail("#VALUE!", `LAMBDA takes ${fn.optional ? `${least} to ${fn.params.length}` : fn.params.length} values, given ${args.length}`);
+    }
     if (this.#depth >= DEPTH) return fail("#NUM!", `LAMBDAs call LAMBDAs more than ${DEPTH} deep`);
     const scope = new Map(fn.scope);
-    fn.params.forEach((p, i) => scope.set(p, args[i]));
+    fn.params.forEach((p, i) => scope.set(p, i < args.length ? args[i] : OMITTED));
     this.#depth++;
     try {
       return this.#within(scope, () => this.any(fn.body));
@@ -237,8 +246,13 @@ class Evaluator {
       case "range": {
         const s = span(e.from, e.to);
         if (!s) return fail("#REF!", `${cellAddr(e.from) ? e.to : e.from} is not on the sheet`);
-        return array(s.keys.length / s.cols, s.cols, s.keys.map((k) => this.#env.get(k)));
+        const all = array(s.keys.length / s.cols, s.cols, s.keys.map((k) => this.#env.get(k)));
+        if (!e.trim) return all;
+        const ends = e.trim === "leading" ? 1 : e.trim === "trailing" ? 2 : 3;
+        return trimmed(all, ends, ends) ?? fail("#REF!", `${e.from}:${e.to} trims to nothing`);
       }
+      case "at":
+        return this.#intersect(e.arg);
       // A table reference: its cells as the table is now (its header row
       // read for a column's name); one cell is its value.
       case "table": {
@@ -454,6 +468,12 @@ class Evaluator {
         if (type === "recalc") return "Automatic";
         return fail("#VALUE!", `INFO of '${type}': only numfile and recalc apply here`);
       }
+      // ISOMITTED(x): whether a LAMBDA's parameter x was left out.
+      case "ISOMITTED": {
+        takes(1);
+        const a = args[0];
+        return a.kind === "local" && this.#scope.get(a.name) === OMITTED;
+      }
       case "IF": {
         // Only the branch taken is worked out: IF(B1=0, 0, A1/B1) is safe;
         // over an array, cell by cell.
@@ -508,6 +528,22 @@ class Evaluator {
   #scalar(e: Expr): Value {
     const r = collapsed(this.result(e));
     return isArray(r) ? fail("#VALUE!", "an array where one value goes") : r;
+  }
+
+  // @x: of a range, the cell in the formula's own row (a column), its own
+  // column (a row), or both; of anything else, its first value.
+  #intersect(e: Expr): Result {
+    if (e.kind === "range") {
+      const a = cellAddr(e.from), b = cellAddr(e.to);
+      if (!a || !b) return fail("#REF!", `${a ? e.to : e.from} is not on the sheet`);
+      const here = this.#at ? cellAddr(this.#at) : null;
+      const r0 = Math.min(a.row, b.row), r1 = Math.max(a.row, b.row), c0 = Math.min(a.col, b.col), c1 = Math.max(a.col, b.col);
+      const row = r0 === r1 ? r0 : here ? here.row : -1, col = c0 === c1 ? c0 : here ? here.col : -1;
+      if (row < r0 || row > r1 || col < c0 || col > c1) return fail("#VALUE!", `@${e.from}:${e.to} does not meet the formula's row or column`);
+      return this.#env.get(qualify(splitKey(e.from).sheet, keyOf({ row, col })));
+    }
+    const r = this.result(e);
+    return isArray(r) ? r.values[0] : r;
   }
 
   // The workbook as the Env tells it: a sheet alone is a book of one.

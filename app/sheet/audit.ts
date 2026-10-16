@@ -29,7 +29,9 @@ interface Node {
 
 const kidsOf = (e: Expr): readonly Expr[] => {
   switch (e.kind) {
-    case "neg": return [e.arg];
+    case "neg":
+    case "at":
+      return [e.arg];
     case "binary": return [e.left, e.right];
     case "call": return e.args;
     case "let": return [...e.bindings.map(([, v]) => v), e.body];
@@ -70,7 +72,8 @@ function printed(n: Node): string {
   switch (e.kind) {
     case "ref": return e.name;
     case "spill": return `${e.name}#`;
-    case "range": return `${e.from}:${e.to}`;
+    case "range": return `${e.from}${e.trim === "leading" ? ".:" : e.trim === "trailing" ? ":." : e.trim === "both" ? ".:." : ":"}${e.to}`;
+    case "at": return `@${wrap(n.kids[0], level(n.kids[0]) < ATOM)}`;
     case "table": return e.text;
     case "neg": return `-${wrap(n.kids[0], level(n.kids[0]) < NEG)}`;
     case "binary": {
@@ -81,7 +84,7 @@ function printed(n: Node): string {
     case "missing": return "";
     case "local": return e.name;
     case "let": return `LET(${e.bindings.map(([name], i) => `${name},${printed(n.kids[i])}`).join(",")},${printed(n.kids[n.kids.length - 1])})`;
-    case "lambda": return `LAMBDA(${[...e.params, printed(n.kids[0])].join(",")})`;
+    case "lambda": return `LAMBDA(${[...e.params.map((p) => (e.optional?.includes(p) ? `[${p}]` : p)), printed(n.kids[0])].join(",")})`;
     case "apply": return `${printed(n.kids[0])}(${n.kids.slice(1).map(printed).join(",")})`;
     case "named": return e.name;
     default: return "";
