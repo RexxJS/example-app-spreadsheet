@@ -36,7 +36,7 @@ import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 import { applied } from "./rules.ts";
 import { chartData, layout } from "./charts.ts";
-import type { ChartData, ChartKind, Shape } from "./charts.ts";
+import type { ChartData, ChartKind, ChartOptions, Shape } from "./charts.ts";
 import { rangeName } from "./rules.ts";
 import { sheetPrefix } from "./address.ts";
 import type { CfRule, Mark } from "./rules.ts";
@@ -63,6 +63,7 @@ export interface ChartSpec {
   readonly kind: ChartKind;
   readonly range: [Addr, Addr];
   readonly title: string;
+  readonly options?: ChartOptions;
 }
 
 // A chart as the page draws it, its shapes laid out in CHART_W x CHART_H.
@@ -847,8 +848,8 @@ export class Workbook {
   charts(): ChartView[] {
     const page = this.#active;
     return page.charts.map((c) => {
-      const data = chartData(c.range, (k) => page.sheet.value(k));
-      return { kind: c.kind, title: c.title, range: rangeName(c.range), data, shapes: layout(c.kind, data, c.title, CHART_W, CHART_H) };
+      const data = chartData(c.range, (k) => page.sheet.value(k), c.options?.byRows);
+      return { kind: c.kind, title: c.title, range: rangeName(c.range), data, shapes: layout(c.kind, data, c.title, CHART_W, CHART_H, c.options ?? {}) };
     });
   }
 

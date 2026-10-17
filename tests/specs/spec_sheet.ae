@@ -1687,6 +1687,22 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("a chart's data labels and Switch row/column from its own buttons, drawn") callback {
+            g.command("sheet.add name=Opts")
+            g.script("LET r = SETCELL('A2', 'Q1'); LET r = SETCELL('A3', 'Q2'); LET r = SETCELL('B1', 'N'); LET r = SETCELL('C1', 'S'); LET r = SETCELL('B2', 7); LET r = SETCELL('C2', 9); LET r = SETCELL('B3', 4); LET r = SETCELL('C3', 2)")
+            spec.assert_true(g.wait_cell("C", 3, "2"), "the data")
+            g.command("view.panel name=chart")
+            g.command("chart.insert kind=bar range=A1:C3")
+            spec.assert_true(b.wait_for_text("Chart 1: bar chart of A1:C3"), "a chart")
+            b.click("Data labels 1")
+            spec.assert_true(b.wait_for_console("sheet: chart 1: labels true"), "labels on")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"9\"") == 1, "a value drawn over its bar")
+            b.click("Switch row/column 1")
+            spec.assert_true(b.wait_for_console("sheet: chart 1: labels true, byRows true"), "switched")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Q2\"") == 1, "the rows now the series, named in the legend")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

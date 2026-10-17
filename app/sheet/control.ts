@@ -383,6 +383,16 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // areaStacked, pie, doughnut, scatter, scatterLines, bubble);
   // LISTCHARTS(), DELETECHART(n).
   INSERTCHART: async (exec, r, kind, title) => (await must(exec, "chart.insert", { range: text(r), kind: text(kind) || "bar", ...(text(title).trim() ? { title: text(title) } : {}) })).message,
+  // SETCHARTOPTION(1, "legend", "right"), (1, "xTitle", "Quarter"),
+  // (1, "labels", 1), (1, "gridlines", 0), (1, "byRows", 1), (1, "title", "Sales");
+  // SETCHARTDATA(1, "A1:C9"); SETCHARTTYPE(1, "area").
+  SETCHARTOPTION: async (exec, n, name, v) => {
+    const k = ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows"].find((x) => x.toLowerCase() === text(name).trim().toLowerCase());
+    if (!k) throw new Error(`SETCHARTOPTION: ${text(name)} is not title, xTitle, yTitle, legend, labels, gridlines or byRows`);
+    return (await must(exec, "chart.option", { index: text(n), [k]: text(v) })).message;
+  },
+  SETCHARTDATA: async (exec, n, r) => (await must(exec, "chart.data", { index: text(n), range: text(r) })).message,
+  SETCHARTTYPE: async (exec, n, kind) => (await must(exec, "chart.data", { index: text(n), kind: text(kind) })).message,
   LISTCHARTS: async (exec) => stem((await must(exec, "chart.list")).output as string[]),
   DELETECHART: async (exec, n) => (await must(exec, "chart.delete", { index: text(n) })).message,
   // A sparkline: INSERTSPARKLINE("A1:A9", "B1", "winloss", "axis").

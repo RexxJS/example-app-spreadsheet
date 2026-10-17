@@ -18,6 +18,19 @@ export const CHART_KINDS: readonly ChartKind[] = ["bar", "barStacked", "bar100",
 // Office's palette, series by series.
 export const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47"];
 
+// Chart Elements and Select Data: axis titles, the legend's place (or
+// none), data labels, gridlines (on unless off), the series by rows
+// (Switch Row/Column).
+export interface ChartOptions {
+  readonly xTitle?: string;
+  readonly yTitle?: string;
+  readonly legend?: "bottom" | "top" | "right" | "left" | "none";
+  readonly labels?: boolean;
+  readonly gridlines?: boolean;
+  readonly byRows?: boolean;
+}
+export const LEGENDS = ["bottom", "top", "right", "left", "none"];
+
 export interface Series {
   readonly name: string;
   readonly values: readonly number[];
@@ -45,9 +58,11 @@ const isText = (v: Value) => v !== null && !isNumber(v);
 // below its first row, those are the categories; when its first row is text
 // (or empty) beside them, those name the series; each other column is a
 // series, anything not a number in it 0.
-export function chartData([a, b]: [Addr, Addr], value: (key: string) => Value): ChartData {
+export function chartData([a, b]: [Addr, Addr], value: (key: string) => Value, byRows = false): ChartData {
   const keys = [...range(a, b)], cols = Math.abs(a.col - b.col) + 1;
-  const grid = Array.from({ length: keys.length / cols }, (_, r) => keys.slice(r * cols, (r + 1) * cols).map(value));
+  const byCol = Array.from({ length: keys.length / cols }, (_, r) => keys.slice(r * cols, (r + 1) * cols).map(value));
+  // Switch Row/Column: the series are the rows, the categories the columns.
+  const grid = byRows ? byCol[0].map((_, c) => byCol.map((row) => row[c])) : byCol;
   const labelled = cols > 1 && grid.slice(1).some((row) => isText(row[0]));
   const headed = grid.length > 1 && grid[0].slice(labelled ? 1 : 0).some(isText);
   const rows = headed ? grid.slice(1) : grid;
@@ -76,6 +91,36 @@ export function niceScale(lo: number, hi: number): { lo: number; hi: number; ste
 const text = (x: number, y: number, s: string, anchor: "start" | "middle" | "end" = "middle", size = 10, fill = "#404040"): Shape =>
   ({ kind: "text", x, y, size, anchor, text: s, fill });
 
+// The plot's box once the title, the legend and the axis titles have
+// their room; and the legend where it is asked for.
+interface Frame { readonly x0: number; readonly x1: number; readonly y0: number; readonly y1: number }
+function frame(w: number, h: number, title: string, o: ChartOptions, series: number, left = 40): Frame {
+  const place = o.legend ?? "bottom", shown = series > 1 && place !== "none";
+  return {
+    x0: left + (o.yTitle ? 14 : 0) + (shown && place === "left" ? 80 : 0),
+    x1: w - 10 - (shown && place === "right" ? 80 : 0),
+    y0: (title ? 28 : 12) + (shown && place === "top" ? 16 : 0),
+    y1: h - 24 - (shown && place === "bottom" ? 16 : 0) - (o.xTitle ? 14 : 0),
+  };
+}
+function placedLegend(names: readonly string[], o: ChartOptions, f: Frame, w: number, h: number, title: string): Shape[] {
+  const place = o.legend ?? "bottom";
+  if (names.length < 2 || place === "none") return [];
+  if (place === "top") return legend(names, f.x0, (title ? 28 : 12) + 8);
+  if (place === "bottom") return legend(names, f.x0, h - 8);
+  // Right or left: one under another.
+  const x = place === "right" ? w - 84 : 4, out: Shape[] = [];
+  names.forEach((name, i) => {
+    out.push({ kind: "rect", x, y: f.y0 + i * 14, w: 10, h: 10, fill: PALETTE[i % PALETTE.length] });
+    out.push(text(x + 14, f.y0 + i * 14 + 9, name, "start"));
+  });
+  return out;
+}
+const axisTitles = (o: ChartOptions, f: Frame, h: number): Shape[] => [
+  ...(o.xTitle ? [text((f.x0 + f.x1) / 2, f.y1 + 28, o.xTitle, "middle", 10, "#595959")] : []),
+  ...(o.yTitle ? [text(f.x0 - 30 > 2 ? 2 : 2, f.y0 - 4, o.yTitle, "start", 10, "#595959")] : []),
+];
+
 // A row of swatches and names under the plot.
 function legend(names: readonly string[], x: number, y: number): Shape[] {
   const out: Shape[] = [];
@@ -89,7 +134,7 @@ function legend(names: readonly string[], x: number, y: number): Shape[] {
 
 // Columns, bars, lines and areas: categories along one axis, values the
 // other; stacked kinds sum a category's series, 100% kinds share it.
-function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: string): Shape[] {
+function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: string, o: ChartOptions = {}): Shape[] {
   const stacked = /Stacked$|100$/.test(kind), share = kind.endsWith("100"), horizontal = kind.startsWith("hbar");
   const columns = kind.startsWith("bar") || horizontal, area = kind.startsWith("area");
   const n = data.labels.length;
@@ -100,7 +145,7 @@ function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: str
   const tops = drawn.map((vs, j) => vs.map((v, i) => bases[j][i] + v));
   const all = stacked ? tops.flat() : drawn.flat();
   const scale = share ? { lo: 0, hi: 100, step: 20 } : niceScale(Math.min(...all, 0), Math.max(...all, 0));
-  const x0 = horizontal ? 60 : 40, x1 = w - 10, y0 = title ? 28 : 12, y1 = h - (data.series.length > 1 ? 40 : 24);
+  const f = frame(w, h, title, o, data.series.length, horizontal ? 60 : 40), { x0, x1, y0, y1 } = f;
   // The value axis: up the left, or (horizontal) along the bottom.
   const vOf = (v: number) => (horizontal ? x0 + ((v - scale.lo) / (scale.hi - scale.lo)) * (x1 - x0) : y1 - ((v - scale.lo) / (scale.hi - scale.lo)) * (y1 - y0));
   const band = ((horizontal ? y1 - y0 : x1 - x0)) / Math.max(1, n);
@@ -109,7 +154,7 @@ function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: str
   const ticks: Shape[] = [];
   for (let t = scale.lo; t <= scale.hi + scale.step / 2; t = tidy(t + scale.step)) {
     const at = vOf(t), grid = t === 0 ? "#808080" : "#d9d9d9";
-    out.push(horizontal ? { kind: "line", x1: at, y1: y0, x2: at, y2: y1, stroke: grid, width: 1 } : { kind: "line", x1: x0, y1: at, x2: x1, y2: at, stroke: grid, width: 1 });
+    if (o.gridlines !== false || t === 0) out.push(horizontal ? { kind: "line", x1: at, y1: y0, x2: at, y2: y1, stroke: grid, width: 1 } : { kind: "line", x1: x0, y1: at, x2: x1, y2: at, stroke: grid, width: 1 });
     const label = `${show(t)}${share ? "%" : ""}`;
     ticks.push(horizontal ? text(at, y1 + 14, label) : text(x0 - 4, at + 3, label, "end"));
   }
@@ -121,6 +166,7 @@ function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: str
       const a = vOf(Math.min(from, to)), b = vOf(Math.max(from, to)), offset = stacked ? band * 0.2 : band * 0.1 + j * width;
       const fill = PALETTE[j % PALETTE.length];
       out.push(horizontal ? { kind: "rect", x: a, y: y0 + i * band + offset, w: b - a, h: width, fill } : { kind: "rect", x: x0 + i * band + offset, y: b, w: width, h: a - b, fill });
+      if (o.labels) out.push(horizontal ? text(b + 3, y0 + i * band + offset + width / 2 + 3, show(data.series[j].values[i]), "start", 9) : text(x0 + i * band + offset + width / 2, b - 3, show(data.series[j].values[i]), "middle", 9));
     }));
   } else {
     data.series.forEach((_s, j) => {
@@ -136,17 +182,18 @@ function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: str
         out.push({ kind: "polyline", points: line, stroke: colour, width: 2 });
         for (let k = 0; k < line.length; k += 2) out.push({ kind: "circle", cx: line[k], cy: line[k + 1], r: 2.5, fill: colour });
       }
+      if (o.labels) for (let k = 0; k < line.length; k += 2) out.push(text(line[k], line[k + 1] - 5, show(data.series[j].values[k / 2]), "middle", 9));
     });
   }
   data.labels.forEach((l, i) => out.push(horizontal ? text(x0 - 4, cOf(i) + 3, l, "end") : text(cOf(i), y1 + 14, l)));
-  if (data.series.length > 1) out.push(...legend(data.series.map((s) => s.name), x0, h - 8));
+  out.push(...axisTitles(o, f, h), ...placedLegend(data.series.map((s) => s.name), o, f, w, h, title));
   return out;
 }
 
 // Scatter and bubble charts: numbers on both axes, the first column the
 // x of every point, each other column a series' y (bubble: x, y and a
 // size, each three columns a series).
-function xy(kind: ChartKind, data: ChartData, w: number, h: number, title: string): Shape[] {
+function xy(kind: ChartKind, data: ChartData, w: number, h: number, title: string, o: ChartOptions = {}): Shape[] {
   // A range of numbers alone: its first column the x of every point.
   const counted = data.labels.every((l, i) => l === String(i + 1)) && data.series.length > 1;
   const xs = counted ? [...data.series[0].values] : data.labels.map((l) => Number(l)).map((x, i) => (isFinite(x) ? x : i + 1));
@@ -154,22 +201,23 @@ function xy(kind: ChartKind, data: ChartData, w: number, h: number, title: strin
   const series = kind === "bubble" ? ys0.filter((_, j) => j % 2 === 0).map((s, k) => ({ s, size: ys0[k * 2 + 1] })) : ys0.map((s) => ({ s, size: undefined }));
   const ys = series.flatMap(({ s }) => s.values);
   const sx = niceScale(Math.min(...xs, 0), Math.max(...xs, 0)), sy = niceScale(Math.min(...ys, 0), Math.max(...ys, 0));
-  const x0 = 40, x1 = w - 10, y0 = title ? 28 : 12, y1 = h - (series.length > 1 ? 40 : 24);
+  const f = frame(w, h, title, o, series.length), { x0, x1, y0, y1 } = f;
   const X = (v: number) => x0 + ((v - sx.lo) / (sx.hi - sx.lo)) * (x1 - x0), Y = (v: number) => y1 - ((v - sy.lo) / (sy.hi - sy.lo)) * (y1 - y0);
   const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
-  for (let t = sy.lo; t <= sy.hi + sy.step / 2; t = tidy(t + sy.step)) { out.push({ kind: "line", x1: x0, y1: Y(t), x2: x1, y2: Y(t), stroke: "#d9d9d9", width: 1 }); out.push(text(x0 - 4, Y(t) + 3, show(t), "end")); }
+  for (let t = sy.lo; t <= sy.hi + sy.step / 2; t = tidy(t + sy.step)) { if (o.gridlines !== false) out.push({ kind: "line", x1: x0, y1: Y(t), x2: x1, y2: Y(t), stroke: "#d9d9d9", width: 1 }); out.push(text(x0 - 4, Y(t) + 3, show(t), "end")); }
   for (let t = sx.lo; t <= sx.hi + sx.step / 2; t = tidy(t + sx.step)) out.push(text(X(t), y1 + 14, show(t)));
   const biggest = Math.max(1e-9, ...series.flatMap(({ size }) => size?.values.map(Math.abs) ?? []));
   series.forEach(({ s, size }, j) => {
     const colour = PALETTE[j % PALETTE.length], points = s.values.flatMap((v, i) => [X(xs[i]), Y(v)]);
     if (kind === "scatterLines") out.push({ kind: "polyline", points, stroke: colour, width: 2 });
     for (let k = 0; k < points.length; k += 2) out.push({ kind: "circle", cx: points[k], cy: points[k + 1], r: size ? 3 + 17 * Math.sqrt(Math.abs(size.values[k / 2]) / biggest) : 3, fill: colour });
+    if (o.labels) for (let k = 0; k < points.length; k += 2) out.push(text(points[k], points[k + 1] - 6, show(s.values[k / 2]), "middle", 9));
   });
-  if (series.length > 1) out.push(...legend(series.map(({ s }) => s.name), x0, h - 8));
+  out.push(...axisTitles(o, f, h), ...placedLegend(series.map(({ s }) => s.name), o, f, w, h, title));
   return out;
 }
 
-function pie(data: ChartData, w: number, h: number, title: string, hole = 0): Shape[] {
+function pie(data: ChartData, w: number, h: number, title: string, hole = 0, o: ChartOptions = {}): Shape[] {
   const values = (data.series[0]?.values ?? []).map((v) => Math.max(0, v));
   const total = values.reduce((s, v) => s + v, 0);
   const top = title ? 28 : 12, bottom = h - 24;
@@ -191,12 +239,12 @@ function pie(data: ChartData, w: number, h: number, title: string, hole = 0): Sh
     labels.push(text(lx, ly + 3, `${Math.round((v / total) * 100)}%`, "middle", 10, "#ffffff"));
     angle += sweep;
   });
-  return [...out, ...labels, ...legend(data.labels, 10, h - 8)];
+  return [...out, ...(o.labels === false ? [] : labels), ...((o.legend ?? "bottom") === "none" ? [] : legend(data.labels, 10, h - 8))];
 }
 
 // A chart as shapes, in a w x h box.
-export function layout(kind: ChartKind, data: ChartData, title: string, w: number, h: number): Shape[] {
-  return kind === "pie" ? pie(data, w, h, title) : kind === "doughnut" ? pie(data, w, h, title, 0.5) : kind.startsWith("scatter") || kind === "bubble" ? xy(kind, data, w, h, title) : axes(kind, data, w, h, title);
+export function layout(kind: ChartKind, data: ChartData, title: string, w: number, h: number, o: ChartOptions = {}): Shape[] {
+  return kind === "pie" ? pie(data, w, h, title, 0, o) : kind === "doughnut" ? pie(data, w, h, title, 0.5, o) : kind.startsWith("scatter") || kind === "bubble" ? xy(kind, data, w, h, title, o) : axes(kind, data, w, h, title, o);
 }
 
 const BLOCKS = "▁▂▃▄▅▆▇█";

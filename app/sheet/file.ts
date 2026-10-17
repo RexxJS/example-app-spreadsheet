@@ -143,7 +143,7 @@ function chartsOf(charts: unknown): ChartSpec[] {
   if (!Array.isArray(charts)) return [];
   return charts.flatMap((c: any): ChartSpec[] => {
     const corners = parseRange(String(c?.range ?? ""));
-    return corners && CHART_KINDS.includes(c?.kind) ? [{ kind: c.kind as ChartKind, range: corners, title: String(c.title ?? "") }] : [];
+    return corners && CHART_KINDS.includes(c?.kind) ? [{ kind: c.kind as ChartKind, range: corners, title: String(c.title ?? ""), ...(c.options && typeof c.options === "object" ? { options: c.options } : {}) }] : [];
   });
 }
 
@@ -273,7 +273,7 @@ const tablesIn = (page: Page) => page.sheet.tables().map((t) => ({
   ...(t.totals ? { totals: t.totals } : {}), ...(t.banded ? { banded: true } : {}), ...(t.style ? { style: t.style } : {}),
   ...(t.bandedColumns ? { bandedColumns: true } : {}), ...(t.firstColumn ? { firstColumn: true } : {}), ...(t.lastColumn ? { lastColumn: true } : {}),
 }));
-const chartsIn = (page: Page) => page.charts.map((c) => ({ kind: c.kind, range: rangeName(c.range), title: c.title }));
+const chartsIn = (page: Page) => page.charts.map((c) => ({ kind: c.kind, range: rangeName(c.range), title: c.title, ...(c.options && Object.keys(c.options).length ? { options: c.options } : {}) }));
 const up = (a: number, b: number) => a - b;
 const viewIn = (page: Page) => ({
   hiddenRows: [...page.hiddenRows].sort(up), hiddenCols: [...page.hiddenCols].sort(up), frozenRows: page.frozen, ...(page.frozenCols ? { frozenCols: page.frozenCols } : {}),

@@ -45,6 +45,13 @@ export function chartPanel(v: SheetView): void {
     ui.hstack(() => {
       ui.text(`${c.title}: ${c.kind} chart of ${c.range}`);
       ui.btn(`Delete chart ${c.n}`, () => v.run("chart.delete", { index: String(c.n) }));
+      // Chart Elements and Switch Row/Column, on and off.
+      const o = v.wb.page(v.wb.active)?.charts[c.n - 1]?.options ?? {};
+      ui.btn(`Legend right ${c.n}`, () => v.run("chart.option", { index: String(c.n), legend: o.legend === "right" ? "bottom" : "right" }));
+      ui.btn(`Data labels ${c.n}`, () => v.run("chart.option", { index: String(c.n), labels: o.labels ? "0" : "1" }));
+      ui.btn(`Gridlines ${c.n}`, () => v.run("chart.option", { index: String(c.n), gridlines: o.gridlines === false ? "1" : "0" }));
+      ui.btn(`Switch row/column ${c.n}`, () => v.run("chart.option", { index: String(c.n), byRows: o.byRows ? "0" : "1" }));
+      ui.btn(`Use selection ${c.n}`, () => v.run("chart.data", { index: String(c.n), range: v.range() }));
     });
     vg.scene(`0 0 ${CHART_W} ${CHART_H}`, CHART_W, CHART_H, () => {
       vg.rect(0, 0, CHART_W, CHART_H, () => vg.fill("#ffffff"));

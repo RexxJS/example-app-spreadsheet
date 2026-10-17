@@ -39,7 +39,8 @@ import { CATEGORIES, numberFormat } from "./numfmt.ts";
 import { ROLES, THEMES, isRole, resolved } from "./themes.ts";
 import type { Role, Theme } from "./themes.ts";
 import type { Look } from "./formats.ts";
-import { CHART_KINDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
+import { CHART_KINDS, LEGENDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
+import type { ChartOptions } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
 import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
@@ -2218,6 +2219,39 @@ const SPECS: readonly Spec[] = [
       const page = wb.page(wb.active)!, r = rangeOf(p.range);
       page.charts.push({ kind, range: r, title: p.title ?? `Chart ${page.charts.length + 1}` });
       return changedBy(wb, [], `inserted a ${kind} chart of ${named(r)}`);
+    },
+  },
+  {
+    // Chart Elements: title=, xTitle=, yTitle= (none takes one off),
+    // legend= bottom, top, right, left or none, labels= (data labels),
+    // gridlines=, byRows= (Switch Row/Column): each 1 or 0.
+    id: "chart.option", label: "Chart Elements", params: ["index"], optional: ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, i = Number(p.index) - 1, c = page.charts[i] ?? refuse(`no chart ${p.index}`);
+      const o: Record<string, unknown> = { ...c.options };
+      const textOpt = (k: "xTitle" | "yTitle") => { if (p[k] !== undefined) { if (/^none$/i.test(p[k]!.trim()) || !p[k]!.trim()) delete o[k]; else o[k] = p[k]; } };
+      textOpt("xTitle"); textOpt("yTitle");
+      if (p.legend !== undefined) {
+        const l = p.legend.trim().toLowerCase();
+        if (!LEGENDS.includes(l)) refuse(`${p.legend} is not a legend's place (${LEGENDS.join(", ")})`);
+        if (l === "bottom") delete o.legend; else o.legend = l;
+      }
+      for (const k of ["labels", "byRows"] as const) if (p[k] !== undefined) { if (flag(p[k])) o[k] = true; else delete o[k]; }
+      if (p.gridlines !== undefined) { if (flag(p.gridlines)) delete o.gridlines; else o.gridlines = false; }
+      page.charts = page.charts.map((x, j) => (j === i ? { ...x, ...(p.title !== undefined ? { title: p.title } : {}), options: o as ChartOptions } : x));
+      const said = [p.title !== undefined ? `title ${p.title || "none"}` : "", ...Object.entries(o).map(([k, v]) => `${k} ${v}`)].filter((x) => x).join(", ");
+      return changedBy(wb, [], `chart ${i + 1}: ${said || "as it was"}`);
+    },
+  },
+  {
+    // Select Data: the chart's range; and Change Chart Type: its kind.
+    id: "chart.data", label: "Select Data", params: ["index"], optional: ["range", "kind"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, i = Number(p.index) - 1, c = page.charts[i] ?? refuse(`no chart ${p.index}`);
+      const kind = p.kind === undefined ? c.kind : CHART_KINDS.find((k) => k.toLowerCase() === p.kind!.trim().toLowerCase()) ?? refuse(`${p.kind} is not a chart (${CHART_KINDS.join(", ")})`);
+      const r = p.range === undefined ? c.range : rangeOf(p.range);
+      page.charts = page.charts.map((x, j) => (j === i ? { ...x, kind, range: r } : x));
+      return changedBy(wb, [], `chart ${i + 1}: a ${kind} chart of ${named(r)}`);
     },
   },
   {
