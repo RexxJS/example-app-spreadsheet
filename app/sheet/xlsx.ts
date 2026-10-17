@@ -2,7 +2,8 @@
 // sheets in order (hidden ones too), each sheet's cells (numbers, shared
 // and inline strings, booleans; a formula as its text, a shared formula
 // moved to each cell it covers), number formats (the built-in ones by
-// number, the file's own codes), merged cells, column widths and row
+// number, the file's own codes), each cell's look (font, fill, borders,
+// alignment: its style), its comment, its validation, merged cells, column widths and row
 // heights, frozen panes, hidden rows and columns; the workbook's defined
 // names (a sheet's own by localSheetId) and its date system. Written as
 // the app's own sheet file (file.ts reads it), with a report of what was
@@ -12,6 +13,7 @@ import { attr, all, kid, kids, parseXml, textOf } from "./xml.ts";
 import type { El } from "./xml.ts";
 import { COLS, ROWS, addrOf, colName, keyOf } from "./address.ts";
 import { moved } from "./excel.ts";
+import type { Look } from "./formats.ts";
 
 // The built-in number formats by number (ECMA-376 18.8.30).
 export const BUILTIN_FORMATS: Readonly<Record<number, string>> = {
@@ -64,6 +66,86 @@ const at = (ref: string): string | null => {
 // A defined name's range as the app writes one: Sheet1!B2:B4.
 const nameRange = (text: string): string => text.replace(/\$/g, "");
 
+const EMPTY: El = { name: "", attrs: {}, children: [] };
+
+// A colour: rgb (ARGB, its alpha dropped), or a theme's (Excel numbers its
+// first four light, dark, light, dark: themes.ts's roles), or indexed (the
+// legacy palette's first eight). A tint is not kept.
+const THEME_ROLES = ["light1", "dark1", "light2", "dark2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hyperlink"];
+const INDEXED = ["#000000", "#ffffff", "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"];
+export function colourOf(e: El | undefined): string | undefined {
+  if (!e) return undefined;
+  const rgb = attr(e, "rgb"), theme = attr(e, "theme"), indexed = attr(e, "indexed");
+  if (rgb && /^[0-9a-f]{6,8}$/i.test(rgb)) return `#${rgb.slice(-6).toLowerCase()}`;
+  if (theme !== undefined) return THEME_ROLES[Number(theme)];
+  if (indexed !== undefined) return INDEXED[Number(indexed) % 8];
+  return undefined;
+}
+
+const LINE: Record<string, string> = { thin: "thin", medium: "medium", thick: "thick", double: "double", dashed: "dashed", dotted: "dotted", hair: "hair",
+  mediumDashed: "dashed", dashDot: "dashed", mediumDashDot: "dashed", dashDotDot: "dotted", mediumDashDotDot: "dotted", slantDashDot: "dashed" };
+
+// A style (an xf) as the app's look: its font, fill, borders, alignment.
+function lookOf(xf: El, fonts: El[], fills: El[], borders: El[]): Look | null {
+  const look: Record<string, unknown> = {};
+  const font = fonts[Number(attr(xf, "fontId") ?? 0)];
+  if (font && Number(attr(xf, "fontId") ?? 0) > 0) {
+    if (kid(font, "b") && attr(kid(font, "b")!, "val") !== "0") look.bold = true;
+    if (kid(font, "i") && attr(kid(font, "i")!, "val") !== "0") look.italic = true;
+    if (kid(font, "u") && attr(kid(font, "u")!, "val") !== "none") look.underline = true;
+    if (kid(font, "strike") && attr(kid(font, "strike")!, "val") !== "0") look.strike = true;
+    const sz = Number(attr(kid(font, "sz") ?? EMPTY, "val") ?? 0);
+    if (sz && sz !== 11) look.size = Math.round(sz * 4 / 3);
+    const c = colourOf(kid(font, "color"));
+    if (c && c !== "dark1" && c !== "#000000") look.color = c;
+  }
+  const fill = fills[Number(attr(xf, "fillId") ?? 0)], pf = fill && kid(fill, "patternFill");
+  if (pf && attr(pf, "patternType") === "solid") {
+    const c = colourOf(kid(pf, "fgColor"));
+    if (c) look.fill = c;
+  }
+  const border = borders[Number(attr(xf, "borderId") ?? 0)];
+  if (border) {
+    const sides: Record<string, string> = {};
+    for (const side of ["top", "right", "bottom", "left"]) {
+      const e = kid(border, side), style = e && attr(e, "style");
+      if (!e || !style || style === "none") continue;
+      const c = colourOf(kid(e, "color")) ?? "#000000", line = LINE[style] ?? "thin";
+      sides[side] = line === "thin" ? c : `${line} ${c}`;
+    }
+    if (Object.keys(sides).length) look.borders = sides;
+  }
+  const al = kid(xf, "alignment");
+  if (al) {
+    const h = attr(al, "horizontal");
+    if (h === "left") look.align = "start"; else if (h === "center" || h === "centerContinuous") look.align = "center"; else if (h === "right") look.align = "end";
+    if (attr(al, "wrapText") === "1" || attr(al, "wrapText") === "true") look.wrap = true;
+  }
+  return Object.keys(look).length ? (look as Look) : null;
+}
+
+// A dataValidation as the app's rule, or why it is not one.
+function ruleOf(dv: El): Record<string, unknown> | string {
+  const type = attr(dv, "type") ?? "none", op = attr(dv, "operator") ?? "between";
+  const f1 = textOf(kid(dv, "formula1") ?? EMPTY).trim(), f2 = textOf(kid(dv, "formula2") ?? EMPTY).trim();
+  const mode = attr(dv, "errorStyle") === "warning" ? "warn" : attr(dv, "errorStyle") === "information" ? "info" : "stop";
+  const extra = { mode, when: "always", ...(attr(dv, "prompt") ? { prompt: attr(dv, "prompt") } : {}), ...(attr(dv, "error") ? { error: attr(dv, "error") } : {}) };
+  const kind = ({ whole: "whole", decimal: "decimal", textLength: "length", date: "date", time: "time", list: "list", custom: "custom" } as Record<string, string>)[type];
+  if (!kind) return `of type ${type}`;
+  if (kind === "list") {
+    if (!/^".*"$/.test(f1)) return `a list from ${f1} (a range; the app's lists are values)`;
+    return { kind, values: f1.slice(1, -1).split(",").map((x) => x.trim()).filter((x) => x), ...extra };
+  }
+  if (kind === "custom") return { kind, formula: f1.replace(/^=/, ""), ...extra };
+  const n = (f: string) => (/^-?[\d.]+(E[-+]?\d+)?$/i.test(f) ? Number(f) : null);
+  const a = n(f1), b = n(f2);
+  if (a === null || (op === "between" || op === "notBetween" ? b === null : false)) return `with limits ${f1}${f2 ? `, ${f2}` : ""} (formulas)`;
+  const lim = op === "between" ? { min: a, max: b } : op === "greaterThanOrEqual" ? { min: a } : op === "lessThanOrEqual" ? { max: a } : op === "equal" ? { min: a, max: a }
+    : op === "greaterThan" ? { min: kind === "decimal" || kind === "date" || kind === "time" ? a : a + 1 } : op === "lessThan" ? { max: kind === "decimal" || kind === "date" || kind === "time" ? a : a - 1 } : null;
+  if (!lim) return `with the operator ${op}`;
+  return { kind, ...lim, ...extra };
+}
+
 export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   const parts = unzip(bytes), report: string[] = [];
   const book = parts.get("xl/workbook.xml") ?? parts.get(resolvePath("", rels(parts, "").get("rId1") ?? "xl/workbook.xml"));
@@ -73,16 +155,18 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   const strings: string[] = [];
   const sstPath = [...wbRels.values()].find((p) => /sharedStrings\.xml$/i.test(p)) ?? "xl/sharedStrings.xml";
   if (parts.has(sstPath)) for (const si of kids(parseXml(utf8Text(parts.get(sstPath)!)), "si")) strings.push(stringOf(si));
-  // Number formats by style index (cellXfs).
-  const formats: string[] = [];
+  // Number formats and looks by style index (cellXfs).
+  const formats: string[] = [], looks: (Look | null)[] = [];
   const stylesPath = [...wbRels.values()].find((p) => /styles\.xml$/i.test(p)) ?? "xl/styles.xml";
   if (parts.has(stylesPath)) {
     const st = parseXml(utf8Text(parts.get(stylesPath)!)), own = new Map<number, string>();
     for (const f of all(st, "numFmt")) own.set(Number(attr(f, "numFmtId")), attr(f, "formatCode") ?? "");
+    const fonts = kids(kid(st, "fonts") ?? EMPTY, "font"), fills = kids(kid(st, "fills") ?? EMPTY, "fill"), borders = kids(kid(st, "borders") ?? EMPTY, "border");
     const xfs = kid(st, "cellXfs");
     for (const xf of xfs ? kids(xfs, "xf") : []) {
       const id = Number(attr(xf, "numFmtId") ?? 0);
       formats.push(own.get(id) ?? BUILTIN_FORMATS[id] ?? "");
+      looks.push(lookOf(xf, fonts, fills, borders));
     }
   }
   const date1904 = ["1", "true"].includes((attr(kid(wb, "workbookPr") ?? { name: "", attrs: {}, children: [] }, "date1904") ?? "").toLowerCase());
@@ -131,10 +215,10 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
           // Text that the sheet would read as a number, or a formula, kept text.
           if ((t === "s" || t === "inlineStr" || t === "str") && (NUMERIC.test(input) || input.startsWith("=") || input.startsWith("'"))) input = `'${input}`;
         }
-        const format = formats[Number(attr(c, "s") ?? 0)] ?? "";
+        const si = Number(attr(c, "s") ?? 0), format = formats[si] ?? "", look: Look = { ...(looks[si] ?? {}), ...(format && format !== "General" ? { number: format } : {}) };
         if (!key) { if (input !== "") off++; continue; }
-        if (input === "" && !format) continue;
-        cells[key] = format && format !== "General" ? { content: input, look: { number: format } } : input;
+        if (input === "" && !Object.keys(look).length) continue;
+        cells[key] = Object.keys(look).length ? { content: input, look } : input;
       }
     }
     for (const col of all(ws, "col")) {
@@ -152,6 +236,35 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
     for (const m of all(ws, "mergeCell")) {
       const [a, b] = (attr(m, "ref") ?? "").split(":");
       if (at(a ?? "") && at(b ?? a ?? "")) merges.push(`${at(a)}:${at(b ?? a)}`);
+    }
+    // Its comments (a legacy comments part, by the sheet's relationships).
+    const sheetRels = rels(parts, path);
+    for (const target of sheetRels.values()) {
+      if (!/comments\d*\.xml$/i.test(target) || !parts.has(target)) continue;
+      for (const cm of all(parseXml(utf8Text(parts.get(target)!)), "comment")) {
+        const k = at(attr(cm, "ref") ?? "");
+        if (!k) continue;
+        const t = textOf(cm).trim();
+        const was = cells[k];
+        cells[k] = typeof was === "object" && was ? { ...(was as object), comment: t } : { content: typeof was === "string" ? was : "", comment: t };
+      }
+    }
+    // Its data validation, as the app's rules where they are one.
+    for (const dv of all(ws, "dataValidation")) {
+      const rule = ruleOf(dv);
+      if (typeof rule === "string") { report.push(`${name}!${attr(dv, "sqref")}: validation ${rule}, left out`); continue; }
+      // A custom formula is written for the sqref's top-left.
+      const areas = (attr(dv, "sqref") ?? "").split(/\s+/).filter((x) => x).map((area) => area.split(":").map((x) => addrOf(x.replace(/\$/g, ""))));
+      const corners = areas.flat().filter((x): x is NonNullable<typeof x> => !!x);
+      const origin = corners.length ? keyOf({ col: Math.min(...corners.map((x) => x.col)), row: Math.min(...corners.map((x) => x.row)) }) : "A1";
+      for (const [ka, kb = ka] of areas) {
+        if (!ka || !kb) continue;
+        for (let r = Math.min(ka.row, kb.row); r <= Math.max(ka.row, kb.row); r++) for (let cc = Math.min(ka.col, kb.col); cc <= Math.max(ka.col, kb.col); cc++) {
+          const k = keyOf({ col: cc, row: r }), was = cells[k];
+          const v = { ...rule, ...(rule.kind === "custom" ? { origin } : {}) };
+          cells[k] = typeof was === "object" && was ? { ...(was as object), validation: v } : { content: typeof was === "string" ? was : "", validation: v };
+        }
+      }
     }
     sheets.push({ name, cells, view, merges, names: {} });
   });
