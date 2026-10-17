@@ -21,7 +21,7 @@ import { EXAMPLE, FORMATTED, SAMPLE_BUDGET, TEST_SHEET } from "./samples.ts";
 import { runScript, runSpreadsheet } from "./script.ts";
 import { lambdaOf } from "./rexx.ts";
 import { continued } from "./series.ts";
-import { check, describeRule, ruleOf } from "./validation.ts";
+import { check, describeRule, errorOf, ruleOf } from "./validation.ts";
 import { asApp, editorOf, refusal, toggled } from "./editors.ts";
 import { ICONS, PERIODS, THRESHOLDS, describeRule as describeCf, rangeName } from "./rules.ts";
 import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
@@ -635,14 +635,32 @@ const SPECS: readonly Spec[] = [
     run: async (wb, p) => {
       const key = cellOf(p.cell);
       // Its rule, if it has one: stop refuses what breaks it, warn says so.
-      const rule = wb.notes.get(key).validation;
-      const broken = rule ? check(rule, p.input, wb.sheet.input(key) === "") : null;
+      const rule = wb.notes.get(key).validation, was = wb.sheet.input(key);
+      let broken = rule ? check(rule, p.input, was === "") : null;
       if (broken && rule!.mode === "stop") refuse(`${key} ${broken}`);
       // Its editor, if it has one, takes only what it offers.
       const editor = wb.notes.get(key).editor, unsuited = editor ? refusal(editor, p.input) : null;
       if (unsuited) refuse(`${key} ${unsuited}`);
-      const changed = await wb.sheet.set(key, p.input);
-      return changedBy(wb, changed, `${key} = ${show(wb.sheet.value(key))}${broken ? ` (${key} ${broken})` : ""}`);
+      let changed = await wb.sheet.set(key, p.input);
+      // A custom rule's formula, moved from the rule's top-left to this
+      // cell, worked out with the input in; a stop puts the cell back.
+      if (rule?.kind === "custom" && p.input.trim() !== "" && !p.input.trim().startsWith("=") && check(rule, p.input, was === "") === null
+          && !((rule.when === "create" && was !== "") || (rule.when === "update" && was === ""))) {
+        const from = cellAddr(rule.origin ?? key)!, at = cellAddr(key)!;
+        const f = movedBy(wb.sheet.language, `=${rule.formula}`, { cols: at.col - from.col, rows: at.row - from.row }).slice(1);
+        const v = await wb.sheet.evaluate(f);
+        if (!(v === true || (typeof v === "number" && v !== 0))) {
+          broken = errorOf(rule);
+          if (rule.mode === "stop") {
+            await wb.sheet.set(key, was);
+            await wb.settle();
+            refuse(`${key} ${broken}`);
+          }
+        }
+        changed = [...new Set([...changed, key])];
+      }
+      const said = broken ? ` (${rule!.mode === "info" ? "note: " : ""}${key} ${broken})` : "";
+      return changedBy(wb, changed, `${key} = ${show(wb.sheet.value(key))}${said}`);
     },
   },
   {
@@ -716,9 +734,19 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "validation.set", label: "Data Validation", params: ["range", "kind"], optional: ["values", "min", "max", "mode", "when"], journaled: true,
+    // A rule over a range: list, whole, decimal, length, date, time (min=
+    // and max= as written or as serials), custom (formula= for the
+    // range's top-left), pattern (pattern= a regular expression); mode=
+    // stop, warn or info; prompt= the input message, error= its own.
+    id: "validation.set", label: "Data Validation", params: ["range", "kind"], optional: ["values", "min", "max", "formula", "pattern", "mode", "when", "prompt", "error"], journaled: true,
     run: async (wb, p) => {
-      const r = rangeOf(p.range), rule = ruleOf(p), keys = [...range(r[0], r[1])];
+      const r = rangeOf(p.range), keys = [...range(r[0], r[1])];
+      let rule = ruleOf(p);
+      if (rule.kind === "custom") {
+        const compiled = wb.sheet.language.compile(rule.formula!);
+        if (compiled.kind === "broken") refuse(`${p.formula} is not a formula: ${compiled.error.why}`);
+        rule = { ...rule, origin: keyOf(topLeft(r)) };
+      }
       for (const k of keys) wb.notes.set(k, { validation: rule });
       return changedBy(wb, keys, `${named(r)} ${describeRule(rule)}`);
     },

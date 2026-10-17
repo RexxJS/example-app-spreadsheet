@@ -169,8 +169,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   GETNAMEDRANGE: fn([NAME], "The range a name stands for", "the range, or \"\""),
   GETALLNAMEDRANGES: fn([], "Every name", "a stem: n.NAME and n.RANGE"),
   // ---- validation
-  SETCELLVALIDATION: fn([p("range", "range"), p("type", "text", "list, number or text"),
-    { name: "limits", type: "text", optional: true, variadic: true, about: "list: the values, \"a,b,c\"; number: min, max; text: the shortest and longest length" }],
+  SETCELLVALIDATION: fn([p("range", "range"), p("type", "text", "list, number, whole, date, time, custom or text"),
+    { name: "limits", type: "text", optional: true, variadic: true, about: "list: the values, \"a,b,c\"; number, whole, date, time: min, max (dates and times as written, or serials); custom: the formula for the range's top-left; text: the shortest and longest length, then a pattern (a regular expression the whole text matches); then options as name=value pairs split by ';': mode=stop|warn|info, prompt=, error=" }],
     "Sets the values a range's cells may take", "\"OK\""),
   CLEARCELLVALIDATION: fn([p("range", "range")], "Takes a range's validation away", "\"OK\""),
   VALIDATECELL: fn([CELL, p("value", "text")], "Whether a value would pass the cell's validation", "1 or 0"),

@@ -1531,6 +1531,27 @@ main() {
             g.command("data.clearFilter")
             g.command("view.panel name=none")
         }
+        spec.it("validation: a custom formula from the Validation panel, its input prompt when the cell is selected") callback {
+            g.command("sheet.add name=Valid")
+            g.command("formulas.use language=Excel")
+            g.command("cell.set cell=A1 input=10")
+            g.command("view.panel name=validation")
+            g.command("view.select range=B1")
+            b.set_field_by("allowed", "=B1<A1")
+            b.set_field_by("input prompt", "less than A1")
+            b.click("Allow custom")
+            spec.assert_true(b.wait_for_console("sheet: B1:B1 must make =B1<A1 true"), "the rule set")
+            g.command("view.select range=C3")
+            g.goto("B1")
+            g.pick("B", 1)
+            spec.assert_true(b.wait_for_text("B1: (empty) · less than A1"), "its prompt on the status line, the cell selected")
+            g.enter("B1", "50")
+            spec.assert_true(b.wait_for_console("sheet: refused: B1 must make =B1<A1 true"), "50 is refused")
+            spec.assert_true(g.wait_cell("B", 1, ""), "and not kept")
+            g.enter("B1", "5")
+            spec.assert_true(g.wait_cell("B", 1, "5"), "5 is kept")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

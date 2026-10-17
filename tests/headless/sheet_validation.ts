@@ -22,7 +22,7 @@ eq("on create: only into an empty cell; on update: only over one", [
 ], ["must be a whole number of at least 1", null, "must be a whole number of at least 1", null]);
 eq("limits as typed", ["1..10", "1 to 10", "1-10", ">=0", "<= 5", "3", "-5..-1", "x"].map(limitsOf),
   [{ min: "1", max: "10" }, { min: "1", max: "10" }, { min: "1", max: "10" }, { min: "0" }, { max: "5" }, { min: "3" }, { min: "-5", max: "-1" }, {}]);
-throws("a rule that is not one", () => ruleOf({ kind: "colour" }), RangeError, "colour is not a rule (list, whole, decimal, length)");
+throws("a rule that is not one", () => ruleOf({ kind: "colour" }), RangeError, "colour is not a rule (list, whole, decimal, length, date, time, custom, pattern)");
 throws("a list with nothing in it", () => ruleOf({ kind: "list", values: " , " }), RangeError, "a list rule needs values");
 
 const wb = new Workbook();

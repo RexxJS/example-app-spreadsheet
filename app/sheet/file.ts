@@ -94,7 +94,9 @@ function inputOf(c: string | FileCell): string {
 function ruleIn(v: Record<string, unknown>): Note["validation"] {
   const text = (x: unknown) => (x === undefined || x === null ? undefined : String(x));
   try {
-    return ruleOf({ kind: text(v.kind), values: Array.isArray(v.values) ? v.values.join(",") : text(v.values), min: text(v.min), max: text(v.max), mode: text(v.mode), when: text(v.when) });
+    const rule = ruleOf({ kind: text(v.kind), values: Array.isArray(v.values) ? v.values.join(",") : text(v.values), min: text(v.min), max: text(v.max), mode: text(v.mode), when: text(v.when),
+      formula: text(v.formula), pattern: text(v.pattern), prompt: text(v.prompt), error: text(v.error) });
+    return v.origin && rule.kind === "custom" ? { ...rule, origin: String(v.origin) } : rule;
   } catch (e) {
     if (e instanceof RangeError) return undefined;
     throw e;

@@ -912,8 +912,10 @@ export class Workbook {
   }
 
   // What shows when the pointer rests on a cell: its comment.
+  // A cell's tooltip: its comment, and its rule's input prompt.
   tooltipOf(key: string): string {
-    return this.notes.get(key).comment ?? "";
+    const n = this.notes.get(key);
+    return [n.comment ?? "", n.validation?.prompt ?? ""].filter((x) => x).join("\n");
   }
 
   // The rows (0-based) with a wrapped cell, to be as tall as their text.
@@ -943,7 +945,9 @@ export class Workbook {
     };
   }
 
+  // The status line for a selected cell, with its rule's input prompt.
   describe(key: string): string {
-    return describe(key, this.sheet.input(key), this.sheet.value(key), this.notes.get(key).comment);
+    const prompt = this.notes.get(key).validation?.prompt;
+    return describe(key, this.sheet.input(key), this.sheet.value(key), this.notes.get(key).comment) + (prompt ? ` · ${prompt}` : "");
   }
 }

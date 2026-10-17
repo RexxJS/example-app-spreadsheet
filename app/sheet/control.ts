@@ -518,16 +518,24 @@ const options = (matchCase: unknown, wholeCell: unknown, inFormulas: unknown): R
   Object.fromEntries(([["matchCase", matchCase], ["wholeCell", wholeCell], ["inFormulas", inFormulas]] as const).filter(([, v]) => yes(v)).map(([k]) => [k, "1"]));
 
 // The app's validation types as demo 18's rules: list, number (min, max),
-// text (a length from min to max; a pattern is not taken yet).
+// text (a length from min to max, or a pattern third); and Excel's: whole,
+// date and time (min, max), custom (a formula). Then, as name=value pairs
+// split by ';', mode= stop, warn or info, prompt= and error=.
 function validation(type: string, args: readonly unknown[]): Record<string, string> {
-  const limits = (kind: string) => ({ kind, ...(args[0] !== undefined ? { min: text(args[0]) } : {}), ...(args[1] !== undefined ? { max: text(args[1]) } : {}) });
+  const given = (a: unknown) => a !== undefined && text(a).trim() !== "";
+  const limits = (kind: string) => ({ kind, ...(given(args[0]) ? { min: text(args[0]) } : {}), ...(given(args[1]) ? { max: text(args[1]) } : {}) });
+  const more = (i: number) => (given(args[i]) ? pairs(args[i]) : {});
   switch (type.toLowerCase()) {
-    case "list": return { kind: "list", values: text(args[0]) };
-    case "number": return limits("decimal");
+    case "list": return { kind: "list", values: text(args[0]), ...more(1) };
+    case "number": return { ...limits("decimal"), ...more(2) };
+    case "whole": return { ...limits("whole"), ...more(2) };
+    case "date": return { ...limits("date"), ...more(2) };
+    case "time": return { ...limits("time"), ...more(2) };
+    case "custom": return { kind: "custom", formula: text(args[0]), ...more(1) };
     case "text":
-      if (args[2] !== undefined) throw new Error("SETCELLVALIDATION: demo 18 has no pattern rule yet");
-      return limits("length");
-    default: throw new Error(`SETCELLVALIDATION: ${type} is not list, number or text`);
+      if (given(args[2])) return { kind: "pattern", pattern: text(args[2]), ...more(3) };
+      return { ...limits("length"), ...more(3) };
+    default: throw new Error(`SETCELLVALIDATION: ${type} is not list, number, whole, date, time, custom or text`);
   }
 }
 

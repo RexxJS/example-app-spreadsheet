@@ -52,10 +52,10 @@ eq("references worked out without the sheet", [await told("GETROW", ["C5"]), awa
   [[5, []], [3, []], ["C", []], ["C5", []], ["C5", []]]);
 eq("refusals: a bad argument, a refused command, what demo 18 cannot do", [
   await failed(() => told("INSERTROW", [0])), await failed(() => told("HIDECOLUMN", ["ABCD"])), await failed(() => CONTROL.MERGECELLS(stub({}, ["cells.merge"]).exec, "A1:B2")),
-  await failed(() => told("SETCELLVALIDATION", ["A1", "text", 1, 5, "^a"])),
+  await failed(() => told("SETCELLVALIDATION", ["A1", "colour"])),
 ], [
   "INSERTROW needs a row number (e.g. 2)", 'HIDECOLUMN needs a column, a letter or a number (e.g. "B" or 2)', "cells.merge refused",
-  "SETCELLVALIDATION: demo 18 has no pattern rule yet",
+  "SETCELLVALIDATION: colour is not list, number, whole, date, time, custom or text",
 ]);
 
 // The app's LISTCOMMANDS, as it lists them: each is here, missing, or one

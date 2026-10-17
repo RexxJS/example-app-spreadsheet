@@ -72,7 +72,7 @@ export const MENUS: readonly Menu[] = [
   ] },
   { label: "Data", items: [
     i("Sort A→Z", "data.sortAscending"), i("Sort Z→A", "data.sortDescending"), i("Custom sort", "data.sort"), i("Filter", "data.filter"), i("Advanced filter", "data.advancedFilter"), i("Clear filter", "data.clearFilter"), "-",
-    i("Allow list", "validation.set"), i("Allow whole numbers", "validation.set"), i("Allow decimals", "validation.set"), i("Allow length", "validation.set"),
+    i("Allow list", "validation.set"), i("Allow whole numbers", "validation.set"), i("Allow decimals", "validation.set"), i("Allow length", "validation.set"), i("Allow dates", "validation.set"), i("Allow times", "validation.set"), i("Allow custom", "validation.set"), i("Allow pattern", "validation.set"),
     i("Clear rule", "validation.clear"), i("Circle invalid", "validation.circle"), "-",
     i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"), i("Flash fill", "data.flashFill", "Ctrl+E"), "-",
     i("Total row", "table.totals"), i("Banded rows", "table.banding"), i("Convert to range", "table.toRange"),
