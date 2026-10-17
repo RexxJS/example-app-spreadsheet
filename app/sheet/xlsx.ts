@@ -15,6 +15,7 @@ import { COLS, ROWS, addrOf, colName, keyOf } from "./address.ts";
 import { moved } from "./excel.ts";
 import type { Look } from "./formats.ts";
 import { PASS_THROUGH, cfRulesOf, tableOf, unmodelled } from "./xlsxparts.ts";
+import { readDrawings } from "./xlsxdrawings.ts";
 
 // The built-in number formats by number (ECMA-376 18.8.30).
 export const BUILTIN_FORMATS: Readonly<Record<number, string>> = {
@@ -182,6 +183,7 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   const sheets: Record<string, unknown>[] = [];
   const sheetXmls: string[] = [];
   let off = 0;
+  const usedMedia = new Set<string>();
   sheetEls.forEach((se) => {
     const name = attr(se, "name") ?? `Sheet${sheets.length + 1}`, path = wbRels.get(attr(se, "id") ?? "") ?? "";
     const xml = parts.get(path);
@@ -275,6 +277,11 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
         cells[k] = typeof was === "object" && was ? { ...(was as object), hyperlink: link } : { content: typeof was === "string" ? was : "", hyperlink: link };
       }
     }
+    // Its drawings: pictures, shapes and text boxes (a drawing part, by its
+    // relationships).
+    const drawings = [...sheetRels.values()].filter((t) => /drawings\/drawing\d+\.xml$/i.test(t) && parts.has(t))
+      .flatMap((t) => readDrawings(parseXml(utf8Text(parts.get(t)!)), rels(parts, t), (m) => parts.get(m), name, report, usedMedia))
+      .map((d) => ({ ...d, at: keyOf(d.at) }));
     // Its data validation, as the app's rules where they are one.
     for (const dv of all(ws, "dataValidation")) {
       const rule = ruleOf(dv);
@@ -297,7 +304,7 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
     const rules = cfRulesOf(ws, dxfs, name, report);
     const tables = [...sheetRels.values()].filter((t) => /tables\/table\d+\.xml$/i.test(t) && parts.has(t)).map((t) => tableOf(parseXml(utf8Text(parts.get(t)!)))).filter((t) => t);
     sheetXmls.push(utf8Text(xml));
-    sheets.push({ name, cells, view, merges, names: {}, rules, tables });
+    sheets.push({ name, cells, view, merges, names: {}, rules, tables, ...(drawings.length ? { drawings } : {}) });
   });
   if (off) report.push(`${off} cell${off === 1 ? "" : "s"} past ${colName(COLS - 1)}${ROWS}, the sheet's edge, left out`);
   // The defined names: a sheet's own (localSheetId), the workbook's.
@@ -312,7 +319,7 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
       else report.push(`${n}, a sheet's own formula name, left out`);
     } else bookNames[n] = range ?? `=${text}`;
   }
-  report.push(...unmodelled([...parts.keys()], sheetXmls));
+  report.push(...unmodelled([...parts.keys()].filter((n) => !usedMedia.has(n)), sheetXmls));
   const kept = [...parts].filter(([n]) => PASS_THROUGH.test(n));
   const [first, ...rest] = sheets;
   const file: Record<string, unknown> = {

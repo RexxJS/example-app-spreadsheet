@@ -1926,6 +1926,26 @@ main() {
             g.command("range.clear range=H9")
             g.command("view.panel name=none")
         }
+        spec.it("shapes, a text box and a picture from the Insert panel, each drawn, deleted by its own button") callback {
+            g.command("sheet.add name=Drawn")
+            g.command("view.panel name=insert")
+            g.pick("B", 2)
+            b.set_field_by("drawing text", "Hi")
+            b.click("Oval")
+            spec.assert_true(b.wait_for_console("sheet: Oval 1: oval at B2, 96x64, \"Hi\""), "an oval at the selected cell")
+            spec.assert_true(wait_button("Delete Oval 1"), "its own Delete")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Hi\"") == 1, "its text drawn")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"fill\":\"#4472c4\"") == 1, "in the theme's accent")
+            b.click("Text box")
+            spec.assert_true(b.wait_for_console("sheet: TextBox 2: textbox at B2, 160x60, \"Hi\""), "a text box")
+            b.click("Delete Oval 1")
+            spec.assert_true(b.wait_for_console("sheet: deleted Oval 1"), "the oval deleted")
+            g.script("SAY INSERTPICTURE('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGP4z8DwHwyBNBgAAEnICff5q7YNAAAAAElFTkSuQmCC', 'D4', 'alt=Dot')")
+            spec.assert_true(b.wait_for_text("Picture 2: picture at D4, 2x2 (Dot)"), "a picture, from REXX")
+            spec.assert_true(wait_button("Delete Picture 2"), "with its own Delete")
+            g.command("view.panel name=none")
+            g.command("sheet.activate name=Sheet1")
+        }
         spec.it("Forecast sheet from the Data panel: a line forecast on a new sheet, with its chart") callback {
             g.command("sheet.add name=Line")
             g.command("formulas.use language=Excel")

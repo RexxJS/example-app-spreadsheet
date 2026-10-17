@@ -36,6 +36,8 @@ import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 import { applied } from "./rules.ts";
 import { chartData, layout } from "./charts.ts";
+import { drawingShapes } from "./drawings.ts";
+import type { Drawing } from "./drawings.ts";
 import type { ChartData, ChartKind, ChartOptions, Shape } from "./charts.ts";
 import { rangeName } from "./rules.ts";
 import { sheetPrefix } from "./address.ts";
@@ -80,6 +82,9 @@ export interface ChartView {
 
 export const CHART_W = 400, CHART_H = 240;
 
+// A drawing as the page draws it: where it is, and its shapes.
+export type DrawingView = Drawing & { readonly where: string; readonly shapes: Shape[] };
+
 // A sheet of the workbook: its name as given, its cells and their notes, its
 // conditional-format rules (rules.ts), in priority order, its charts, and
 // how it is viewed: rows and columns hidden by hand (0-based), rows hidden
@@ -114,6 +119,8 @@ export interface Page {
   slicers: Slicer[];
   // Its scenarios (Scenario Manager): named sets of values for some cells.
   scenarios: Scenario[];
+  // Its pictures, text boxes and shapes (drawings.ts).
+  drawings: Drawing[];
 }
 
 export interface Scenario {
@@ -216,7 +223,7 @@ const viewOf = (p: Omit<Page, "name" | "sheet" | "notes">): Omit<Page, "name" | 
   rules: [...p.rules], charts: [...p.charts], hiddenRows: new Set(p.hiddenRows), hiddenCols: new Set(p.hiddenCols),
   filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, frozenCols: p.frozenCols, merges: [...p.merges],
   heights: new Map(p.heights), widths: new Map(p.widths), autoId: p.autoId, pivots: new Map(p.pivots),
-  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels), slicers: [...p.slicers], scenarios: [...p.scenarios],
+  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels), slicers: [...p.slicers], scenarios: [...p.scenarios], drawings: [...p.drawings],
 });
 
 // A name for the whole workbook: a range of one of its sheets, or a
@@ -432,7 +439,7 @@ export class Workbook {
       keys.add(key);
     };
     page = { name, sheet: new Sheet({ changed }, language, context), notes: new CellNotes(), rules: [], charts: [],
-      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map(), slicers: [], scenarios: [] };
+      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map(), slicers: [], scenarios: [], drawings: [] };
     return page;
   }
 
@@ -857,6 +864,15 @@ export class Workbook {
   slicerViews(): SlicerView[] {
     return this.#active.slicers.map((sl) => ({ name: sl.name, caption: `${sl.name} (${sl.table}[${sl.column}])`,
       tiles: slicerValues(this.#active, sl).map((value) => ({ value, picked: sl.picked.some((x) => x.toLowerCase() === value.toLowerCase()) })) }));
+  }
+
+  // The active sheet's drawings, shapes and text boxes laid out (their
+  // theme colours resolved), pictures as their bytes.
+  drawingViews(): DrawingView[] {
+    return this.#active.drawings.map((d) => ({
+      ...d, where: keyOf(d.at),
+      shapes: d.kind === "picture" ? [] : drawingShapes(d, resolved(d.fill ?? (d.kind === "textbox" ? "#ffffff" : "accent1")), resolved(d.line ?? (d.kind === "textbox" ? "#7f7f7f" : "#2f528f")), d.kind === "textbox" ? "#000000" : "#ffffff"),
+    }));
   }
 
   // The active sheet's charts, laid out from its cells as they are now.

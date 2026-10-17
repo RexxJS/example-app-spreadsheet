@@ -42,6 +42,8 @@ import type { Look } from "./formats.ts";
 import { CHART_KINDS, LEGENDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
 import type { ChartOptions, Shape, Trendline } from "./charts.ts";
 import { TREND_TYPES } from "./trend.ts";
+import { SHAPES, SHAPE_TITLES, pictureOf } from "./drawings.ts";
+import type { Drawing } from "./drawings.ts";
 import type { ChartKind } from "./charts.ts";
 import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
@@ -212,6 +214,34 @@ function topArgs(text: string): string[] {
   return out;
 }
 
+// A drawing added to the active sheet: at= its cell (the selection's
+// top-left), w= and h= (or its own size), named as Excel numbers them
+// ("Oval 3": one more than the drawings there are).
+async function drawn(wb: Workbook, p: Params, parts: Partial<Drawing> & { kind: Drawing["kind"] }, title: string, w0: number, h0: number): Promise<Outcome> {
+  const page = wb.page(wb.active)!;
+  const at = p.at !== undefined ? cellAddr(cellOf(p.at))! : rangeOf(wb.selection.split(",")[0])[0];
+  const size = (v: string | undefined, d: number) => (v === undefined ? d : Number(v) >= 1 && Number(v) <= 4000 ? Math.round(Number(v)) : refuse(`${v} is not a size (1 to 4000 pixels)`));
+  let n = page.drawings.length + 1, name = p.name?.trim() || `${title} ${n}`;
+  while (!p.name?.trim() && page.drawings.some((d) => d.name.toLowerCase() === name.toLowerCase())) name = `${title} ${++n}`;
+  if (page.drawings.some((d) => d.name.toLowerCase() === name.toLowerCase())) refuse(`a drawing is named ${name} already`);
+  const d = { ...parts, name, at, w: size(p.w, w0), h: size(p.h, h0) } as Drawing;
+  page.drawings = [...page.drawings, d];
+  return { ok: true, message: `${name}: ${describeDrawing(d)}`, changed: [], output: name };
+}
+
+// fill= and line= as colours (a theme's roles kept), when given.
+function colours(p: Params): { fill?: string; line?: string } {
+  const one = (v: string | undefined, what: string) => (v === undefined ? undefined : colour(v) ?? refuse(`${v} is not a colour for the ${what}`));
+  const fill = one(p.fill, "fill"), line = one(p.line, "line");
+  return { ...(fill ? { fill } : {}), ...(line ? { line } : {}) };
+}
+
+const describeDrawing = (d: Drawing): string =>
+  `${d.kind === "shape" ? d.shape : d.kind} at ${keyOf(d.at)}, ${d.w}x${d.h}${d.text ? `, "${d.text.replace(/\n/g, " / ")}"` : ""}${d.alt ? `, alt "${d.alt}"` : ""}`;
+
+const drawingNamed = (wb: Workbook, n: string): Drawing =>
+  wb.page(wb.active)!.drawings.find((d) => d.name.toLowerCase() === n.trim().toLowerCase()) ?? refuse(`no drawing ${n} on ${wb.active}`);
+
 async function setting(wb: Workbook, entries: readonly (readonly [string, string])[], what: string): Promise<Outcome> {
   const changed = await wb.sheet.setMany(entries);
   await wb.settle();
@@ -285,6 +315,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.colLevels = new Map(s.view.colLevels);
     page.slicers = [...s.slicers];
     page.scenarios = [...s.scenarios];
+    page.drawings = [...s.drawings];
     page.autoId = s.autoId;
     page.pivots = new Map(s.pivots);
     page.merges = s.merges.map((m) => parseRange(m)!);
@@ -401,6 +432,8 @@ async function reshaped(wb: Workbook, axis: "row" | "col" | null, editOf: (moves
     const to = edit.range(c.range[0], c.range[1], still, still);
     return to ? [{ ...c, range: to }] : [];
   });
+  // Drawings move with their cells; one whose cell went stays where it was.
+  page.drawings = page.drawings.map((d) => ({ ...d, at: edit.cell(d.at, still) ?? d.at }));
   // Hidden rows (columns) move with the rest, and go with deleted ones.
   const moved = (set: Set<number>, row: boolean) => new Set([...set].flatMap((i) => {
     const to = edit.cell(row ? { col: 0, row: i } : { col: i, row: 0 }, still);
@@ -2700,6 +2733,74 @@ const SPECS: readonly Spec[] = [
       if (!Number.isInteger(i) || !charts[i]) refuse(`no chart ${p.index}`);
       const [gone] = charts.splice(i, 1);
       return changedBy(wb, [], `deleted ${gone.title}`);
+    },
+  },
+  {
+    // Insert Pictures: base64= bytes (PNG, JPEG, GIF or BMP), at= a cell
+    // (the selection's top-left), w= and h= (its own size, made at most
+    // 400 wide), alt= its alternative text, name= ("Picture n").
+    id: "insert.picture", label: "Pictures", params: ["base64"], optional: ["at", "w", "h", "alt", "name"], journaled: true,
+    run: async (wb, p) => {
+      const bytes = fromBase64(p.base64), pic = pictureOf(bytes) ?? refuse("not a picture (PNG, JPEG, GIF or BMP)");
+      const scale = Math.min(1, 400 / Math.max(1, pic.w));
+      return drawn(wb, p, { kind: "picture", picture: toBase64(bytes), mime: pic.mime, ...(p.alt ? { alt: p.alt } : {}) }, "Picture", Math.round(pic.w * scale) || 100, Math.round(pic.h * scale) || 100);
+    },
+  },
+  {
+    // Insert Shapes: shape= (rectangle, roundedRectangle, oval, triangle,
+    // rightArrow, line), at=, w= and h= (96 x 64), fill= and line= colours
+    // (a theme's accent1 and its darker line), text= inside it.
+    id: "insert.shape", label: "Shapes", params: ["shape"], optional: ["at", "w", "h", "fill", "line", "text", "name"], journaled: true,
+    run: async (wb, p) => {
+      const shape = SHAPES.find((x) => x.toLowerCase() === p.shape.trim().toLowerCase()) ?? refuse(`no shape ${p.shape} (${SHAPES.join(", ")})`);
+      return drawn(wb, p, { kind: "shape", shape, ...colours(p), ...(p.text ? { text: p.text } : {}) }, SHAPE_TITLES[shape], 96, 64);
+    },
+  },
+  {
+    // Text Box: text= (lines split at \n), at=, w= and h= (160 x 60).
+    id: "insert.textbox", label: "Text Box", params: ["text"], optional: ["at", "w", "h", "fill", "line", "name"], journaled: true,
+    run: async (wb, p) => drawn(wb, p, { kind: "textbox", text: p.text.replace(/\\n/g, "\n"), ...colours(p) }, "TextBox", 160, 60),
+  },
+  {
+    // A drawing moved (at=), sized (w=, h=), recoloured (fill=, line=),
+    // its text or alternative text changed, or renamed (to=).
+    id: "drawing.edit", label: "Format Shape", params: ["name"], optional: ["at", "w", "h", "fill", "line", "text", "alt", "to"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, d = drawingNamed(wb, p.name);
+      const to = p.to?.trim();
+      if (to !== undefined && (!to || page.drawings.some((x) => x !== d && x.name.toLowerCase() === to.toLowerCase()))) refuse(`${to || "no name"} cannot name it: a drawing has a name of its own`);
+      const size = (v: string | undefined, was: number) => (v === undefined ? was : Number(v) >= 1 && Number(v) <= 4000 ? Math.round(Number(v)) : refuse(`${v} is not a size (1 to 4000 pixels)`));
+      const next: Drawing = { ...d, ...(p.at !== undefined ? { at: cellAddr(cellOf(p.at))! } : {}), w: size(p.w, d.w), h: size(p.h, d.h), ...colours(p),
+        ...(p.text !== undefined && d.kind !== "picture" ? { text: p.text.replace(/\\n/g, "\n") } : {}), ...(p.alt !== undefined ? { alt: p.alt } : {}), ...(to ? { name: to } : {}) };
+      page.drawings = page.drawings.map((x) => (x === d ? next : x));
+      return { ok: true, message: `${next.name}: ${describeDrawing(next)}`, changed: [], output: next.name };
+    },
+  },
+  {
+    id: "drawing.delete", label: "Delete drawing", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, d = drawingNamed(wb, p.name);
+      page.drawings = page.drawings.filter((x) => x !== d);
+      return { ok: true, message: `deleted ${d.name}`, changed: [], output: d.name };
+    },
+  },
+  {
+    // The Selection Pane's list: each drawing, front to back last.
+    id: "drawing.list", label: "Selection Pane", params: [], journaled: false,
+    run: async (wb) => {
+      const listed = wb.page(wb.active)!.drawings.map((d) => `${d.name}: ${describeDrawing(d)}`);
+      return { ok: true, message: listed.length ? listed.join("; ") : "no drawings", changed: [], output: listed };
+    },
+  },
+  {
+    // Bring to Front and Send to Back: its place in the drawing order.
+    id: "drawing.order", label: "Arrange", params: ["name", "to"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, d = drawingNamed(wb, p.name), rest = page.drawings.filter((x) => x !== d);
+      const to = p.to.trim().toLowerCase();
+      if (to !== "front" && to !== "back") refuse(`to=${p.to}: front or back`);
+      page.drawings = to === "front" ? [...rest, d] : [d, ...rest];
+      return { ok: true, message: `${d.name} to the ${to}`, changed: [], output: d.name };
     },
   },
   {

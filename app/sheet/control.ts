@@ -350,6 +350,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     return (await must(exec, "solver.solve", { objective: text(objective), changing: text(changing), goal: value ? "value" : g || "max", ...(value ? { value } : {}), ...(text(constraints).trim() ? { constraints: text(constraints) } : {}), ...pairs(opts) })).message;
   },
   // Forecast Sheet: FORECASTSHEET("A2:A20", "B2:B20", 45700, "confidence=0.9;seasonality=12").
+  INSERTPICTURE: async (exec, b64, at, opts) => String((await must(exec, "insert.picture", { base64: text(b64), ...(text(at).trim() ? { at: text(at) } : {}), ...pairs(opts) })).output),
+  INSERTSHAPE: async (exec, sh, at, opts) => String((await must(exec, "insert.shape", { shape: text(sh), ...(text(at).trim() ? { at: text(at) } : {}), ...pairs(opts) })).output),
+  INSERTTEXTBOX: async (exec, t, at, opts) => String((await must(exec, "insert.textbox", { text: text(t), ...(text(at).trim() ? { at: text(at) } : {}), ...pairs(opts) })).output),
+  EDITDRAWING: async (exec, n, opts) => (await must(exec, "drawing.edit", { name: text(n), ...pairs(opts) })).message,
+  DELETEDRAWING: async (exec, n) => (await must(exec, "drawing.delete", { name: text(n) })).message,
+  ARRANGEDRAWING: async (exec, n, to) => (await must(exec, "drawing.order", { name: text(n), to: text(to) })).message,
+  LISTDRAWINGS: async (exec) => stem((await must(exec, "drawing.list")).output as string[]),
   SETHYPERLINK: async (exec, r, t, shown, tip) => (await must(exec, "cell.hyperlink", { range: text(r), target: text(t), ...(text(shown) ? { text: text(shown) } : {}), ...(text(tip) ? { tip: text(tip) } : {}) })).message,
   REMOVEHYPERLINK: async (exec, r) => (await must(exec, "cell.removeHyperlink", { range: text(r) })).message,
   FOLLOWHYPERLINK: async (exec, c) => String((await must(exec, "cell.followHyperlink", { cell: text(c) })).output),

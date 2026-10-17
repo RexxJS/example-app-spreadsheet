@@ -16,6 +16,7 @@ import { BUILTIN_FORMATS } from "./xlsx.ts";
 import type { Look } from "./formats.ts";
 import type { Rule } from "./validation.ts";
 import { cfXml, styleDxf, tableXml } from "./xlsxparts.ts";
+import { drawingXml } from "./xlsxdrawings.ts";
 import { ROLES } from "./themes.ts";
 
 // A colour as SpreadsheetML writes one: a theme's role by its number (Excel
@@ -92,6 +93,10 @@ export function writeXlsx(wb: Workbook): XlsxWritten {
   let tableId = 0;
   const sheetParts = pages.map((page) => sheetOf(page, wb, sst, styleOf, excel, dxfOf, () => ++tableId));
   const sheetXml = sheetParts.map((x) => x.xml);
+  // Each sheet's drawings, a drawing part apiece, their pictures as media.
+  let mediaN = 0;
+  const drawingParts = pages.map((page) => (page.drawings.length ? drawingXml(page.drawings, () => ++mediaN) : null));
+  const exts = [...new Set(drawingParts.flatMap((d) => d?.media ?? []).map((m) => m.name.split(".").pop()!))];
   const sparks = sheetParts.reduce((k, x) => k + x.sparks, 0);
   if (sparks) report.push(`${sparks} sparkline${sparks === 1 ? "" : "s"} written as their text (Excel has no SPARKLINE function)`);
   // The workbook.
@@ -124,8 +129,9 @@ export function writeXlsx(wb: Workbook): XlsxWritten {
   }).join("");
   const styles = `${HEAD}<styleSheet xmlns="${MAIN}">${ownCodes.length ? `<numFmts count="${ownCodes.length}">${ownCodes.map((c, i) => `<numFmt numFmtId="${164 + i}" formatCode="${escapeXml(c)}"/>`).join("")}</numFmts>` : ""}<fonts count="${fonts.length}">${fonts.join("")}</fonts><fills count="${fills.length}">${fills.join("")}</fills><borders count="${borders.length}">${borders.join("")}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfXml}</cellXfs>${dxfs.length ? `<dxfs count="${dxfs.length}">${dxfs.join("")}</dxfs>` : ""}</styleSheet>`;
   const shared = `${HEAD}<sst xmlns="${MAIN}" count="${strings.length}" uniqueCount="${strings.length}">${strings.map((s) => `<si><t${/^\s|\s$|\n/.test(s) ? ' xml:space="preserve"' : ""}>${escapeXml(s)}</t></si>`).join("")}</sst>`;
-  const types = `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${
+  const types = `${HEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/>${exts.map((e) => `<Default Extension="${e}" ContentType="image/${e}"/>`).join("")}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${
     pages.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")}${sheetParts.map((x, i) => (x.comments.length ? `<Override PartName="/xl/comments${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml"/>` : "")).join("")}${
+    drawingParts.map((d, i) => (d ? `<Override PartName="/xl/drawings/drawing${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>` : "")).join("")}${
     sheetParts.flatMap((x) => x.tables).map((t) => `<Override PartName="/xl/tables/table${t.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>`).join("")}${
     wb.carried.map(([n]) => `<Override PartName="/${n}" ContentType="${CARRIED_TYPES[n] ?? "application/xml"}"/>`).join("")}<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
   const carried = new Set(wb.carried.map(([n]) => n));
@@ -136,11 +142,17 @@ export function writeXlsx(wb: Workbook): XlsxWritten {
   const entries: [string, Uint8Array][] = [["[Content_Types].xml", utf8Bytes(types)], ["_rels/.rels", utf8Bytes(rootRels)], ["xl/workbook.xml", utf8Bytes(book)],
     ["xl/_rels/workbook.xml.rels", utf8Bytes(bookRels)], ["xl/styles.xml", utf8Bytes(styles)], ["xl/sharedStrings.xml", utf8Bytes(shared)],
     ...sheetXml.map((x, i): [string, Uint8Array] => [`xl/worksheets/sheet${i + 1}.xml`, utf8Bytes(x)])];
-  sheetParts.forEach(({ comments, tables, relBase, urls }, i) => {
-    if (!comments.length && !tables.length && !urls.length) return;
+  sheetParts.forEach(({ comments, tables, relBase, urls, drawingRid }, i) => {
+    const dp = drawingParts[i];
+    if (dp) {
+      entries.push([`xl/drawings/drawing${i + 1}.xml`, utf8Bytes(dp.xml)], ...dp.media.map((m): [string, Uint8Array] => [m.name, m.bytes]));
+      if (dp.media.length) entries.push([`xl/drawings/_rels/drawing${i + 1}.xml.rels`, utf8Bytes(`${HEAD}<Relationships xmlns="${PKG}">${dp.media.map((m) => `<Relationship Id="${m.rId}" Type="${REL}/image" Target="../media/${m.name.split("/").pop()}"/>`).join("")}</Relationships>`)]);
+    }
+    if (!comments.length && !tables.length && !urls.length && !drawingRid) return;
     const relsXml = [...(comments.length ? [`<Relationship Id="rId1" Type="${REL}/comments" Target="../comments${i + 1}.xml"/>`, `<Relationship Id="rId2" Type="${REL}/vmlDrawing" Target="../drawings/vmlDrawing${i + 1}.vml"/>`] : []),
       ...tables.map((t, j) => `<Relationship Id="rId${relBase + j}" Type="${REL}/table" Target="../tables/table${t.id}.xml"/>`),
-      ...urls.map((u, j) => `<Relationship Id="rId${relBase + tables.length + j}" Type="${REL}/hyperlink" Target="${escapeXml(u)}" TargetMode="External"/>`)].join("");
+      ...urls.map((u, j) => `<Relationship Id="rId${relBase + tables.length + j}" Type="${REL}/hyperlink" Target="${escapeXml(u)}" TargetMode="External"/>`),
+      ...(drawingRid ? [`<Relationship Id="rId${drawingRid}" Type="${REL}/drawing" Target="../drawings/drawing${i + 1}.xml"/>`] : [])].join("");
     entries.push([`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, utf8Bytes(`${HEAD}<Relationships xmlns="${PKG}">${relsXml}</Relationships>`)]);
     if (comments.length) entries.push([`xl/comments${i + 1}.xml`, utf8Bytes(commentsXml(comments))], [`xl/drawings/vmlDrawing${i + 1}.vml`, utf8Bytes(vmlXml(comments))]);
     for (const t of tables) entries.push([`xl/tables/table${t.id}.xml`, utf8Bytes(t.xml)]);
@@ -225,10 +237,11 @@ function sheetOf(page: Page, wb: Workbook, sst: (s: string) => number, styleOf: 
     if (/^[a-z][a-z0-9+.-]*:/i.test(h.target)) { urls.push(h.target); return `<hyperlink ref="${k}" r:id="rId${relBase + tables.length + urls.length - 1}"${tip}/>`; }
     return `<hyperlink ref="${k}" location="${escapeXml(h.target.replace(/^#/, ""))}"${tip}/>`;
   });
+  const drawingRid = page.drawings.length ? relBase + tables.length + urls.length : 0;
   const xml = `${HEAD}<worksheet xmlns="${MAIN}" xmlns:r="${REL}"><sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>${cols ? `<cols>${cols}</cols>` : ""}<sheetData>${rowXml}</sheetData>${
-    merges ? `<mergeCells count="${page.merges.length}">${merges}</mergeCells>` : ""}${cf}${dvs.length ? `<dataValidations count="${dvs.length}">${dvs.join("")}</dataValidations>` : ""}${links.length ? `<hyperlinks>${links.join("")}</hyperlinks>` : ""}${comments.length ? '<legacyDrawing r:id="rId2"/>' : ""}${
+    merges ? `<mergeCells count="${page.merges.length}">${merges}</mergeCells>` : ""}${cf}${dvs.length ? `<dataValidations count="${dvs.length}">${dvs.join("")}</dataValidations>` : ""}${links.length ? `<hyperlinks>${links.join("")}</hyperlinks>` : ""}${drawingRid ? `<drawing r:id="rId${drawingRid}"/>` : ""}${comments.length ? '<legacyDrawing r:id="rId2"/>' : ""}${
     tables.length ? `<tableParts count="${tables.length}">${tables.map((_, i) => `<tablePart r:id="rId${relBase + i}"/>`).join("")}</tableParts>` : ""}</worksheet>`;
-  return { xml, comments, tables, relBase, sparks, urls };
+  return { xml, comments, tables, relBase, sparks, urls, drawingRid };
 }
 
 // A rule as a dataValidation over its cells.

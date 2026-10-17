@@ -39,6 +39,8 @@ import { ruleOf } from "./validation.ts";
 import { editorIn } from "./editors.ts";
 import type { AutoId, Filter, Page, Pivot, Workbook } from "./workbook.ts";
 import { AGGREGATES } from "./pivot.ts";
+import { SHAPES } from "./drawings.ts";
+import type { Drawing } from "./drawings.ts";
 import { AUTOMATIC } from "./sheet.ts";
 import type { Calc } from "./sheet.ts";
 import type { Aggregate } from "./pivot.ts";
@@ -61,6 +63,7 @@ export interface FileSheet {
   readonly merges: readonly string[];
   readonly slicers: readonly Slicer[];
   readonly scenarios: readonly Scenario[];
+  readonly drawings: readonly Drawing[];
   readonly tables: readonly TableDef[];
   readonly autoId: AutoId | null;
   readonly pivots: readonly [string, Pivot][];
@@ -132,6 +135,21 @@ function noteOf(c: string | FileCell): Note {
   return note;
 }
 
+// Drawings as written, read back: a known kind at a cell, of a size; a
+// picture with its bytes, a shape of a known geometry.
+function drawingsOf(ds: unknown): Drawing[] {
+  if (!Array.isArray(ds)) return [];
+  const text = (x: unknown) => (typeof x === "string" && x ? x : undefined);
+  return ds.flatMap((d: any): Drawing[] => {
+    const at = typeof d?.at === "string" ? addrOf(d.at) : null, w = Number(d?.w), h = Number(d?.h);
+    if (!d || !["picture", "textbox", "shape"].includes(d.kind) || typeof d.name !== "string" || !at || !(w > 0) || !(h > 0)) return [];
+    if (d.kind === "picture" && !text(d.picture)) return [];
+    if (d.kind === "shape" && !(SHAPES as readonly string[]).includes(d.shape)) return [];
+    const parts = { shape: text(d.shape), fill: text(d.fill), line: text(d.line), text: text(d.text), picture: text(d.picture), mime: text(d.mime), alt: text(d.alt) };
+    return [{ kind: d.kind, name: d.name, at, w: Math.round(w), h: Math.round(h), ...Object.fromEntries(Object.entries(parts).filter(([, v]) => v !== undefined)) } as Drawing];
+  });
+}
+
 // Rules as written, read back; one that is not a rule is left out.
 function rulesOf(rules: unknown): CfRule[] {
   if (!Array.isArray(rules)) return [];
@@ -195,6 +213,7 @@ function sheetOf(name: string, s: any): FileSheet {
       .map((x: any): Slicer => ({ name: x.name, table: x.table, column: x.column, picked: Array.isArray(x.picked) ? x.picked.map(String) : [] })) : [],
     scenarios: Array.isArray(s?.scenarios) ? s.scenarios.filter((x: any) => x && typeof x.name === "string" && Array.isArray(x.cells) && Array.isArray(x.values))
       .map((x: any): Scenario => ({ name: x.name, cells: x.cells.map(String), values: x.values.map(String), ...(x.comment ? { comment: String(x.comment) } : {}) })) : [],
+    drawings: drawingsOf(s?.drawings),
     autoId: autoIdOf(s?.autoId),
     pivots: pivotsOf(s?.pivots),
   };
@@ -293,7 +312,7 @@ const viewIn = (page: Page) => ({
 
 // A sheet's parts as the file has them.
 const sheetIn = (p: Page) => ({
-  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p), ...(p.slicers.length ? { slicers: p.slicers } : {}), ...(p.scenarios.length ? { scenarios: p.scenarios } : {}),
+  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p), ...(p.slicers.length ? { slicers: p.slicers } : {}), ...(p.scenarios.length ? { scenarios: p.scenarios } : {}), ...(p.drawings.length ? { drawings: p.drawings.map((d) => ({ ...d, at: keyOf(d.at) })) } : {}),
   ...(p.autoId ? { autoId: { column: colName(p.autoId.column), next: p.autoId.next, prefix: p.autoId.prefix } } : {}),
   ...(p.pivots.size ? {
     pivots: [...p.pivots].map(([id, pv]) => ({
