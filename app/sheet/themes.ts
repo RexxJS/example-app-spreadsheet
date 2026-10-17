@@ -35,3 +35,7 @@ export function resolved(c: string): string {
   return (ROLES as readonly string[]).includes(k) ? current.colors[k as Role] : c;
 }
 export const isRole = (c: string): boolean => (ROLES as readonly string[]).includes(c.trim().toLowerCase());
+
+// A style's roles resolved: "color: accent1" as the theme's colour.
+export const resolvedStyle = (style: string): string =>
+  style.replace(/\b(dark1|light1|dark2|light2|accent[1-6]|hyperlink)\b/gi, (r) => resolved(r));

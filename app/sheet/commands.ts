@@ -2811,6 +2811,7 @@ const SPECS: readonly Spec[] = [
       }
       wb.fileReport = read.report;
       const o = await open(wb, readSheetFile(read.file));
+      wb.carried = read.kept;
       return { ...o, message: `${o.message}${read.report.length ? `; left out: ${read.report.join("; ")}` : ""}`, output: read.report };
     },
   },

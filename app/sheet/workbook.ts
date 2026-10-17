@@ -24,7 +24,7 @@ import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
 import type { Language, TableDef } from "./language.ts";
 import { dataRows } from "./structured.ts";
 import { CELL_STYLES, TABLE_STYLES, under } from "./styles.ts";
-import { THEMES, resolved, setTheme, theme } from "./themes.ts";
+import { THEMES, resolved, resolvedStyle, setTheme, theme } from "./themes.ts";
 import type { Theme } from "./themes.ts";
 import type { Look } from "./formats.ts";
 import { CellNotes } from "./notes.ts";
@@ -282,6 +282,9 @@ export class Workbook {
   styles = new Map<string, Look>(Object.entries(CELL_STYLES));
   // What the last file opened held that the app left out (file.report).
   fileReport: string[] = [];
+  // The parts of the XLSX it was opened from that a file written from it
+  // carries over (its document properties and theme).
+  carried: [string, Uint8Array][] = [];
   // Its theme (themes.ts): the colour roles and fonts looks may name; the
   // page's, set as the workbook's is.
   get theme(): Theme { return theme(); }
@@ -523,6 +526,7 @@ export class Workbook {
     setDates(1900);
     this.styles = new Map(Object.entries(CELL_STYLES));
     this.theme = THEMES.Office;
+    this.carried = [];
     this.#pending.clear();
     this.#undo.length = 0;
     this.#redo.length = 0;
@@ -913,7 +917,7 @@ export class Workbook {
     const v = this.sheet.value(key), n = this.notes.get(key);
     const table = this.#tableLook(key);
     const zoomed = this.zoom === 100 ? "" : `font-size: ${Math.round((n.look?.size ?? 13) * this.zoom / 100)}px`;
-    return [typeof v === "number" ? "text-align: end" : "", table, toStyle(n.style), lookStyle(this.lookOf(n)), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
+    return [typeof v === "number" ? "text-align: end" : "", table, toStyle(n.style), lookStyle(this.lookOf(n)), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", resolvedStyle(this.#marks.get(key)?.style ?? ""), this.#traced.get(key) ?? "",
       this.#circled.has(key) ? "background: #ffd6d6" : "", v instanceof CellError ? "color: #c0392b" : "",
       n.comment ? "--corner: #d00000" : "", this.#typed.get(key) ?? "", zoomed].filter((p) => p).join("; ");
   }

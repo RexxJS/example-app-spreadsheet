@@ -14,6 +14,7 @@ import type { El } from "./xml.ts";
 import { COLS, ROWS, addrOf, colName, keyOf } from "./address.ts";
 import { moved } from "./excel.ts";
 import type { Look } from "./formats.ts";
+import { PASS_THROUGH, cfRulesOf, tableOf, unmodelled } from "./xlsxparts.ts";
 
 // The built-in number formats by number (ECMA-376 18.8.30).
 export const BUILTIN_FORMATS: Readonly<Record<number, string>> = {
@@ -27,6 +28,9 @@ export interface XlsxRead {
   readonly file: Record<string, unknown>;
   // What was left out, a line apiece.
   readonly report: string[];
+  // The parts a file written from it carries over unchanged (its document
+  // properties and theme: xlsxparts.ts's PASS_THROUGH).
+  readonly kept: [string, Uint8Array][];
 }
 
 const NUMERIC = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$/;
@@ -155,13 +159,16 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   const strings: string[] = [];
   const sstPath = [...wbRels.values()].find((p) => /sharedStrings\.xml$/i.test(p)) ?? "xl/sharedStrings.xml";
   if (parts.has(sstPath)) for (const si of kids(parseXml(utf8Text(parts.get(sstPath)!)), "si")) strings.push(stringOf(si));
-  // Number formats and looks by style index (cellXfs).
+  // Number formats and looks by style index (cellXfs); the differential
+  // styles conditional formatting names (dxfs).
   const formats: string[] = [], looks: (Look | null)[] = [];
+  let dxfs: El[] = [];
   const stylesPath = [...wbRels.values()].find((p) => /styles\.xml$/i.test(p)) ?? "xl/styles.xml";
   if (parts.has(stylesPath)) {
     const st = parseXml(utf8Text(parts.get(stylesPath)!)), own = new Map<number, string>();
     for (const f of all(st, "numFmt")) own.set(Number(attr(f, "numFmtId")), attr(f, "formatCode") ?? "");
     const fonts = kids(kid(st, "fonts") ?? EMPTY, "font"), fills = kids(kid(st, "fills") ?? EMPTY, "fill"), borders = kids(kid(st, "borders") ?? EMPTY, "border");
+    dxfs = kids(kid(st, "dxfs") ?? EMPTY, "dxf");
     const xfs = kid(st, "cellXfs");
     for (const xf of xfs ? kids(xfs, "xf") : []) {
       const id = Number(attr(xf, "numFmtId") ?? 0);
@@ -173,6 +180,7 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   const sheetEls = kids(kid(wb, "sheets") ?? { name: "", attrs: {}, children: [] }, "sheet");
   if (!sheetEls.length) throw new RangeError("an XLSX workbook with no sheets");
   const sheets: Record<string, unknown>[] = [];
+  const sheetXmls: string[] = [];
   let off = 0;
   sheetEls.forEach((se) => {
     const name = attr(se, "name") ?? `Sheet${sheets.length + 1}`, path = wbRels.get(attr(se, "id") ?? "") ?? "";
@@ -266,7 +274,12 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
         }
       }
     }
-    sheets.push({ name, cells, view, merges, names: {} });
+    // Its conditional formatting, and its tables (table parts, by its
+    // relationships).
+    const rules = cfRulesOf(ws, dxfs, name, report);
+    const tables = [...sheetRels.values()].filter((t) => /tables\/table\d+\.xml$/i.test(t) && parts.has(t)).map((t) => tableOf(parseXml(utf8Text(parts.get(t)!)))).filter((t) => t);
+    sheetXmls.push(utf8Text(xml));
+    sheets.push({ name, cells, view, merges, names: {}, rules, tables });
   });
   if (off) report.push(`${off} cell${off === 1 ? "" : "s"} past ${colName(COLS - 1)}${ROWS}, the sheet's edge, left out`);
   // The defined names: a sheet's own (localSheetId), the workbook's.
@@ -281,6 +294,8 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
       else report.push(`${n}, a sheet's own formula name, left out`);
     } else bookNames[n] = range ?? `=${text}`;
   }
+  report.push(...unmodelled([...parts.keys()], sheetXmls));
+  const kept = [...parts].filter(([n]) => PASS_THROUGH.test(n));
   const [first, ...rest] = sheets;
   const file: Record<string, unknown> = {
     name: fileName.replace(/\.xlsx$/i, ""), formulas: "excel", sheetName: first.name, ...first,
@@ -288,5 +303,5 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
   };
   delete file.name;
   file.name = fileName.replace(/\.xlsx$/i, "");
-  return { file, report };
+  return { file, report, kept };
 }

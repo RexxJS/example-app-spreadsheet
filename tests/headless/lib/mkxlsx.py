@@ -42,6 +42,22 @@ S3RELS='''<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://sch
 WB2='''<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Looks" sheetId="1" r:id="rId1"/></sheets></workbook>'''
 WB2RELS='''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId4" Target="styles.xml"/></Relationships>'''
 styled=make([("[Content_Types].xml",CT),("_rels/.rels",RELS),("xl/workbook.xml",WB2),("xl/_rels/workbook.xml.rels",WB2RELS),("xl/styles.xml",STY2),("xl/worksheets/sheet1.xml",S3),("xl/worksheets/_rels/sheet1.xml.rels",S3RELS),("xl/comments1.xml",CM),("xl/drawings/vmlDrawing1.vml","<xml/>")])
+STY3='''<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dxfs count="2"><dxf><font><b/><color rgb="FF9C0006"/></font><fill><patternFill><bgColor rgb="FFFFC7CE"/></patternFill></fill></dxf><dxf><font><color theme="4"/></font></dxf></dxfs></styleSheet>'''
+S4='''<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"><sheetData>
+<row r="1"><c r="A1" t="inlineStr"><is><t>Item</t></is></c><c r="B1" t="inlineStr"><is><t>Qty</t></is></c></row>
+<row r="2"><c r="A2" t="inlineStr"><is><t>pens</t></is></c><c r="B2"><v>3</v></c></row>
+<row r="3"><c r="A3" t="inlineStr"><is><t>ink</t></is></c><c r="B3"><v>12</v></c></row>
+<row r="4"><c r="A4" t="inlineStr"><is><t>Total</t></is></c><c r="B4"><f>SUBTOTAL(109,Stock[Qty])</f><v>15</v></c></row></sheetData>
+<conditionalFormatting sqref="B2:B3"><cfRule type="cellIs" dxfId="0" priority="2" operator="greaterThan"><formula>10</formula></cfRule><cfRule type="expression" dxfId="1" priority="1" stopIfTrue="1"><formula>$A2="ink"</formula></cfRule></conditionalFormatting>
+<conditionalFormatting sqref="A2:A3"><cfRule type="containsText" dxfId="1" priority="3" operator="containsText" text="en"><formula>NOT(ISERROR(SEARCH("en",A2)))</formula></cfRule><cfRule type="colorScale" priority="4"><colorScale><cfvo type="min"/><cfvo type="max"/><color rgb="FFF8696B"/><color rgb="FF63BE7B"/></colorScale></cfRule><cfRule type="dataBar" priority="5"><dataBar><cfvo type="min"/><cfvo type="max"/><color rgb="FF638EC6"/></dataBar></cfRule><cfRule type="iconSet" priority="6"><iconSet iconSet="3Arrows" reverse="1"><cfvo type="percent" val="0"/><cfvo type="percent" val="33"/><cfvo type="percent" val="67"/></iconSet></cfRule><cfRule type="timePeriod" dxfId="0" priority="7" timePeriod="last7Days"><formula>x</formula></cfRule><cfRule type="aboveAverage" dxfId="0" priority="8" aboveAverage="0"/><cfRule type="dataBarX" priority="9"/></conditionalFormatting>
+<tableParts count="1"><tablePart r:id="rId1"/></tableParts>
+<extLst><ext uri="{05C60535-1F16-4fd2-B633-F4F36F0B64E0}"><x14:sparklineGroups><x14:sparklineGroup/></x14:sparklineGroups></ext></extLst></worksheet>'''
+TB='''<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Stock" ref="A1:B4" totalsRowCount="1"><autoFilter ref="A1:B3"/><tableColumns count="2"><tableColumn id="1" name="Item" totalsRowLabel="Total"/><tableColumn id="2" name="Qty" totalsRowFunction="sum"/></tableColumns><tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>'''
+S4RELS='''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="../tables/table1.xml"/></Relationships>'''
+WB3='''<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Rules" sheetId="1" r:id="rId1"/></sheets></workbook>'''
+WB3RELS='''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId4" Target="styles.xml"/><Relationship Id="rId5" Target="theme/theme1.xml"/></Relationships>'''
+parts=make([("[Content_Types].xml",CT),("_rels/.rels",RELS),("xl/workbook.xml",WB3),("xl/_rels/workbook.xml.rels",WB3RELS),("xl/styles.xml",STY3),("xl/worksheets/sheet1.xml",S4),("xl/worksheets/_rels/sheet1.xml.rels",S4RELS),("xl/tables/table1.xml",TB),
+  ("xl/theme/theme1.xml",'<a:theme xmlns:a="a" name="Mine"/>'),("docProps/core.xml",'<cp:coreProperties xmlns:cp="c"><dc:creator xmlns:dc="d">Paul</dc:creator></cp:coreProperties>'),("xl/charts/chart1.xml","<c/>"),("xl/media/image1.png","PNG"),("xl/pivotTables/pivotTable1.xml","<p/>")])
 big=make([("a.txt","hello "*5000+"".join(chr(32+(i*7)%90) for i in range(3000)))])
 open('/Users/paul/scm/spraedsheet/tests/headless/lib/xlsx_fixtures.ts','w').write(f'''// XLSX files made by hand for the tests: their XML written in
 // mkxlsx.py beside this file (by hand, not by GridCraft or Excel), zipped by
@@ -52,9 +68,13 @@ open('/Users/paul/scm/spraedsheet/tests/headless/lib/xlsx_fixtures.ts','w').writ
 // sheet, stored not deflated, 1904 dates. BIG: one text entry, deflated
 // with long matches. STYLED: fonts, fills, borders (rgb and theme colours),
 // alignment, a comment, four validations (one a list from a range).
+// PARTS: conditional formatting (nine rules, one of a kind there is not),
+// a table with a totals row, an x14 sparkline group, a theme and document
+// properties to carry over, a chart, a picture and a pivot to report.
 export const BASIC = "{basic}";
 export const STORED = "{stored}";
 export const BIG = "{big}";
 export const STYLED = "{styled}";
+export const PARTS = "{parts}";
 ''')
 print(len(basic),len(stored),len(big))
