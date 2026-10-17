@@ -320,6 +320,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
   CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
   SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
+  // Consolidate: CONSOLIDATE("F1", "Jan!A1:C4,Feb!A1:C4", "sum", "both", 1).
+  CONSOLIDATE: async (exec, to, sources, fn, labels, links) => (await must(exec, "data.consolidate", { to: text(to), sources: text(sources), ...(text(fn).trim() ? { function: text(fn) } : {}), ...(text(labels).trim() ? { labels: text(labels) } : {}), ...(yes(links) ? { links: "1" } : {}) })).message,
   // Advanced Filter: ADVANCEDFILTER("A1:D20", "F1:G3") in place, or
   // ("A1:D20", "F1:G3", "I1", 1) copied to I1, each record once.
   ADVANCEDFILTER: async (exec, r, c, to, unique) => (await must(exec, "data.advancedFilter", { range: text(r), criteria: text(c), ...(text(to).trim() ? { copyTo: text(to) } : {}), ...(yes(unique) ? { unique: "1" } : {}) })).message,

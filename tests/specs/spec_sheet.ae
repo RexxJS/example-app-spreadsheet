@@ -1569,6 +1569,20 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: outline level 8: 0 rows hidden"), "and shown")
             g.command("view.panel name=none")
         }
+        spec.it("Consolidate two sheets by their labels from the Data panel") callback {
+            g.command("sheet.add name=ConA")
+            g.script("LET r = SETCELL('A2', 'pens'); LET r = SETCELL('B1', 'Qty'); LET r = SETCELL('B2', 3)")
+            g.command("sheet.add name=ConB")
+            g.script("LET r = SETCELL('A2', 'pens'); LET r = SETCELL('B1', 'Qty'); LET r = SETCELL('B2', 4)")
+            g.command("sheet.add name=ConAll")
+            g.command("view.panel name=data")
+            g.command("view.select range=A1")
+            b.set_field_by("sources", "ConA!A1:B2,ConB!A1:B2")
+            b.click("Consolidate")
+            spec.assert_true(g.wait_cell("A", 2, "pens"), "the label")
+            spec.assert_true(g.wait_cell("B", 2, "7"), "3 and 4")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

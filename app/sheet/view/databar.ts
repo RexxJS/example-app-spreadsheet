@@ -33,12 +33,14 @@ export function dataBar(v: SheetView): void {
     v.btn("Flash fill", () => v.run("data.flashFill", { range: v.range() }));
     v.btn("Text to columns", () => v.run("data.textToColumns", { range: v.range(), ...given({ delimiter: delimiter.value }) }));
   });
-  const keys = state(""), criteria = state("");
+  const keys = state(""), criteria = state(""), sources = state("");
   ui.hstack(() => {
     bind(ui.textfield("sort keys", () => {}), keys);
     v.btn("Custom sort", () => v.run("data.sort", { range: v.range(), keys: keys.value, headers: "1" }));
     bind(ui.textfield("criteria range", () => {}), criteria);
     v.btn("Advanced filter", () => v.run("data.advancedFilter", { range: v.range(), criteria: criteria.value }));
+    bind(ui.textfield("sources", () => {}), sources);
+    v.btn("Consolidate", () => v.run("data.consolidate", { to: v.here(), sources: sources.value, labels: "both" }));
   });
   ui.hstack(() => {
     v.btn("Group rows", () => v.run("outline.group", { range: v.range(), axis: "rows" }));

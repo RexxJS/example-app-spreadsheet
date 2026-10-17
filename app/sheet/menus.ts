@@ -76,7 +76,7 @@ export const MENUS: readonly Menu[] = [
     i("Clear rule", "validation.clear"), i("Circle invalid", "validation.circle"), "-",
     i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"), i("Flash fill", "data.flashFill", "Ctrl+E"), "-",
     i("Group rows", "outline.group"), i("Ungroup rows", "outline.ungroup"), i("Group columns", "outline.group"), i("Hide detail", "outline.hideDetail"), i("Show detail", "outline.showDetail"),
-    i("Outline level 1", "outline.level"), i("Outline level 2", "outline.level"), i("All levels", "outline.level"), i("Subtotal", "data.subtotal"), "-",
+    i("Outline level 1", "outline.level"), i("Outline level 2", "outline.level"), i("All levels", "outline.level"), i("Subtotal", "data.subtotal"), i("Consolidate", "data.consolidate"), "-",
     i("Total row", "table.totals"), i("Banded rows", "table.banding"), i("Convert to range", "table.toRange"),
   ] },
   { label: "Formulas", items: [

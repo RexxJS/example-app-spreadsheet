@@ -36,6 +36,7 @@ import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from ".
 import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
 import { BAND, bandedKeys } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
+import { CONSOLIDATE_FUNCTIONS, consolidate } from "./consolidate.ts";
 import { MOST_LEVELS, SUBTOTAL_FUNCTIONS, depth, detailOf, hiddenAtLevel, regrouped, runs } from "./outline.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows, sortedRowsBy } from "./sortfind.ts";
 import type { SortKey } from "./sortfind.ts";
@@ -1231,6 +1232,39 @@ const SPECS: readonly Spec[] = [
       for (const c of cols) entries.push([keyOf({ col: c, row: grand }), `=SUBTOTAL(${SUBTOTAL_FUNCTIONS[fn]},${keyOf({ col: c, row: top + 1 })}:${keyOf({ col: c, row: end })})`]);
       page.rowLevels = levels;
       return setting(wb, entries, `subtotals of ${named(r)} at each change in ${colName(by)}: ${groupsOf.length} groups, ${fn} of ${cols.map(colName).join(", ")}`);
+    },
+  },
+  {
+    // Excel's Consolidate: sources= ranges of any sheets ("Jan!A1:C4,
+    // Feb!A1:C4"), their numbers put together at to= by function= (sum by
+    // default), by position or by the labels in their top row and left
+    // column (labels=top, left or both); links=1 writes each number as a
+    // formula over the cells it came from, so it follows them.
+    id: "data.consolidate", label: "Consolidate", params: ["to", "sources"], optional: ["function", "labels", "links"], journaled: true,
+    run: async (wb, p) => {
+      const fn = (p.function ?? "sum").trim().toLowerCase();
+      if (!(fn in CONSOLIDATE_FUNCTIONS)) refuse(`${p.function} is not a consolidation function (${Object.keys(CONSOLIDATE_FUNCTIONS).join(", ")})`);
+      const labels = (p.labels ?? "").trim().toLowerCase();
+      if (!["", "none", "top", "left", "both", "top,left", "left,top"].includes(labels.replace(/\s+/g, ""))) refuse(`${p.labels} is not top, left or both`);
+      const top = /top|both/.test(labels), left = /left|both/.test(labels);
+      const parts = p.sources.split(/,(?=(?:[^']*'[^']*')*[^']*$)/).map((x) => x.trim()).filter((x) => x);
+      if (!parts.length) refuse("Consolidate needs a source range");
+      const sources = parts.map((part) => {
+        const { page, range: [a, b] } = sheetRangeOf(wb, part);
+        const r0 = Math.min(a.row, b.row), c0 = Math.min(a.col, b.col);
+        const values = Array.from({ length: Math.abs(a.row - b.row) + 1 }, (_, r) => Array.from({ length: Math.abs(a.col - b.col) + 1 }, (_, c) => page.sheet.value(keyOf({ col: c0 + c, row: r0 + r }))));
+        const prefix = page === wb.page(wb.active) ? "" : sheetPrefix(page.name);
+        return { values, cell: (r: number, c: number) => `${prefix}${keyOf({ col: c0 + c, row: r0 + r })}` };
+      });
+      const out = consolidate(sources, fn, top, left), to = cellAddr(cellOf(p.to))!;
+      if (to.row + out.rows.length > ROWS || to.col + Math.max(0, ...out.rows.map((r) => r.length)) > COLS) refuse(`the consolidation does not fit at ${p.to}`);
+      const entries: [string, string][] = [];
+      out.rows.forEach((row, r) => row.forEach((v, c) => {
+        const key = keyOf({ col: to.col + c, row: to.row + r }), from = out.from[r][c];
+        const linked = flag(p.links) && from.length && typeof v !== "string";
+        entries.push([key, linked ? (wb.sheet.language.name === "Excel" ? `=${CONSOLIDATE_FUNCTIONS[fn]}(${from.join(",")})` : `=${v}`) : v === null ? "" : typeof v === "string" ? v : String(v)]);
+      }));
+      return setting(wb, entries, `consolidated ${parts.length} range${parts.length === 1 ? "" : "s"} at ${keyOf(to)} by ${fn}${top || left ? `, by the labels in the ${top && left ? "top row and left column" : top ? "top row" : "left column"}` : ""}${flag(p.links) ? ", linked" : ""}`);
     },
   },
   { id: "data.sortAscending", label: "Sort A to Z", params: ["range", "by"], journaled: true, run: sort(true) },
