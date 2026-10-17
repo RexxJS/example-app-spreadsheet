@@ -32,8 +32,8 @@ export type CfRule = (
   | { readonly kind: "average"; readonly below: boolean; readonly style: string }
   | { readonly kind: "duplicates"; readonly unique: boolean; readonly style: string }
   | { readonly kind: "colorScale"; readonly colors: readonly string[] }
-  | { readonly kind: "iconSet"; readonly icons: IconSet }
-  | { readonly kind: "dataBar"; readonly color: string }
+  | { readonly kind: "iconSet"; readonly icons: IconSet; readonly thresholds?: readonly [number, number]; readonly by?: Threshold; readonly reverse?: boolean; readonly iconOnly?: boolean }
+  | { readonly kind: "dataBar"; readonly color: string; readonly solid?: boolean; readonly barOnly?: boolean; readonly min?: number; readonly max?: number }
   | { readonly kind: "formula"; readonly formula: string; readonly style: string }
   | { readonly kind: "blanks"; readonly not: boolean; readonly style: string }
   | { readonly kind: "errors"; readonly not: boolean; readonly style: string }
@@ -44,10 +44,16 @@ export const RULE_KINDS = ["cellValue", "top", "average", "duplicates", "colorSc
 
 export const ICONS = { arrows: ["↑", "→", "↓"], triangles: ["▲", "▬", "▼"], ratings: ["●●●", "●●○", "●○○"] } as const;
 export type IconSet = keyof typeof ICONS;
+// How an icon set's two thresholds read (Excel's Type): a percent of the
+// way from the lowest to the highest, a percentile, or the numbers.
+export type Threshold = "percent" | "percentile" | "number";
+export const THRESHOLDS: readonly Threshold[] = ["percent", "percentile", "number"];
 
 export interface Mark {
   readonly style?: string;
   readonly icon?: string;
+  // Show Bar Only, Show Icon Only: the cell's text not shown.
+  readonly hide?: boolean;
 }
 
 const NUMBER = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$/;
@@ -153,19 +159,33 @@ function marked(rule: CfRule, value: (key: string) => Value, hits: ReadonlySet<s
       return keys.flatMap((k, i): [string, Mark][] => (numbers[i] === null ? [] : [[k, { style: `background: ${at(numbers[i]!)}` }]]));
     }
     case "dataBar": {
+      // A share of the largest size (or of min to max when they are set),
+      // from the cell's end when negative.
       const most = Math.max(...ns.map(Math.abs));
-      if (!most) return [];
+      const fixed = rule.min !== undefined || rule.max !== undefined;
+      const lo = rule.min ?? (fixed ? Math.min(0, ...ns) : 0), hi = rule.max ?? (fixed ? Math.max(...ns) : most);
+      if (!fixed && !most) return [];
+      const share = (n: number) => (fixed ? (hi === lo ? 1 : Math.min(1, Math.max(0, (n - lo) / (hi - lo)))) : n / most);
       return keys.flatMap((k, i): [string, Mark][] => (numbers[i] === null ? []
-        : [[k, { style: `--fill: ${Number((numbers[i]! / most).toFixed(4))}; --fill-color: ${rule.color}` }]]));
+        : [[k, { style: `--fill: ${Number(share(numbers[i]!).toFixed(4))}; --fill-color: ${rule.color}`, ...(rule.barOnly ? { hide: true } : {}) }]]));
     }
     case "iconSet": {
       if (!ns.length) return [];
-      const lo = Math.min(...ns), hi = Math.max(...ns), [up, level, down] = ICONS[rule.icons];
+      const lo = Math.min(...ns), hi = Math.max(...ns), [up, level, down] = rule.reverse ? [...ICONS[rule.icons]].reverse() : ICONS[rule.icons];
+      const [high, mid] = rule.thresholds ?? [67, 33], by = rule.by ?? "percent";
+      const sorted = [...ns].sort((x, y) => x - y);
+      // A percentile as PERCENTILE.INC works it out.
+      const percentile = (p: number) => {
+        const at = (sorted.length - 1) * Math.min(1, Math.max(0, p / 100)), j = Math.floor(at);
+        return sorted[j] + (sorted[Math.min(j + 1, sorted.length - 1)] - sorted[j]) * (at - j);
+      };
+      const cut = (t: number) => (by === "number" ? t : by === "percentile" ? percentile(t) : lo + ((hi - lo) * t) / 100);
+      const [a, b] = [cut(high), cut(mid)];
       return keys.flatMap((k, i): [string, Mark][] => {
         const n = numbers[i];
         if (n === null) return [];
-        const t = hi === lo ? 1 : (n - lo) / (hi - lo);
-        return [[k, { icon: t >= 0.67 ? up : t >= 0.33 ? level : down }]];
+        const icon = hi === lo && by === "percent" ? up : n >= a ? up : n >= b ? level : down;
+        return [[k, { icon, ...(rule.iconOnly ? { hide: true } : {}) }]];
       });
     }
   }
@@ -181,7 +201,8 @@ export function applied(rules: readonly CfRule[], value: (key: string) => Value,
     const marks = marked(rule, value, hits.get(rule) ?? new Set(), today).filter(([k]) => !stopped.has(k));
     for (const [k, m] of marks) {
       const was = out.get(k) ?? {};
-      out.set(k, { ...(m.style || was.style ? { style: [m.style, was.style].filter((x) => x).join("; ") } : {}), ...(was.icon || m.icon ? { icon: was.icon ?? m.icon } : {}) });
+      out.set(k, { ...(m.style || was.style ? { style: [m.style, was.style].filter((x) => x).join("; ") } : {}), ...(was.icon || m.icon ? { icon: was.icon ?? m.icon } : {}),
+        ...(was.hide || m.hide ? { hide: true } : {}) });
     }
     if (rule.stop) for (const [k] of marks) stopped.add(k);
   }
@@ -206,8 +227,8 @@ export function describeRule(rule: CfRule): string {
       case "average": return `${rule.below ? "below" : "above"} average`;
       case "duplicates": return `${rule.unique ? "unique" : "duplicate"} values`;
       case "colorScale": return `colour scale ${rule.colors.join(", ")}`;
-      case "iconSet": return `icon set ${rule.icons}`;
-      case "dataBar": return `data bars ${rule.color}`;
+      case "iconSet": return `icon set ${rule.icons}${rule.reverse ? " reversed" : ""}${rule.thresholds ? ` at ${rule.thresholds.join(", ")}${(rule.by ?? "percent") === "percent" ? "%" : ` (${rule.by})`}` : ""}${rule.iconOnly ? ", icons only" : ""}`;
+      case "dataBar": return `data bars ${rule.color}${rule.solid ? " solid" : ""}${rule.min !== undefined || rule.max !== undefined ? ` from ${rule.min ?? "automatic"} to ${rule.max ?? "automatic"}` : ""}${rule.barOnly ? ", bar only" : ""}`;
     }
   })();
   return `${rangeName(rule.range)}: ${what}${rule.stop ? " (stop if true)" : ""}`;

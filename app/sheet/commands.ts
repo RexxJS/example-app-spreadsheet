@@ -23,8 +23,8 @@ import { lambdaOf } from "./rexx.ts";
 import { continued } from "./series.ts";
 import { check, describeRule, ruleOf } from "./validation.ts";
 import { asApp, editorOf, refusal, toggled } from "./editors.ts";
-import { ICONS, PERIODS, describeRule as describeCf, rangeName } from "./rules.ts";
-import type { CfRule, Comparison, IconSet } from "./rules.ts";
+import { ICONS, PERIODS, THRESHOLDS, describeRule as describeCf, rangeName } from "./rules.ts";
+import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
 import type { Look } from "./formats.ts";
@@ -1142,11 +1142,20 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "format.iconSet", label: "Icon Sets", params: ["range"], optional: ["icons"], journaled: true,
+    // An icon set: its icons, the two thresholds (high, middle: percent of
+    // the way from lowest to highest, 67 and 33, by Excel's default) and
+    // how they read (by= percent, percentile or number), reversed, icons
+    // only (showValue=0).
+    id: "format.iconSet", label: "Icon Sets", params: ["range"], optional: ["icons", "thresholds", "by", "reverse", "showValue", "stop"], journaled: true,
     run: (wb, p) => {
       const icons = (p.icons ?? "arrows").toLowerCase();
       if (!(icons in ICONS)) refuse(`${p.icons} is not an icon set (${Object.keys(ICONS).join(", ")})`);
-      return addRule(wb, { kind: "iconSet", range: rangeOf(p.range), icons: icons as IconSet });
+      const by = (p.by ?? "percent").trim().toLowerCase() as Threshold;
+      if (!THRESHOLDS.includes(by)) refuse(`${p.by} is not a threshold type (${THRESHOLDS.join(", ")})`);
+      const ts = p.thresholds === undefined ? undefined : p.thresholds.split(",").map((t) => Number(t.trim()));
+      if (ts && (ts.length !== 2 || ts.some((t) => !isFinite(t)) || ts[0] < ts[1])) refuse(`${p.thresholds} is not two thresholds, the higher first (67,33)`);
+      return addRule(wb, { kind: "iconSet", range: rangeOf(p.range), icons: icons as IconSet, ...(ts ? { thresholds: [ts[0], ts[1]] as [number, number] } : {}),
+        ...(by !== "percent" ? { by } : {}), ...(flag(p.reverse) ? { reverse: true } : {}), ...(p.showValue !== undefined && !flag(p.showValue) ? { iconOnly: true } : {}) }, p);
     },
   },
   {
@@ -1348,11 +1357,20 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "format.dataBar", label: "Data Bars", params: ["range"], optional: ["color"], journaled: true,
+    // Data bars: a colour, a solid fill (fill=solid) or Excel's gradient
+    // (the grid draws both solid), the bar only (showValue=0), and the
+    // shortest and longest bar's numbers (min=, max=; automatic otherwise).
+    id: "format.dataBar", label: "Data Bars", params: ["range"], optional: ["color", "fill", "showValue", "min", "max", "stop"], journaled: true,
     run: (wb, p) => {
       const color = (p.color ?? "#638ec6").toLowerCase();
       if (!/^#[0-9a-f]{6}$/.test(color)) refuse(`${p.color} is not a colour (#rrggbb)`);
-      return addRule(wb, { kind: "dataBar", range: rangeOf(p.range), color });
+      const fill = (p.fill ?? "gradient").trim().toLowerCase();
+      if (fill !== "gradient" && fill !== "solid") refuse(`${p.fill} is not a fill (gradient, solid)`);
+      const end = (v: string | undefined, what: string) => (v === undefined || /^\s*(auto|automatic)?\s*$/i.test(v) ? undefined : isFinite(Number(v)) ? Number(v) : refuse(`${v} is not a number for the ${what}`));
+      const min = end(p.min, "shortest bar"), max = end(p.max, "longest bar");
+      if (min !== undefined && max !== undefined && min >= max) refuse(`the shortest bar's number (${min}) must be below the longest's (${max})`);
+      return addRule(wb, { kind: "dataBar", range: rangeOf(p.range), color, ...(fill === "solid" ? { solid: true } : {}), ...(p.showValue !== undefined && !flag(p.showValue) ? { barOnly: true } : {}),
+        ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) }, p);
     },
   },
   { id: "rows.hide", label: "Hide Rows", params: ["range"], journaled: true, run: hiding(true, true) },

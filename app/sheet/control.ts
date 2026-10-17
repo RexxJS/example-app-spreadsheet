@@ -88,6 +88,8 @@ function cell(a: unknown, fn: string) {
   return at;
 }
 // A REXX stem: {0: count, 1: first, ...}.
+// "a=1;b=two" as { a: "1", b: "two" }.
+const pairs = (a: unknown): Record<string, string> => Object.fromEntries(text(a).split(";").map((x) => x.trim()).filter((x) => x.includes("=")).map((x) => [x.slice(0, x.indexOf("=")).trim(), x.slice(x.indexOf("=") + 1).trim()]));
 const stem = (xs: readonly unknown[]): Record<string, unknown> => Object.fromEntries([[0, xs.length], ...xs.map((x, i) => [i + 1, x])]);
 const unstem = (v: unknown): unknown[] => {
   if (Array.isArray(v)) return v;
@@ -288,6 +290,7 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const k = text(kind).trim().toLowerCase(), a = text(arg), range = text(r);
     const st = text(style).trim() ? { style: text(style) } : {};
     const run = (id: string, ps: Record<string, string>) => must(exec, id, { range, ...ps, ...st });
+    if (k === "databar" || k === "iconset") return (await must(exec, k === "databar" ? "format.dataBar" : "format.iconSet", { range, ...(a.trim() ? { [k === "databar" ? "color" : "icons"]: a } : {}), ...pairs(style) })).message;
     const done = await (
       k === "formula" ? run("format.formulaRule", { formula: a })
       : k === "blanks" || k === "noblanks" ? run("format.blanks", k === "noblanks" ? { not: "1" } : {})
@@ -299,6 +302,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
       : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
     return done.message;
   },
+  // Data bars and icon sets with Excel's options, as name=value pairs:
+  // ADDDATABAR("B1:B9", "#638ec6", "fill=solid;showValue=0;min=0;max=100"),
+  // ADDICONSET("C1:C9", "arrows", "thresholds=80,50;by=percentile;reverse=1;showValue=0").
+  ADDDATABAR: async (exec, r, c, opts) => (await must(exec, "format.dataBar", { range: text(r), ...(text(c).trim() ? { color: text(c) } : {}), ...pairs(opts) })).message,
+  ADDICONSET: async (exec, r, icons, opts) => (await must(exec, "format.iconSet", { range: text(r), ...(text(icons).trim() ? { icons: text(icons) } : {}), ...pairs(opts) })).message,
   LISTRULES: async (exec) => stem((await must(exec, "format.rules")).output as string[]),
   DELETERULE: async (exec, n) => (await must(exec, "format.deleteRule", { index: text(n) })).message,
   MOVERULE: async (exec, n, to) => (await must(exec, "format.moveRule", { index: text(n), to: text(to) })).message,

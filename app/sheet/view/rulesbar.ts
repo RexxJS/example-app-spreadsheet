@@ -5,7 +5,8 @@
 // text that begins or ends with the field's, a formula's rule (the field's
 // formula), blanks, errors, a date occurring (the field's period: today,
 // thisWeek ...), and Manage Rules' Move up and Stop if true (the field's
-// rule number); and the sheet's rules listed, the first one winning.
+// rule number); data bars solid with no value shown, icons reversed;
+// and the sheet's rules listed, the first one winning.
 import type { SheetView } from "./view.ts";
 
 export function rulesBar(v: SheetView): void {
@@ -38,6 +39,8 @@ export function rulesBar(v: SheetView): void {
     v.btn("Date occurring", () => added(v.run("format.datePeriod", { range: v.range(), period: value.value || "today" })));
     v.btn("Move rule up", () => added(v.run("format.moveRule", { index: value.value, to: String(Math.max(1, Number(value.value) - 1)) })));
     v.btn("Stop if true", () => added(v.run("format.stopIfTrue", { index: value.value })));
+    v.btn("Solid bars only", () => added(v.run("format.dataBar", { range: v.range(), fill: "solid", showValue: "0" })));
+    v.btn("Icons reversed", () => added(v.run("format.iconSet", { range: v.range(), reverse: "1" })));
   });
   bind(ui.text_wrapped("", 720), listed);
 }

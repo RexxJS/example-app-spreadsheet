@@ -1461,6 +1461,22 @@ main() {
             spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#c6efce\"", 40), "the first rule, stopping the formula's")
             g.command("view.panel name=none")
         }
+        spec.it("data bars with the bar only, and icons reversed, from the Rules panel") callback {
+            g.command("cell.set cell=C1 input=2")
+            g.command("cell.set cell=C2 input=4")
+            g.command("view.panel name=rules")
+            g.command("view.select range=C1:C2")
+            b.click("Solid bars only")
+            spec.assert_true(b.wait_for_console("sheet: C1:C2: data bars #638ec6 solid, bar only"), "added")
+            g.command("view.select range=E5")
+            spec.assert_true(g.wait_cell("C", 1, ""), "the value not shown")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("C", 1)}", "\"bar\":\"0.50\"", 40), "half the longest bar")
+            g.command("view.select range=C1:C2")
+            b.click("Icons reversed")
+            g.command("view.select range=E5")
+            spec.assert_true(g.wait_cell("C", 2, "↓"), "the highest gets the down arrow, its value still hidden")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

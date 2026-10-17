@@ -800,8 +800,8 @@ export class Workbook {
   // rule gives it one), or with Show Formulas on, its input.
   textOf(key: string): string {
     if (this.showFormulas) return this.sheet.input(key);
-    const icon = this.#marks.get(key)?.icon, text = this.#shown(this.#active, key);
-    return icon ? `${icon} ${text}` : text;
+    const mark = this.#marks.get(key), icon = mark?.icon, text = mark?.hide ? "" : this.#shown(this.#active, key);
+    return icon ? (text ? `${icon} ${text}` : icon) : text;
   }
 
   #shown(page: Page, key: string): string {
