@@ -1804,6 +1804,32 @@ main() {
             g.pick("D", 9)
             spec.assert_true(wait_one_box(), "after split and unsplit, one box (${cursor_boxes()})")
         }
+        spec.it("the formula bar's row: Name Box, fx, the formula taking the rest of the row and growing with the window, R1C1") callback {
+            nb = g.field("cell")
+            fx = uidriver.widget_id_of("text", "fx")
+            fb = g.formula_field()
+            r1 = uidriver.widget_id_last_of("button", "R1C1")
+            xs = [uidriver.widget_int_field_by_id(nb, "x"), uidriver.widget_int_field_by_id(fx, "x"), uidriver.widget_int_field_by_id(fb, "x"), uidriver.widget_int_field_by_id(r1, "x")]
+            spec.assert_true(xs[0] < xs[1] && xs[1] < xs[2] && xs[2] < xs[3], "in order: Name Box, fx, formula, R1C1")
+            ws = [uidriver.widget_int_field_by_id(nb, "w"), uidriver.widget_int_field_by_id(fx, "w"), uidriver.widget_int_field_by_id(fb, "w"), uidriver.widget_int_field_by_id(r1, "w")]
+            spec.assert_true(ws[0] >= 60 && ws[1] >= 8 && ws[3] >= 30, "none collapsed (${ws[0]}, ${ws[1]}, ${ws[3]})")
+            row = (xs[3] + ws[3]) - xs[0]
+            spec.assert_true(ws[2] > row - ws[0] - ws[1] - ws[3] - 60, "the formula most of the row (${ws[2]} of ${row})")
+            uidriver.post_ok("/window/resize?w=1100&h=900", "a window 1100 wide")
+            sleep(400)
+            narrow = uidriver.widget_int_field_by_id(fb, "w")
+            spec.assert_true(narrow > 400, "still most of the row at 1100 (${narrow})")
+            uidriver.post_ok("/window/resize?w=1600&h=900", "a wider window")
+            grown = 0
+            k = 0
+            while k < 40 && grown == 0 {
+                if uidriver.widget_int_field_by_id(fb, "w") > narrow + 300 { grown = 1 }
+                sleep(50)
+                k = k + 1
+            }
+            spec.assert_eq(grown, 1, "the formula field grows with the window (from ${narrow})")
+            spec.assert_true(uidriver.widget_int_field_by_id(nb, "w") <= ws[0] + 4, "the Name Box stays")
+        }
     }
     return spec.run_summary(fw)
 }

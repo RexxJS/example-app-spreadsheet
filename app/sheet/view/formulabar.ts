@@ -16,6 +16,12 @@ export function formulaBar(v: SheetView): void {
     const cell = ui.tooltip(bind(ui.textfield("cell", () => {}), v.address), "Name Box: a cell, or a name, to go to");
     ui.text("fx");
     const formula = ui.tooltip(bind(ui.textfield("formula", () => {}), v.input), "Formula bar: Return sets the cell");
+    // The Name Box as wide as an address or a name, the formula taking the
+    // rest of the row and growing with the window (sae's set_width and
+    // fill_width): left to the stack, the two shared it and the formula
+    // came out a few pixels wide.
+    ui.set_width(cell, 110);
+    ui.fill_width(formula);
     ui.on_submit(cell, async () => {
       const name = v.address.value.trim().toUpperCase(), named = v.wb.sheet.named(name);
       if (!named) return ui.focus(formula);
