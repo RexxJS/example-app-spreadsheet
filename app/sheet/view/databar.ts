@@ -2,12 +2,14 @@
 // Goal Seek (the selected formula to the goal, by changing a cell), Data
 // Table (the selection, with a row input, a column input, or both), Remove
 // Duplicates, Text to Columns (split at the delimiter, a comma by default);
-// Custom Sort (the sort keys field's, "B desc, C asc", the first row a
+// The outline: Group and Ungroup rows (or columns), Hide and Show Detail,
+// the level buttons, and Subtotal (at each change in the selection's first
+// column, a sum of its last); Custom Sort (the sort keys field's, "B desc, C asc", the first row a
 // header) and Advanced Filter (the criteria range field's) over the
 // selection; and for the table the selected cell is in, Table Design's Total Row and
 // Banded Rows (each on, or off when it has it) and Convert to Range.
 import type { SheetView } from "./view.ts";
-import { addrOf } from "../address.ts";
+import { addrOf, colName } from "../address.ts";
 
 // The table the selected cell is in, by name, or "" (the command refuses).
 function tableHere(v: SheetView): string {
@@ -37,6 +39,21 @@ export function dataBar(v: SheetView): void {
     v.btn("Custom sort", () => v.run("data.sort", { range: v.range(), keys: keys.value, headers: "1" }));
     bind(ui.textfield("criteria range", () => {}), criteria);
     v.btn("Advanced filter", () => v.run("data.advancedFilter", { range: v.range(), criteria: criteria.value }));
+  });
+  ui.hstack(() => {
+    v.btn("Group rows", () => v.run("outline.group", { range: v.range(), axis: "rows" }));
+    v.btn("Ungroup rows", () => v.run("outline.ungroup", { range: v.range(), axis: "rows" }));
+    v.btn("Group columns", () => v.run("outline.group", { range: v.range(), axis: "columns" }));
+    v.btn("Hide detail", () => v.run("outline.hideDetail", { range: v.range(), axis: "rows" }));
+    v.btn("Show detail", () => v.run("outline.showDetail", { range: v.range(), axis: "rows" }));
+    v.btn("Outline level 1", () => v.run("outline.level", { level: "1" }));
+    v.btn("Outline level 2", () => v.run("outline.level", { level: "2" }));
+    v.btn("All levels", () => v.run("outline.level", { level: "8" }));
+    v.btn("Subtotal", () => {
+      const s = v.selection();
+      if (!s) return;
+      return v.run("data.subtotal", { range: v.range(), by: colName(Math.min(s[0].col, s[1].col)), columns: colName(Math.max(s[0].col, s[1].col)) });
+    });
   });
   ui.hstack(() => {
     v.btn("Total row", () => v.run("table.totals", { name: tableHere(v), ...(v.wb.sheet.table(tableHere(v))?.totals ? { on: "0" } : {}) }));

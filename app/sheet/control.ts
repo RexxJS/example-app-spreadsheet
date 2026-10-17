@@ -307,6 +307,19 @@ export const CONTROL: Readonly<Record<string, Control>> = {
       : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
     return done.message;
   },
+  // The outline: GROUPROWS(2, 9), UNGROUPROWS(2, 9), GROUPCOLUMNS("B",
+  // "D"), UNGROUPCOLUMNS; SHOWOUTLINELEVEL(1), (2, "columns"); HIDEDETAIL(3),
+  // SHOWDETAIL(3) (a row, or a column's letter); CLEAROUTLINE(); and
+  // SUBTOTALS("A1:C20", "A", "C", "sum").
+  GROUPROWS: async (exec, a, b) => (await must(exec, "outline.group", { range: `${row(a, "GROUPROWS")}:${b === undefined || text(b).trim() === "" ? row(a, "GROUPROWS") : row(b, "GROUPROWS")}`, axis: "rows" })).message,
+  UNGROUPROWS: async (exec, a, b) => (await must(exec, "outline.ungroup", { range: `${row(a, "UNGROUPROWS")}:${b === undefined || text(b).trim() === "" ? row(a, "UNGROUPROWS") : row(b, "UNGROUPROWS")}`, axis: "rows" })).message,
+  GROUPCOLUMNS: async (exec, a, b) => (await must(exec, "outline.group", { range: `${col(a, "GROUPCOLUMNS")}:${b === undefined || text(b).trim() === "" ? col(a, "GROUPCOLUMNS") : col(b, "GROUPCOLUMNS")}`, axis: "columns" })).message,
+  UNGROUPCOLUMNS: async (exec, a, b) => (await must(exec, "outline.ungroup", { range: `${col(a, "UNGROUPCOLUMNS")}:${b === undefined || text(b).trim() === "" ? col(a, "UNGROUPCOLUMNS") : col(b, "UNGROUPCOLUMNS")}`, axis: "columns" })).message,
+  SHOWOUTLINELEVEL: async (exec, n, axis) => (await must(exec, "outline.level", { level: text(n), ...(text(axis).trim() ? { axis: text(axis) } : {}) })).message,
+  HIDEDETAIL: async (exec, at) => (await must(exec, "outline.hideDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "HIDEDETAIL")}:${col(at, "HIDEDETAIL")}`, axis: "columns" })).message,
+  SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
+  CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
+  SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
   // Advanced Filter: ADVANCEDFILTER("A1:D20", "F1:G3") in place, or
   // ("A1:D20", "F1:G3", "I1", 1) copied to I1, each record once.
   ADVANCEDFILTER: async (exec, r, c, to, unique) => (await must(exec, "data.advancedFilter", { range: text(r), criteria: text(c), ...(text(to).trim() ? { copyTo: text(to) } : {}), ...(yes(unique) ? { unique: "1" } : {}) })).message,

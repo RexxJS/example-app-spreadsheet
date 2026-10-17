@@ -48,6 +48,7 @@ export interface FileSheet {
   readonly view: {
     readonly hiddenRows: readonly number[]; readonly hiddenCols: readonly number[]; readonly frozenRows: number; readonly frozenCols: number;
     readonly rowHeights: readonly [number, number][]; readonly colWidths: readonly [number, number][];
+    readonly rowLevels: readonly [number, number][]; readonly colLevels: readonly [number, number][];
     readonly filter: Filter | null;
     readonly tabColor: string | null;
     readonly hidden: boolean;
@@ -145,6 +146,7 @@ function viewOf(v: any): FileSheet["view"] {
   return { hiddenRows: indexes(v?.hiddenRows), hiddenCols: indexes(v?.hiddenCols), frozenRows: Number.isInteger(v?.frozenRows) && v.frozenRows > 0 ? v.frozenRows : 0,
     frozenCols: Number.isInteger(v?.frozenCols) && v.frozenCols > 0 ? v.frozenCols : 0,
     rowHeights: sizes(v?.rowHeights), colWidths: sizes(v?.colWidths), filter,
+    rowLevels: sizes(v?.rowLevels).filter(([, l]) => l <= 8), colLevels: sizes(v?.colLevels).filter(([, l]) => l <= 8),
     tabColor: /^#[0-9a-f]{6}$/i.test(String(v?.tabColor ?? "")) ? String(v.tabColor).toLowerCase() : null, hidden: v?.hidden === true };
 }
 
@@ -258,6 +260,7 @@ const up = (a: number, b: number) => a - b;
 const viewIn = (page: Page) => ({
   hiddenRows: [...page.hiddenRows].sort(up), hiddenCols: [...page.hiddenCols].sort(up), frozenRows: page.frozen, ...(page.frozenCols ? { frozenCols: page.frozenCols } : {}),
   rowHeights: [...page.heights].sort(([a], [b]) => a - b), colWidths: [...page.widths].sort(([a], [b]) => a - b),
+  ...(page.rowLevels.size ? { rowLevels: [...page.rowLevels].sort(([a], [b]) => a - b) } : {}), ...(page.colLevels.size ? { colLevels: [...page.colLevels].sort(([a], [b]) => a - b) } : {}),
   // The filter's rows are worked out again when the file is opened.
   ...(page.filter ? { filter: { range: rangeName(page.filter.range), column: colName(page.filter.column), criterion: page.filter.criterion } } : {}),
   ...(page.tabColor ? { tabColor: page.tabColor } : {}), ...(page.hiddenSheet ? { hidden: true } : {}),

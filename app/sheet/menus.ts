@@ -75,6 +75,8 @@ export const MENUS: readonly Menu[] = [
     i("Allow list", "validation.set"), i("Allow whole numbers", "validation.set"), i("Allow decimals", "validation.set"), i("Allow length", "validation.set"), i("Allow dates", "validation.set"), i("Allow times", "validation.set"), i("Allow custom", "validation.set"), i("Allow pattern", "validation.set"),
     i("Clear rule", "validation.clear"), i("Circle invalid", "validation.circle"), "-",
     i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"), i("Flash fill", "data.flashFill", "Ctrl+E"), "-",
+    i("Group rows", "outline.group"), i("Ungroup rows", "outline.ungroup"), i("Group columns", "outline.group"), i("Hide detail", "outline.hideDetail"), i("Show detail", "outline.showDetail"),
+    i("Outline level 1", "outline.level"), i("Outline level 2", "outline.level"), i("All levels", "outline.level"), i("Subtotal", "data.subtotal"), "-",
     i("Total row", "table.totals"), i("Banded rows", "table.banding"), i("Convert to range", "table.toRange"),
   ] },
   { label: "Formulas", items: [
@@ -107,7 +109,7 @@ export const NOT_IN_MENUS: Readonly<Record<string, string>> = {
   "pivot.create": "a script's", "pivot.update": "a script's", "pivot.delete": "a script's", "pivot.get": "a getter", "pivot.list": "a getter",
   "chart.list": "a getter", "chart.delete": "a chart's own button", "formulas.calculate": "a script's (EVALUATE)",
   "formulas.ignoreError": "a finding's own button", "setup.get": "a getter", "setup.set": "a script's",
-  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)", "view.selection": "a getter (GETSELECTION)", "view.select": "the grid, and SELECTRANGE", "range.stats": "the status bar shows it", "formulas.cycleRef": "F4 in the formula bar", "sheet.lastCell": "Ctrl+End", "keys.list": "a getter (LISTKEYS)", "formulas.complete": "the formula bar's hints", "format.preview": "a script's (FORMATVALUE)", "table.calculatedColumn": "a script's (SETCALCULATEDCOLUMN)",
+  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)", "view.selection": "a getter (GETSELECTION)", "view.select": "the grid, and SELECTRANGE", "range.stats": "the status bar shows it", "formulas.cycleRef": "F4 in the formula bar", "sheet.lastCell": "Ctrl+End", "keys.list": "a getter (LISTKEYS)", "formulas.complete": "the formula bar's hints", "format.preview": "a script's (FORMATVALUE)", "table.calculatedColumn": "a script's (SETCALCULATEDCOLUMN)", "outline.clear": "a script's (CLEAROUTLINE)",
 };
 
 // Each item as a line: "File > Save | file.save | Ctrl+S".

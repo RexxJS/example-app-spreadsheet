@@ -1552,6 +1552,23 @@ main() {
             spec.assert_true(g.wait_cell("B", 1, "5"), "5 is kept")
             g.command("view.panel name=none")
         }
+        spec.it("Subtotal from the Data panel, then the outline's level 2: only the totals") callback {
+            g.command("sheet.add name=Subs")
+            g.command("formulas.use language=Excel")
+            g.script("LET r = SETCELL('A1', 'Region'); LET r = SETCELL('B1', 'Sales'); LET r = SETCELL('A2', 'north'); LET r = SETCELL('B2', 4); LET r = SETCELL('A3', 'north'); LET r = SETCELL('B3', 6); LET r = SETCELL('A4', 'south'); LET r = SETCELL('B4', 5)")
+            spec.assert_true(g.wait_cell("B", 4, "5"), "the list")
+            g.command("view.panel name=data")
+            g.command("view.select range=A1:B4")
+            b.click("Subtotal")
+            spec.assert_true(g.wait_cell("A", 4, "north Total"), "a total under north")
+            spec.assert_true(g.wait_cell("B", 4, "10"), "its sum")
+            spec.assert_true(g.wait_cell("B", 7, "15"), "the grand total")
+            b.click("Outline level 2")
+            spec.assert_true(b.wait_for_console("sheet: outline level 2: 3 rows hidden"), "the detail hidden")
+            b.click("All levels")
+            spec.assert_true(b.wait_for_console("sheet: outline level 8: 0 rows hidden"), "and shown")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

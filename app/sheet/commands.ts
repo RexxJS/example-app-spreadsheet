@@ -36,6 +36,7 @@ import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from ".
 import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
 import { BAND, bandedKeys } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
+import { MOST_LEVELS, SUBTOTAL_FUNCTIONS, depth, detailOf, hiddenAtLevel, regrouped, runs } from "./outline.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows, sortedRowsBy } from "./sortfind.ts";
 import type { SortKey } from "./sortfind.ts";
 import { distinctRows, secant, splitText } from "./whatif.ts";
@@ -209,6 +210,8 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.hiddenSheet = s.view.hidden;
     page.heights = new Map(s.view.rowHeights);
     page.widths = new Map(s.view.colWidths);
+    page.rowLevels = new Map(s.view.rowLevels);
+    page.colLevels = new Map(s.view.colLevels);
     page.autoId = s.autoId;
     page.pivots = new Map(s.pivots);
     page.merges = s.merges.map((m) => parseRange(m)!);
@@ -323,6 +326,13 @@ async function reshaped(wb: Workbook, axis: "row" | "col" | null, editOf: (moves
     const to = edit.range(t.range[0], t.range[1], still, still);
     if (!to || rangeName(to) !== rangeName(t.range) || axis) await wb.sheet.defineTable(t.name, to ? { ...t, range: to, sort: undefined } : null);
   }
+  // Outline levels move with their rows (columns), and go with deleted ones.
+  const levelsMoved = (m: Map<number, number>, row: boolean) => new Map([...m].flatMap(([i, l]): [number, number][] => {
+    const to = edit.cell(row ? { col: 0, row: i } : { col: i, row: 0 }, still);
+    return to ? [[row ? to.row : to.col, l]] : [];
+  }));
+  if (axis === "row") page.rowLevels = levelsMoved(page.rowLevels, true);
+  if (axis === "col") page.colLevels = levelsMoved(page.colLevels, false);
   if (axis === "row") {
     page.heights = new Map([...page.heights].flatMap(([row, h]): [number, number][] => {
       const to = edit.cell({ col: 0, row }, still);
@@ -395,6 +405,39 @@ function sort(ascending: boolean) {
     const entries = rearranging(wb, r, sortedRows(wb.sheet, r[0], r[1], by - left, ascending));
     return setting(wb, entries, `sorted ${named(r)} by ${colName(by)}, ${ascending ? "ascending" : "descending"}`);
   };
+}
+
+// ---- The outline (outline.ts).
+
+// Rows, unless axis=columns (or the range is whole columns, "B:D").
+const axisOf = (p: Params): boolean => {
+  const a = (p.axis ?? "").trim().toLowerCase();
+  if (a && !["rows", "row", "columns", "column", "cols"].includes(a)) refuse(`${p.axis} is not rows or columns`);
+  return a ? a.startsWith("row") : !/^\s*\$?[A-Za-z]{1,3}\s*:\s*\$?[A-Za-z]{1,3}\s*$/.test(p.range ?? "");
+};
+
+async function outlined(wb: Workbook, p: Params, by: 1 | -1): Promise<Outcome> {
+  const rows = axisOf(p), page = wb.page(wb.active)!, { at, said } = spanOf(rangeOf(p.range), rows);
+  const was = rows ? page.rowLevels : page.colLevels;
+  if (by > 0 && at.some((i) => (was.get(i) ?? 0) >= MOST_LEVELS)) refuse(`an outline has ${MOST_LEVELS} levels at most`);
+  if (by < 0 && at.every((i) => !was.get(i))) refuse(`${said} ${at.length === 1 ? "is" : "are"} not grouped`);
+  const next = regrouped(was, at[0], at[at.length - 1], by);
+  if (rows) page.rowLevels = next; else page.colLevels = next;
+  // Ungrouped lines no outline hides any more are shown.
+  if (by < 0) for (const i of at) if (!next.get(i)) (rows ? page.hiddenRows : page.hiddenCols).delete(i);
+  if (rows) await wb.hiddenChanged();
+  return changedBy(wb, wb.sheet.keys(), `${by > 0 ? "grouped" : "ungrouped"} ${said}: ${depth(next)} level${depth(next) === 1 ? "" : "s"}`);
+}
+
+async function detail(wb: Workbook, p: Params, hide: boolean): Promise<Outcome> {
+  const rows = axisOf(p), page = wb.page(wb.active)!, { at } = spanOf(rangeOf(p.range), rows);
+  const lines = detailOf(rows ? page.rowLevels : page.colLevels, at[0]);
+  if (!lines.length) refuse(`${rows ? `row ${at[0] + 1}` : `column ${colName(at[0])}`} is in no group`);
+  const set = rows ? page.hiddenRows : page.hiddenCols;
+  for (const i of lines) if (hide) set.add(i); else set.delete(i);
+  if (rows) await wb.hiddenChanged();
+  const name = (i: number) => (rows ? String(i + 1) : colName(i));
+  return changedBy(wb, wb.sheet.keys(), `${hide ? "hid" : "showed"} the detail ${name(lines[0])} to ${name(lines[lines.length - 1])}`);
 }
 
 // A rectangle's rows put in an order (the row each place takes its cells
@@ -1113,6 +1156,81 @@ const SPECS: readonly Spec[] = [
         }
       });
       return setting(wb, entries, `copied ${picked.length} record${picked.length === 1 ? "" : "s"} of ${named(r)} to ${keyOf(to)}`);
+    },
+  },
+  {
+    // Group: the rows (columns) of a range a level deeper in the outline,
+    // up to 8; axis=columns for columns ("B:D" is columns of itself).
+    id: "outline.group", label: "Group", params: ["range"], optional: ["axis"], journaled: true,
+    run: (wb, p) => outlined(wb, p, 1),
+  },
+  { id: "outline.ungroup", label: "Ungroup", params: ["range"], optional: ["axis"], journaled: true, run: (wb, p) => outlined(wb, p, -1) },
+  {
+    // The outline's buttons: show levels 1 to n, the deeper rows (columns)
+    // hidden; a level past the deepest shows them all.
+    id: "outline.level", label: "Show Outline Level", params: ["level"], optional: ["axis"], journaled: true,
+    run: async (wb, p) => {
+      const rows = axisOf(p), page = wb.page(wb.active)!, levels = rows ? page.rowLevels : page.colLevels, n = Number(p.level);
+      if (!Number.isInteger(n) || n < 1 || n > MOST_LEVELS) refuse(`${p.level} is not an outline level (1 to ${MOST_LEVELS})`);
+      const set = rows ? page.hiddenRows : page.hiddenCols, hide = new Set(hiddenAtLevel(levels, n));
+      for (const i of levels.keys()) if (hide.has(i)) set.add(i); else set.delete(i);
+      if (rows) await wb.hiddenChanged();
+      return changedBy(wb, wb.sheet.keys(), `outline level ${n}: ${hide.size} ${rows ? "row" : "column"}${hide.size === 1 ? "" : "s"} hidden`);
+    },
+  },
+  {
+    // Hide Detail and Show Detail: the group the range's first row (column)
+    // is in, at its own level.
+    id: "outline.hideDetail", label: "Hide Detail", params: ["range"], optional: ["axis"], journaled: true, run: (wb, p) => detail(wb, p, true),
+  },
+  { id: "outline.showDetail", label: "Show Detail", params: ["range"], optional: ["axis"], journaled: true, run: (wb, p) => detail(wb, p, false) },
+  {
+    // Clear Outline: no levels left, what they hid shown.
+    id: "outline.clear", label: "Clear Outline", params: [], optional: ["axis"], journaled: true,
+    run: async (wb, p) => {
+      const rows = axisOf(p), page = wb.page(wb.active)!, levels = rows ? page.rowLevels : page.colLevels, set = rows ? page.hiddenRows : page.hiddenCols;
+      for (const i of levels.keys()) set.delete(i);
+      if (rows) page.rowLevels = new Map(); else page.colLevels = new Map();
+      if (rows) await wb.hiddenChanged();
+      return changedBy(wb, wb.sheet.keys(), `${rows ? "rows'" : "columns'"} outline cleared`);
+    },
+  },
+  {
+    // Excel's Subtotal: a sorted list (its first row the header) gains a
+    // row under each run of one value in by=, "<value> Total" and
+    // SUBTOTAL(function, the run) in each of columns=, then a Grand Total;
+    // the outline in three levels (show level 2: the totals only).
+    id: "data.subtotal", label: "Subtotal", params: ["range", "by", "columns"], optional: ["function"], journaled: true,
+    run: async (wb, p) => {
+      if (wb.sheet.language.name !== "Excel") refuse("Subtotal writes SUBTOTAL formulas: Excel formulas only");
+      const r = rangeOf(p.range), page = wb.page(wb.active)!;
+      const left = Math.min(r[0].col, r[1].col), right = Math.max(r[0].col, r[1].col), top = Math.min(r[0].row, r[1].row), bottom = Math.max(r[0].row, r[1].row);
+      const by = columnOf(p.by), fn = (p.function ?? "sum").trim().toLowerCase();
+      if (by < left || by > right) refuse(`${p.by} is not a column of ${named(r)}`);
+      if (!(fn in SUBTOTAL_FUNCTIONS)) refuse(`${p.function} is not a subtotal function (${Object.keys(SUBTOTAL_FUNCTIONS).join(", ")})`);
+      const cols = p.columns.split(",").map((c) => c.trim()).filter((c) => c).map(columnOf);
+      for (const c of cols) if (c < left || c > right) refuse(`${colName(c)} is not a column of ${named(r)}`);
+      if (top >= bottom) refuse(`${named(r)} has no rows under its header`);
+      const groupsOf = runs(top + 1, bottom, (row) => show(wb.sheet.value(keyOf({ col: by, row }))));
+      if (bottom + groupsOf.length + 1 >= ROWS) refuse(`${named(r)}'s subtotals do not fit on the sheet`);
+      // From the last run up, so the rows above stay where they are.
+      for (const [, last] of [...groupsOf].reverse()) await wb.sheet.setMany(await reshaped(wb, "row", (moves) => inserted("row", last + 1, 1, moves)));
+      const entries: [string, string][] = [];
+      const levels = new Map(page.rowLevels);
+      let shift = 0;
+      for (const [first, last, value] of groupsOf) {
+        const a = first + shift, b = last + shift, at = b + 1;
+        entries.push([keyOf({ col: by, row: at }), `${value} Total`]);
+        for (const c of cols) entries.push([keyOf({ col: c, row: at }), `=SUBTOTAL(${SUBTOTAL_FUNCTIONS[fn]},${keyOf({ col: c, row: a })}:${keyOf({ col: c, row: b })})`]);
+        for (let row = a; row <= b; row++) levels.set(row, 2);
+        levels.set(at, 1);
+        shift++;
+      }
+      const end = bottom + shift, grand = end + 1;
+      entries.push([keyOf({ col: by, row: grand }), "Grand Total"]);
+      for (const c of cols) entries.push([keyOf({ col: c, row: grand }), `=SUBTOTAL(${SUBTOTAL_FUNCTIONS[fn]},${keyOf({ col: c, row: top + 1 })}:${keyOf({ col: c, row: end })})`]);
+      page.rowLevels = levels;
+      return setting(wb, entries, `subtotals of ${named(r)} at each change in ${colName(by)}: ${groupsOf.length} groups, ${fn} of ${cols.map(colName).join(", ")}`);
     },
   },
   { id: "data.sortAscending", label: "Sort A to Z", params: ["range", "by"], journaled: true, run: sort(true) },
