@@ -378,6 +378,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SETCALCULATEDCOLUMN: async (exec, n, c, f) => (await must(exec, "table.calculatedColumn", { name: text(n), column: text(c), formula: text(f) })).message,
   SETTABLEBANDING: async (exec, n, on) => (await must(exec, "table.banding", { name: text(n), rows: text(on).trim() === "" || yes(on) ? "1" : "0" })).message,
   TABLETORANGE: async (exec, n) => (await must(exec, "table.toRange", { name: text(n) })).message,
+  // Charts: INSERTCHART("A1:C9", "barStacked", "Sales") (bar, barStacked,
+  // bar100, hbar, hbarStacked, hbar100, line, lineStacked, area,
+  // areaStacked, pie, doughnut, scatter, scatterLines, bubble);
+  // LISTCHARTS(), DELETECHART(n).
+  INSERTCHART: async (exec, r, kind, title) => (await must(exec, "chart.insert", { range: text(r), kind: text(kind) || "bar", ...(text(title).trim() ? { title: text(title) } : {}) })).message,
+  LISTCHARTS: async (exec) => stem((await must(exec, "chart.list")).output as string[]),
+  DELETECHART: async (exec, n) => (await must(exec, "chart.delete", { index: text(n) })).message,
   // A sparkline: INSERTSPARKLINE("A1:A9", "B1", "winloss", "axis").
   INSERTSPARKLINE: async (exec, r, at, type, options) => (await must(exec, "insert.sparkline", { range: text(r), at: text(at), ...(text(type).trim() ? { type: text(type) } : {}), ...(text(options).trim() ? { options: text(options) } : {}) })).message,
   // Data bars and icon sets with Excel's options, as name=value pairs:

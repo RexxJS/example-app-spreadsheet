@@ -1669,6 +1669,24 @@ main() {
             spec.assert_true(g.wait_cell("A", 3, "ink"), "a record a row")
             g.command("view.panel name=none")
         }
+        spec.it("a doughnut and a stacked column chart from the Charts panel, each drawn") callback {
+            g.command("sheet.add name=Kinds")
+            g.script("LET r = SETCELL('A2', 'Q1'); LET r = SETCELL('A3', 'Q2'); LET r = SETCELL('B1', 'N'); LET r = SETCELL('B2', 3); LET r = SETCELL('B3', 1)")
+            spec.assert_true(g.wait_cell("B", 3, "1"), "the data")
+            g.command("view.panel name=chart")
+            g.command("view.select range=A1:B3")
+            b.click("Doughnut chart")
+            spec.assert_true(b.wait_for_text("Chart 1: doughnut chart of A1:B3"), "a doughnut")
+            b.click("Stacked column chart")
+            spec.assert_true(b.wait_for_text("Chart 2: barStacked chart of A1:B3"), "a stacked column")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Q2\"") == 1, "the stacked column's categories drawn")
+            b.click("Delete chart 2")
+            spec.assert_true(b.wait_for_text_gone("Chart 2: barStacked chart of A1:B3"), "deleted")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"75%\"") == 1, "the doughnut's share drawn")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"fill\":\"#ed7d31\"") == 1, "its second slice in the palette")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

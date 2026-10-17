@@ -2214,8 +2214,7 @@ const SPECS: readonly Spec[] = [
   {
     id: "chart.insert", label: "Insert Chart", params: ["kind", "range"], optional: ["title"], journaled: true,
     run: async (wb, p) => {
-      const kind = p.kind.toLowerCase() as ChartKind;
-      if (!CHART_KINDS.includes(kind)) refuse(`${p.kind} is not a chart (${CHART_KINDS.join(", ")})`);
+      const kind = CHART_KINDS.find((k) => k.toLowerCase() === p.kind.trim().toLowerCase()) ?? refuse(`${p.kind} is not a chart (${CHART_KINDS.join(", ")})`);
       const page = wb.page(wb.active)!, r = rangeOf(p.range);
       page.charts.push({ kind, range: r, title: p.title ?? `Chart ${page.charts.length + 1}` });
       return changedBy(wb, [], `inserted a ${kind} chart of ${named(r)}`);

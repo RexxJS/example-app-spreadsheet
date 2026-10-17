@@ -126,7 +126,7 @@ change the specs check through the driver, and REXX loses nothing.
 
 | # | Step | Tests prove | REXX |
 |---|---|---|---|
-| 6.1 | Chart kinds: column/bar clustered, stacked, 100%; line with markers, stacked line; area, stacked area; doughnut; scatter, scatter with lines, bubble | headless `sheet_charts` (the model); spec: drawn, pixels sampled | `INSERTCHART(range, kind)` already? extend |
+| 6.1 | ~~Chart kinds: column/bar clustered, stacked, 100%; line with markers, stacked line; area, stacked area; doughnut; scatter, scatter with lines, bubble~~ (done 2026-10-17: `charts.ts` lays out fifteen kinds: columns (bar) clustered, stacked, 100% stacked; horizontal bars (hbar) the same three; a line with markers and a stacked line; areas and stacked areas (filled paths to the axis or the series under); pie and doughnut (slices with a hole); scatter, scatter with lines (the first column the x), bubble (x, y and size columns, areas as sizes); `chart.insert kind=` any of them, any case; the Charts panel's Stacked column, Horizontal bar, Area, Doughnut and Scatter buttons. Not a line without markers: Excel's plain Line is the marked one here) | headless `sheet_charts` (the model); spec: drawn, pixels sampled | `INSERTCHART(range, kind)` already? extend |
 | 6.2 | Chart titles, axis titles, legend position, data labels, gridlines, switch row/column, Select Data | headless; spec | `SETCHARTOPTION(id, "title", ...)` |
 | 6.3 | Trendlines: linear, exponential, logarithmic, polynomial, power, moving average; equation and R² | headless (the fit against known data); spec: drawn | `ADDTRENDLINE(id, series, "linear")` |
 | 6.4 | Radar, histogram, waterfall, funnel, treemap, sunburst, box-and-whisker, stock, combo (secondary axis) | per kind, a step each | |

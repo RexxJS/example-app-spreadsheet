@@ -58,7 +58,7 @@ await cmds.run("rows.insert at=1");
 eq("rows inserted move what they chart", wb.charts().map((c) => c.range), ["A2:C5", "A3:B5"]);
 eq("saved with the sheet", writeSheetFile(wb).charts, [{ kind: "bar", range: "A2:C5", title: "Sales" }, { kind: "pie", range: "A3:B5", title: "Chart 2" }]);
 eq("chart.delete, and refusals", [await message("chart.delete index=2"), await message("chart.delete index=2"), await message("chart.insert kind=radar range=A1:B2")],
-  ["deleted Chart 2", "no chart 2", "radar is not a chart (bar, line, pie)"]);
+  ["deleted Chart 2", "no chart 2", "radar is not a chart (bar, barStacked, bar100, hbar, hbarStacked, hbar100, line, lineStacked, area, areaStacked, pie, doughnut, scatter, scatterLines, bubble)"]);
 eq("insert.sparkline: a formula in a cell, in the sheet's language", [await message("insert.sparkline range=B3:B5 at=D3"), wb.sheet.input("D3"), show(wb.sheet.value("D3"))],
   ["D3 = █▁▃", "=SPARKLINE(B3:B5)", "█▁▃"]);
 await cmds.run("formulas.use language=RexxJS");
