@@ -77,6 +77,10 @@ function documentsRow(v: SheetView): void {
         await v.run("file.importXlsx", { base64: await d.read_base64(), name: d.name });
         return;
       }
+      if (/\.xls$/i.test(d.name)) {
+        await v.run("file.importXls", { base64: await d.read_base64(), name: d.name });
+        return;
+      }
       if (/\.ods$/i.test(d.name)) {
         await v.run("file.importOds", { base64: await d.read_base64(), name: d.name });
         return;

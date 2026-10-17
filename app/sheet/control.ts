@@ -328,6 +328,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // XLSX: OPENXLSX(base64, "Book.xlsx") opens one; FILEREPORT() a stem of
   // what it held that the app left out.
   OPENXLSX: async (exec, b64, n) => (await must(exec, "file.importXlsx", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  // OPENXLS(base64, "Book.xls"): an Excel 97-2003 workbook.
+  OPENXLS: async (exec, b64, n) => (await must(exec, "file.importXls", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
   // OPENODS(base64, "Book.ods"): an ODS file's tables, their cached values.
   OPENODS: async (exec, b64, n) => (await must(exec, "file.importOds", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
   // SAVEXLSX(): the workbook as an XLSX file, its bytes in base64.
