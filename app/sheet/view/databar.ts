@@ -61,5 +61,6 @@ export function dataBar(v: SheetView): void {
     v.btn("Total row", () => v.run("table.totals", { name: tableHere(v), ...(v.wb.sheet.table(tableHere(v))?.totals ? { on: "0" } : {}) }));
     v.btn("Banded rows", () => v.run("table.banding", { name: tableHere(v), rows: v.wb.sheet.table(tableHere(v))?.banded ? "0" : "1" }));
     v.btn("Convert to range", () => v.run("table.toRange", { name: tableHere(v) }));
+    for (const style of ["Light", "Medium", "Green", "Orange"]) v.btn(`Table style ${style}`, () => v.run("table.style", { name: tableHere(v), style }));
   });
 }

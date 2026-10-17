@@ -23,6 +23,9 @@ import { describe, show } from "./format.ts";
 import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
 import type { Language, TableDef } from "./language.ts";
 import { dataRows } from "./structured.ts";
+import { CELL_STYLES, TABLE_STYLES, under } from "./styles.ts";
+import { resolved } from "./themes.ts";
+import type { Look } from "./formats.ts";
 import { CellNotes } from "./notes.ts";
 import type { Note } from "./notes.ts";
 import { RexxLanguage } from "./rexx.ts";
@@ -163,6 +166,7 @@ interface Saved {
   readonly active: Page;
   readonly name: string;
   readonly setupScript: string;
+  readonly styles: ReadonlyMap<string, Look>;
 }
 
 interface SavedPage {
@@ -221,6 +225,9 @@ export function bandedKeys(t: TableDef): string[] {
 }
 
 export class Workbook {
+  // The cell styles by name (styles.ts's gallery, then the workbook's own
+  // and their edits): a cell names one, drawn under its own look.
+  styles = new Map<string, Look>(Object.entries(CELL_STYLES));
   readonly rexx = new RexxLanguage();
   readonly #turns = new Turns();
   // How Excel formulas are shown and typed (a view of them: they are
@@ -456,6 +463,7 @@ export class Workbook {
     this.calculation = AUTOMATIC;
     this.#dateSystem = 1900;
     setDates(1900);
+    this.styles = new Map(Object.entries(CELL_STYLES));
     this.#pending.clear();
     this.#undo.length = 0;
     this.#redo.length = 0;
@@ -466,7 +474,7 @@ export class Workbook {
     return {
       pages: this.#pages.map((p) => ({ page: p, name: p.name, sheet: p.sheet.saved(), notes: p.notes.saved(), view: viewOf(p) })),
       names: new Map(this.#names),
-      active: this.#active, name: this.name, setupScript: this.setupScript,
+      active: this.#active, name: this.name, setupScript: this.setupScript, styles: new Map(this.styles),
     };
   }
 
@@ -553,6 +561,7 @@ export class Workbook {
     this.#active = step.active;
     this.name = step.name;
     this.setupScript = step.setupScript;
+    this.styles = new Map(step.styles);
     let changed: string[] = [];
     for (const s of step.pages) {
       s.page.name = s.name;
@@ -818,9 +827,14 @@ export class Workbook {
     return icon ? (text ? `${icon} ${text}` : icon) : text;
   }
 
+  // A cell's look: its cell style's under its own.
+  lookOf(note: Note): Look | undefined {
+    return under(note.cellStyle ? this.styles.get(note.cellStyle) : undefined, note.look);
+  }
+
   #shown(page: Page, key: string): string {
     const v = page.sheet.value(key), note = page.notes.get(key);
-    const shown = formatted(v, note.format || note.look?.number || "") ?? show(v);
+    const shown = formatted(v, note.format || this.lookOf(note)?.number || "") ?? show(v);
     return note.editor ? drawn(note.editor, v, shown) : shown;
   }
 
@@ -832,7 +846,7 @@ export class Workbook {
     const v = this.sheet.value(key), n = this.notes.get(key);
     const table = this.#tableLook(key);
     const zoomed = this.zoom === 100 ? "" : `font-size: ${Math.round((n.look?.size ?? 13) * this.zoom / 100)}px`;
-    return [typeof v === "number" ? "text-align: end" : "", table, toStyle(n.style), lookStyle(n.look), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
+    return [typeof v === "number" ? "text-align: end" : "", table, toStyle(n.style), lookStyle(this.lookOf(n)), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
       this.#circled.has(key) ? "background: #ffd6d6" : "", v instanceof CellError ? "color: #c0392b" : "",
       n.comment ? "--corner: #d00000" : "", this.#typed.get(key) ?? "", zoomed].filter((p) => p).join("; ");
   }
@@ -843,12 +857,21 @@ export class Workbook {
     const at = addrOf(key);
     if (!at) return "";
     for (const t of this.sheet.tables()) {
-      if (!t.banded && !t.totals) continue;
-      const [a, b] = t.range;
-      if (at.col < Math.min(a.col, b.col) || at.col > Math.max(a.col, b.col) || at.row < Math.min(a.row, b.row) || at.row > Math.max(a.row, b.row)) continue;
-      if (t.totals && at.row === Math.max(a.row, b.row)) return "font-weight: bold; border-top: 1px solid #4472c4";
-      if (t.banded && bandedKeys(t).includes(key)) return `background: ${BAND}`;
-      return "";
+      const [a, b] = t.range, left = Math.min(a.col, b.col), right = Math.max(a.col, b.col), top = Math.min(a.row, b.row), bottom = Math.max(a.row, b.row);
+      if (at.col < left || at.col > right || at.row < top || at.row > bottom) continue;
+      if (!t.banded && !t.totals && !t.style) return "";
+      const st = TABLE_STYLES[t.style ?? "Light"] ?? TABLE_STYLES.Light, line = resolved(st.line), parts: string[] = [];
+      const [d1, d2] = dataRows(t);
+      if (t.headers && at.row === top && t.style) {
+        if (st.header.fill) parts.push(`background: ${resolved(st.header.fill)}`);
+        if (st.header.color) parts.push(`color: ${resolved(st.header.color)}`);
+        parts.push("font-weight: bold", `border-bottom: 1px solid ${line}`);
+      } else if (t.totals && at.row === bottom) parts.push("font-weight: bold", `border-top: 1px solid ${line}`);
+      else if (at.row >= d1 && at.row <= d2) {
+        if ((t.banded && (at.row - d1) % 2 === 0) || (t.bandedColumns && (at.col - left) % 2 === 0)) parts.push(`background: ${resolved(st.band)}`);
+        if ((t.firstColumn && at.col === left) || (t.lastColumn && at.col === right)) parts.push("font-weight: bold");
+      }
+      return parts.join("; ");
     }
     return "";
   }

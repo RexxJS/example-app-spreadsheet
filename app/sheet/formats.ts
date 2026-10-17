@@ -9,6 +9,7 @@
 // italic, underline, strikethrough, a size, wrapped, borders: notes.ts) is
 // set by the format.* commands and drawn by lookStyle.
 import { numberFormat } from "./numfmt.ts";
+import { isRole, resolved } from "./themes.ts";
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 
@@ -64,8 +65,11 @@ export function formatted(v: Value, format: string): string | null {
   return null;
 }
 
+// A colour by name, #rgb or #rrggbb, or a theme's role (accent1 ...),
+// kept as the role so a theme changed re-colours it.
 export function colour(v: string): string | null {
   const c = v.trim().toLowerCase();
+  if (isRole(c)) return c;
   if (/^#[0-9a-f]{6}$/.test(c)) return c;
   if (/^#[0-9a-f]{3}$/.test(c)) return `#${[...c.slice(1)].map((h) => h + h).join("")}`;
   return COLOURS[c] ?? null;
@@ -84,11 +88,11 @@ function declaration(name: string, value: string): string | null {
   switch (name.trim().toLowerCase()) {
     case "background": case "background-color": case "backgroundcolor": case "bg": {
       const c = colour(value);
-      return c && `background: ${c}`;
+      return c && `background: ${resolved(c)}`;
     }
     case "color": case "text-color": {
       const c = colour(value);
-      return c && `color: ${c}`;
+      return c && `color: ${resolved(c)}`;
     }
     case "font-weight": case "fontweight":
       return /^(bold|[7-9]00)$/i.test(value.trim()) ? "font-weight: bold" : null;
@@ -110,7 +114,7 @@ function declaration(name: string, value: string): string | null {
       return /^normal$/i.test(value.trim()) ? "white-space: normal" : null;
     case "border": case "border-top": case "border-right": case "border-bottom": case "border-left": {
       const width = parseFloat(value) || 1, c = colour(value.trim().split(/\s+/).pop() ?? "");
-      return c ? `${name.trim().toLowerCase()}: ${width}px solid ${c}` : null;
+      return c ? `${name.trim().toLowerCase()}: ${width}px solid ${resolved(c)}` : null;
     }
     default:
       return null;
@@ -151,7 +155,7 @@ export interface Look {
 const LINE_WIDTH: Record<string, number> = { thin: 1, hair: 1, dashed: 1, dotted: 1, medium: 2, thick: 3, double: 3 };
 export function borderLine(kept: string): string {
   const [style, c] = kept.includes(" ") ? kept.split(" ") : ["thin", kept];
-  return `${LINE_WIDTH[style] ?? 1}px ${style === "dashed" || style === "dotted" || style === "double" ? style : "solid"} ${c}`;
+  return `${LINE_WIDTH[style] ?? 1}px ${style === "dashed" || style === "dotted" || style === "double" ? style : "solid"} ${resolved(c)}`;
 }
 
 export function lookStyle(look: Look | undefined): string {
@@ -161,7 +165,7 @@ export function lookStyle(look: Look | undefined): string {
   return [
     look.bold ? "font-weight: bold" : "", look.italic ? "font-style: italic" : "", lines ? `text-decoration: ${lines}` : "",
     look.size ? `font-size: ${look.size}px` : "", look.wrap ? "white-space: normal" : "", look.align ? `text-align: ${look.align}` : "",
-    look.fill ? `background: ${look.fill}` : "", look.color ? `color: ${look.color}` : "",
+    look.fill ? `background: ${resolved(look.fill)}` : "", look.color ? `color: ${resolved(look.color)}` : "",
     ...(["top", "right", "bottom", "left"] as const).map((e) => (b[e] ? `border-${e}: ${borderLine(b[e]!)}` : "")),
   ].filter((p) => p).join("; ");
 }

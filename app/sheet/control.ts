@@ -320,6 +320,14 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
   CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
   SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
+  // Cell and table styles: DEFINESTYLE("Money", "bold=1;fill=#e2efda;number=$#,##0.00"),
+  // DEFINESTYLE("Mine", "from=B2"); APPLYSTYLE("B2:B9", "Good"); LISTSTYLES();
+  // DELETESTYLE("Mine"); SETTABLESTYLE("Sales", "Medium", "firstColumn=1;bandedColumns=1").
+  DEFINESTYLE: async (exec, n, look) => (await must(exec, "style.define", { name: text(n), ...pairs(look) })).message,
+  APPLYSTYLE: async (exec, r, n) => (await must(exec, "style.apply", { range: text(r), name: text(n) })).message,
+  DELETESTYLE: async (exec, n) => (await must(exec, "style.delete", { name: text(n) })).message,
+  LISTSTYLES: async (exec) => stem((await must(exec, "style.list")).output as string[]),
+  SETTABLESTYLE: async (exec, n, st, opts) => (await must(exec, "table.style", { name: text(n), ...(text(st).trim() ? { style: text(st) } : {}), ...pairs(opts) })).message,
   // Consolidate: CONSOLIDATE("F1", "Jan!A1:C4,Feb!A1:C4", "sum", "both", 1).
   CONSOLIDATE: async (exec, to, sources, fn, labels, links) => (await must(exec, "data.consolidate", { to: text(to), sources: text(sources), ...(text(fn).trim() ? { function: text(fn) } : {}), ...(text(labels).trim() ? { labels: text(labels) } : {}), ...(yes(links) ? { links: "1" } : {}) })).message,
   // Advanced Filter: ADVANCEDFILTER("A1:D20", "F1:G3") in place, or

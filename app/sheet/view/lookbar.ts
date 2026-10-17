@@ -42,4 +42,8 @@ export function lookBar(v: SheetView): void {
     v.btn("Merge", () => v.run("cells.merge", { range: v.range() }));
     v.btn("Unmerge", () => v.run("cells.unmerge", { range: v.range() }));
   });
+  // Cell Styles: the gallery's commonest, on the selection.
+  ui.hstack(() => {
+    for (const name of ["Normal", "Good", "Bad", "Neutral", "Title", "Heading 1", "Total", "Input", "Note"]) v.btn(`Style ${name}`, () => v.run("style.apply", { range: v.range(), name }));
+  });
 }

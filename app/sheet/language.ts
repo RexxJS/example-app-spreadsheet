@@ -40,6 +40,11 @@ export interface TableDef {
   // blank, label for "Total"). Banded rows, as a table style draws them.
   readonly totals?: Readonly<Record<string, string>>;
   readonly banded?: boolean;
+  // Its table style (styles.ts's gallery) and Table Style Options.
+  readonly style?: string;
+  readonly bandedColumns?: boolean;
+  readonly firstColumn?: boolean;
+  readonly lastColumn?: boolean;
 }
 
 // A table sorted by a column, ascending or descending, and the row each of

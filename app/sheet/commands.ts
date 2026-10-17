@@ -27,6 +27,7 @@ import { ICONS, PERIODS, THRESHOLDS, describeRule as describeCf, rangeName } fro
 import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
+import { resolved } from "./themes.ts";
 import type { Look } from "./formats.ts";
 import { CHART_KINDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
@@ -34,6 +35,7 @@ import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
 import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from "./shift.ts";
 import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
+import { TABLE_STYLE_NAMES, styleNamed } from "./styles.ts";
 import { BAND, bandedKeys } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
 import { CONSOLIDATE_FUNCTIONS, consolidate } from "./consolidate.ts";
@@ -48,6 +50,7 @@ import { complete, cycleRef } from "./complete.ts";
 import { KEYS } from "./keys.ts";
 import { infer, run as runFill } from "./flashfill.ts";
 
+const resolvedColour = (c: string | null): string | null => (c === null ? null : resolved(c));
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
@@ -188,6 +191,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   const before = wb.sheet.keys();
   wb.reset(file.sheets[0].name);
   if (file.dateSystem === 1904) await wb.setDateSystem(1904);
+  for (const [n, l] of file.cellStyles) wb.styles.set(n, l);
   // Worked out as it opens, iterating if the file does; manual after.
   wb.calculation = { ...file.calculation, manual: false };
   const failed = file.language === "RexxJS" ? await wb.rexx.setup(file.setupScript) : null;
@@ -406,6 +410,14 @@ function sort(ascending: boolean) {
     const entries = rearranging(wb, r, sortedRows(wb.sheet, r[0], r[1], by - left, ascending));
     return setting(wb, entries, `sorted ${named(r)} by ${colName(by)}, ${ascending ? "ascending" : "descending"}`);
   };
+}
+
+// A look as words: "bold, size 15, fill accent1, bottom border thick accent1".
+function describeLook(l: Look): string {
+  const parts = [l.bold ? "bold" : "", l.italic ? "italic" : "", l.underline ? "underline" : "", l.strike ? "strikethrough" : "", l.size ? `size ${l.size}` : "",
+    l.fill ? `fill ${l.fill}` : "", l.color ? `text ${l.color}` : "", l.number ? `number ${l.number}` : "",
+    ...Object.entries(l.borders ?? {}).map(([side, line]) => `${side} border ${line}`)].filter((x) => x);
+  return parts.length ? parts.join(", ") : "as Normal";
 }
 
 // ---- The outline (outline.ts).
@@ -1886,6 +1898,78 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // A table style (styles.ts's gallery: Light, Medium, Dark, Green,
+    // Orange, Grey; none for plain) and Table Style Options: banded rows
+    // and columns, first and last column bold.
+    id: "table.style", label: "Table Style", params: ["name"], optional: ["style", "bandedRows", "bandedColumns", "firstColumn", "lastColumn"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`);
+      const style = p.style === undefined ? t.style : /^none$/i.test(p.style.trim()) ? undefined : styleNamed(TABLE_STYLE_NAMES, p.style) ?? refuse(`${p.style} is not a table style (${TABLE_STYLE_NAMES.join(", ")}, none)`);
+      const opt = (v: string | undefined, was: boolean | undefined) => (v === undefined ? was : flag(v) || undefined);
+      const { style: _s, banded: _b, bandedColumns: _c, firstColumn: _f, lastColumn: _l, ...rest } = t;
+      const def: TableDef = { ...rest, ...(style ? { style } : {}), ...(opt(p.bandedRows, t.banded ?? (style !== undefined && t.style === undefined ? true : undefined)) ? { banded: true } : {}),
+        ...(opt(p.bandedColumns, t.bandedColumns) ? { bandedColumns: true } : {}), ...(opt(p.firstColumn, t.firstColumn) ? { firstColumn: true } : {}), ...(opt(p.lastColumn, t.lastColumn) ? { lastColumn: true } : {}) };
+      await wb.sheet.defineTable(t.name, def);
+      const options = [def.banded ? "banded rows" : "", def.bandedColumns ? "banded columns" : "", def.firstColumn ? "first column" : "", def.lastColumn ? "last column" : ""].filter((x) => x);
+      return changedBy(wb, [...range(t.range[0], t.range[1])], `${t.name}: ${def.style ?? "no"} style${options.length ? `, ${options.join(", ")}` : ""}`);
+    },
+  },
+  {
+    // A cell style defined or edited: its look from a cell's (from=A1, as
+    // Excel's New Cell Style by example), or another style's (basedOn=),
+    // and these parts over it: bold, italic, underline, strike (1 or 0),
+    // size, fill, color, number. Every cell of it is drawn anew.
+    id: "style.define", label: "New Cell Style", params: ["name"], optional: ["from", "basedOn", "bold", "italic", "underline", "strike", "size", "fill", "color", "number"], journaled: true,
+    run: async (wb, p) => {
+      const name = p.name.trim();
+      if (!name || name.length > 60) refuse(`${p.name} is not a style name`);
+      const known = styleNamed(wb.styles.keys(), name) ?? name;
+      let look: Look = p.from !== undefined ? wb.lookOf(wb.notes.get(cellOf(p.from))) ?? {}
+        : p.basedOn !== undefined ? wb.styles.get(styleNamed(wb.styles.keys(), p.basedOn) ?? refuse(`no cell style ${p.basedOn}`))! : wb.styles.get(known) ?? {};
+      for (const part of ["bold", "italic", "underline", "strike"] as const) if (p[part] !== undefined) look = { ...look, [part]: flag(p[part]) || undefined };
+      if (p.size !== undefined) {
+        const n = Number(p.size);
+        if (!(n > 0 && n <= 400)) refuse(`${p.size} is not a size`);
+        look = { ...look, size: n };
+      }
+      for (const part of ["fill", "color"] as const) if (p[part] !== undefined) look = { ...look, [part]: /^none$/i.test(p[part]!.trim()) ? undefined : colour(p[part]!) ?? refuse(`${p[part]} is not a colour`) };
+      if (p.number !== undefined) look = { ...look, number: CATEGORIES[p.number.trim().toLowerCase()] ?? (p.number.trim() || undefined) };
+      wb.styles.set(known, JSON.parse(JSON.stringify(look)));
+      const keys = wb.sheet.keys().filter((k) => wb.notes.get(k).cellStyle === known);
+      for (const k of wb.notes.keys()) if (wb.notes.get(k).cellStyle === known && !keys.includes(k)) keys.push(k);
+      return changedBy(wb, keys, `cell style ${known}: ${describeLook(look)}`);
+    },
+  },
+  {
+    // A cell style on cells (Normal takes it off).
+    id: "style.apply", label: "Cell Styles", params: ["range", "name"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range), name = styleNamed(wb.styles.keys(), p.name) ?? refuse(`no cell style ${p.name} (${[...wb.styles.keys()].join(", ")})`);
+      const keys = [...range(r[0], r[1])];
+      for (const k of keys) wb.notes.set(k, { cellStyle: name === "Normal" ? undefined : name });
+      return changedBy(wb, keys, `${named(r)}: ${name}`);
+    },
+  },
+  {
+    // A style deleted: its cells Normal again (Normal itself stays).
+    id: "style.delete", label: "Delete Cell Style", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const name = styleNamed(wb.styles.keys(), p.name) ?? refuse(`no cell style ${p.name}`);
+      if (name === "Normal") refuse("Normal cannot be deleted");
+      wb.styles.delete(name);
+      const keys = wb.notes.keys().filter((k) => wb.notes.get(k).cellStyle === name);
+      for (const k of keys) wb.notes.set(k, { cellStyle: undefined });
+      return changedBy(wb, keys, `deleted cell style ${name}`);
+    },
+  },
+  {
+    id: "style.list", label: "Cell Style Gallery", params: [], journaled: false,
+    run: async (wb) => {
+      const listed = [...wb.styles].map(([n, l]) => `${n}: ${describeLook(l)}`);
+      return { ok: true, message: [...wb.styles.keys()].join(", "), changed: [], output: listed };
+    },
+  },
+  {
     // A table as the app's metadata has it (GETTABLE, GET_TABLE_METADATA).
     id: "table.get", label: "About a table", params: ["name"], journaled: false,
     run: async (wb, p) => {
@@ -1893,6 +1977,7 @@ const SPECS: readonly Spec[] = [
       const about = {
         name: t.name, range: rangeName(t.range), headers: t.headers, columns: tableColumns(wb, t), types: t.types ?? {}, descriptions: t.descriptions ?? {},
         sort: t.sort ? { column: colName(t.sort.column), direction: t.sort.direction } : null, totals: t.totals ?? null, banded: !!t.banded,
+        ...(t.style ? { style: t.style } : {}), ...(t.bandedColumns ? { bandedColumns: true } : {}), ...(t.firstColumn ? { firstColumn: true } : {}), ...(t.lastColumn ? { lastColumn: true } : {}),
       };
       return { ok: true, message: JSON.stringify(about), changed: [], output: about };
     },
@@ -2438,7 +2523,7 @@ const SPECS: readonly Spec[] = [
     id: "sheet.color", label: "Tab Color", params: ["name", "color"], journaled: true,
     run: async (wb, p) => {
       const page = pageOf(wb, p.name), off = /^(none|auto|automatic)$/i.test(p.color.trim());
-      page.tabColor = off ? null : colour(p.color) ?? refuse(`${p.color} is not a colour (a name such as red, or #rrggbb)`);
+      page.tabColor = off ? null : resolvedColour(colour(p.color)) ?? refuse(`${p.color} is not a colour (a name such as red, or #rrggbb)`);
       return changedBy(wb, [], `${page.name}'s tab ${page.tabColor ?? "uncoloured"}`);
     },
   },

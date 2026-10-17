@@ -1583,6 +1583,28 @@ main() {
             spec.assert_true(g.wait_cell("B", 2, "7"), "3 and 4")
             g.command("view.panel name=none")
         }
+        spec.it("cell styles from the Looks panel, edited in one place; a table style from the Data panel") callback {
+            g.command("sheet.add name=Styled")
+            g.command("cell.set cell=A1 input=1")
+            g.command("view.panel name=looks")
+            g.command("view.select range=A1")
+            b.click("Style Good")
+            spec.assert_true(b.wait_for_console("sheet: A1:A1: Good"), "applied")
+            g.command("view.select range=D5")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#c6efce\"", 40), "Good's green")
+            g.command("style.define name=Good fill=#00ff00")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#00ff00\"", 40), "the style edited, the cell drawn anew")
+            g.command("cell.set cell=B3 input=Item")
+            g.command("cell.set cell=B4 input=pens")
+            g.command("table.define name=Kit range=B3:B4 headers=1")
+            g.command("view.panel name=data")
+            g.command("view.select range=B4")
+            b.click("Table style Medium")
+            spec.assert_true(b.wait_for_console("sheet: Kit: Medium style, banded rows"), "styled")
+            g.command("view.select range=D5")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("B", 3)}", "\"bg\":\"#4472c4\"", 40), "its header row in accent 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

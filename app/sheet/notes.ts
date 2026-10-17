@@ -21,6 +21,8 @@ export interface Note {
   readonly editor?: CellEditor;
   // Error Checking passes over the cell (Ignore Error).
   readonly ignoreError?: true;
+  // Its cell style's name (styles.ts), under its own look.
+  readonly cellStyle?: string;
 }
 
 export class CellNotes {

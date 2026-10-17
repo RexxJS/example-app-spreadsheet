@@ -62,6 +62,7 @@ export const MENUS: readonly Menu[] = [
     i("Align left", "format.align"), i("Align center", "format.align"), i("Align right", "format.align"),
     i("Comma style", "format.number"), i("Currency style", "format.number"), i("Percent style", "format.number"),
     i("Fill yellow", "format.fill"), i("Text red", "format.color"), "-",
+    i("Style Normal", "style.apply"), i("Style Good", "style.apply"), i("Style Bad", "style.apply"), i("Style Neutral", "style.apply"), i("Style Title", "style.apply"), i("Style Heading 1", "style.apply"), i("Style Total", "style.apply"), i("Style Input", "style.apply"), i("Style Note", "style.apply"), "-",
     i("Format painter", "format.painter"), i("Wrap text", "format.wrap"), i("Merge & center", "cells.merge"), i("Merge", "cells.merge"), i("Unmerge", "cells.unmerge"), "-",
     i("Greater than", "format.highlight"), i("Less than", "format.highlight"), i("Equal to", "format.highlight"), i("Text contains", "format.highlight"),
     i("Top 10", "format.topBottom"), i("Above average", "format.aboveAverage"), i("Duplicates", "format.duplicates"),
@@ -77,7 +78,7 @@ export const MENUS: readonly Menu[] = [
     i("Goal seek", "data.goalSeek"), i("Data table", "data.table"), i("Remove duplicates", "data.removeDuplicates"), i("Text to columns", "data.textToColumns"), i("Flash fill", "data.flashFill", "Ctrl+E"), "-",
     i("Group rows", "outline.group"), i("Ungroup rows", "outline.ungroup"), i("Group columns", "outline.group"), i("Hide detail", "outline.hideDetail"), i("Show detail", "outline.showDetail"),
     i("Outline level 1", "outline.level"), i("Outline level 2", "outline.level"), i("All levels", "outline.level"), i("Subtotal", "data.subtotal"), i("Consolidate", "data.consolidate"), "-",
-    i("Total row", "table.totals"), i("Banded rows", "table.banding"), i("Convert to range", "table.toRange"),
+    i("Total row", "table.totals"), i("Banded rows", "table.banding"), i("Convert to range", "table.toRange"), i("Table style Light", "table.style"), i("Table style Medium", "table.style"), i("Table style Green", "table.style"), i("Table style Orange", "table.style"),
   ] },
   { label: "Formulas", items: [
     i("AutoSum", "formulas.autoSum"), "-",
@@ -109,7 +110,7 @@ export const NOT_IN_MENUS: Readonly<Record<string, string>> = {
   "pivot.create": "a script's", "pivot.update": "a script's", "pivot.delete": "a script's", "pivot.get": "a getter", "pivot.list": "a getter",
   "chart.list": "a getter", "chart.delete": "a chart's own button", "formulas.calculate": "a script's (EVALUATE)",
   "formulas.ignoreError": "a finding's own button", "setup.get": "a getter", "setup.set": "a script's",
-  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)", "view.selection": "a getter (GETSELECTION)", "view.select": "the grid, and SELECTRANGE", "range.stats": "the status bar shows it", "formulas.cycleRef": "F4 in the formula bar", "sheet.lastCell": "Ctrl+End", "keys.list": "a getter (LISTKEYS)", "formulas.complete": "the formula bar's hints", "format.preview": "a script's (FORMATVALUE)", "table.calculatedColumn": "a script's (SETCALCULATEDCOLUMN)", "outline.clear": "a script's (CLEAROUTLINE)",
+  "sheet.activate": "a sheet's tab", "file.list": "the file bar lists them", "menus.list": "a getter (LISTMENUS)", "view.selection": "a getter (GETSELECTION)", "view.select": "the grid, and SELECTRANGE", "range.stats": "the status bar shows it", "formulas.cycleRef": "F4 in the formula bar", "sheet.lastCell": "Ctrl+End", "keys.list": "a getter (LISTKEYS)", "formulas.complete": "the formula bar's hints", "format.preview": "a script's (FORMATVALUE)", "table.calculatedColumn": "a script's (SETCALCULATEDCOLUMN)", "outline.clear": "a script's (CLEAROUTLINE)", "style.define": "a script's (DEFINESTYLE)", "style.delete": "a script's (DELETESTYLE)", "style.list": "a getter (LISTSTYLES)",
 };
 
 // Each item as a line: "File > Save | file.save | Ctrl+S".

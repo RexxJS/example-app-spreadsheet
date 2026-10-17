@@ -27,6 +27,8 @@ import type { CfRule } from "./rules.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
 import type { TableDef } from "./language.ts";
+import type { Look } from "./formats.ts";
+import { CELL_STYLES } from "./styles.ts";
 import type { ChartSpec } from "./workbook.ts";
 import { show } from "./format.ts";
 import type { Note } from "./notes.ts";
@@ -67,6 +69,8 @@ export interface SheetFile {
   readonly bookNames: readonly [string, string][]; // [NAME, "Sheet1!B2:B4"], or a formula [NAME, "=LAMBDA(x, x*2)"]
   readonly calculation: Calc;
   readonly dateSystem: 1900 | 1904;
+  // The cell styles that are not the gallery's as it comes (styles.ts).
+  readonly cellStyles: readonly [string, Look][];
 }
 
 interface FileCell {
@@ -81,6 +85,7 @@ interface FileCell {
   readonly look?: Record<string, unknown> | null;
   readonly editor?: unknown;
   readonly ignoreError?: unknown;
+  readonly cellStyle?: string;
 }
 
 type Cells = Record<string, string | FileCell>;
@@ -107,7 +112,7 @@ function ruleIn(v: Record<string, unknown>): Note["validation"] {
 function noteOf(c: string | FileCell): Note {
   if (typeof c === "string") return {};
   const note: Record<string, unknown> = {};
-  for (const k of ["comment", "format", "style", "styleExpression"] as const) if (c[k]) note[k] = c[k];
+  for (const k of ["comment", "format", "style", "styleExpression", "cellStyle"] as const) if (c[k]) note[k] = c[k];
   const rule = c.validation ? ruleIn(c.validation) : undefined;
   if (rule) note.validation = rule;
   if (c.look && typeof c.look === "object") note.look = c.look;
@@ -158,7 +163,8 @@ function tablesOf(tables: unknown): TableDef[] {
     if (!r || !/^[A-Za-z][A-Za-z0-9_]*$/.test(String(t?.name ?? ""))) return [];
     const byName = (o: unknown) => (o && typeof o === "object" && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])) : undefined);
     return [{ name: String(t.name), range: r, headers: t.headers !== false, columns: Array.isArray(t.columns) ? t.columns.map(String) : null, types: byName(t.types), descriptions: byName(t.descriptions),
-      ...(byName(t.totals) ? { totals: byName(t.totals) } : {}), ...(t.banded === true ? { banded: true } : {}) }];
+      ...(byName(t.totals) ? { totals: byName(t.totals) } : {}), ...(t.banded === true ? { banded: true } : {}), ...(typeof t.style === "string" ? { style: t.style } : {}),
+      ...(t.bandedColumns === true ? { bandedColumns: true } : {}), ...(t.firstColumn === true ? { firstColumn: true } : {}), ...(t.lastColumn === true ? { lastColumn: true } : {}) }];
   });
 }
 
@@ -212,6 +218,8 @@ export function readSheetFile(data: any): SheetFile {
     bookNames: Object.entries((data?.bookNames ?? {}) as Record<string, unknown>).map(([n, r]): [string, string] => [n.toUpperCase(), String(r)]),
     calculation: calcOf(data?.calculation),
     dateSystem: Number(data?.dateSystem) === 1904 ? 1904 : 1900,
+    cellStyles: data?.cellStyles && typeof data.cellStyles === "object" && !Array.isArray(data.cellStyles)
+      ? Object.entries(data.cellStyles as Record<string, unknown>).filter(([, l]) => l && typeof l === "object").map(([n, l]): [string, Look] => [n, l as Look]) : [],
   };
 }
 
@@ -253,7 +261,8 @@ const rulesIn = (page: Page) => page.rules.map((r) => ({ ...r, range: rangeName(
 const tablesIn = (page: Page) => page.sheet.tables().map((t) => ({
   name: t.name, range: rangeName(t.range), headers: t.headers, columns: t.columns,
   ...(t.types && Object.keys(t.types).length ? { types: t.types } : {}), ...(t.descriptions && Object.keys(t.descriptions).length ? { descriptions: t.descriptions } : {}),
-  ...(t.totals ? { totals: t.totals } : {}), ...(t.banded ? { banded: true } : {}),
+  ...(t.totals ? { totals: t.totals } : {}), ...(t.banded ? { banded: true } : {}), ...(t.style ? { style: t.style } : {}),
+  ...(t.bandedColumns ? { bandedColumns: true } : {}), ...(t.firstColumn ? { firstColumn: true } : {}), ...(t.lastColumn ? { lastColumn: true } : {}),
 }));
 const chartsIn = (page: Page) => page.charts.map((c) => ({ kind: c.kind, range: rangeName(c.range), title: c.title }));
 const up = (a: number, b: number) => a - b;
@@ -291,5 +300,9 @@ export function writeSheetFile(wb: Workbook) {
     ...(wb.names().length ? { bookNames: Object.fromEntries(wb.names()) } : {}),
     ...calcIn(wb.calculation),
     ...(wb.dateSystem === 1904 ? { dateSystem: 1904 } : {}),
+    ...(ownStyles(wb).length ? { cellStyles: Object.fromEntries(ownStyles(wb)) } : {}),
   };
 }
+
+// The styles a workbook has that the gallery has not, or has otherwise.
+const ownStyles = (wb: Workbook): [string, Look][] => [...wb.styles].filter(([n, l]) => JSON.stringify(CELL_STYLES[n]) !== JSON.stringify(l));
