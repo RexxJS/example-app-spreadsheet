@@ -1716,6 +1716,19 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("a waterfall from the Charts panel: a rise, a fall and the total drawn") callback {
+            g.command("sheet.add name=Fall")
+            g.script("LET r = SETCELL('A1', 'Start'); LET r = SETCELL('A2', 'Down'); LET r = SETCELL('A3', 'Total'); LET r = SETCELL('B1', 10); LET r = SETCELL('B2', -4); LET r = SETCELL('B3', 0)")
+            spec.assert_true(g.wait_cell("B", 3, "0"), "the data")
+            g.command("view.panel name=chart")
+            g.command("view.select range=A1:B3")
+            b.click("Waterfall chart")
+            spec.assert_true(b.wait_for_text("Chart 1: waterfall chart of A1:B3"), "inserted")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"fill\":\"#ed7d31\"") == 1, "the fall in its colour")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"fill\":\"#a5a5a5\"") == 1, "the total in its")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

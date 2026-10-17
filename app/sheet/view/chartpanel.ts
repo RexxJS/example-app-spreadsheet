@@ -30,6 +30,10 @@ export function chartPanel(v: SheetView): void {
     v.btn("Area chart", insert("area"));
     v.btn("Doughnut chart", insert("doughnut"));
     v.btn("Scatter chart", insert("scatter"));
+    v.btn("Radar chart", insert("radar"));
+    v.btn("Histogram", insert("histogram"));
+    v.btn("Waterfall chart", insert("waterfall"));
+    v.btn("Funnel chart", insert("funnel"));
     // A sparkline in the cell right of the selection's top row.
     const spark = (type: string, options = "") => () => {
       const s = v.selection();

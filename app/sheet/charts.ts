@@ -14,8 +14,10 @@ import type { TrendType } from "./trend.ts";
 // and 100% stacked; horizontal bars (hbar) the same three; a line with
 // markers, a stacked one; areas, stacked; pie and doughnut; scatter, with
 // lines, bubble.
-export type ChartKind = "bar" | "barStacked" | "bar100" | "hbar" | "hbarStacked" | "hbar100" | "line" | "lineStacked" | "area" | "areaStacked" | "pie" | "doughnut" | "scatter" | "scatterLines" | "bubble";
-export const CHART_KINDS: readonly ChartKind[] = ["bar", "barStacked", "bar100", "hbar", "hbarStacked", "hbar100", "line", "lineStacked", "area", "areaStacked", "pie", "doughnut", "scatter", "scatterLines", "bubble"];
+export type ChartKind = "bar" | "barStacked" | "bar100" | "hbar" | "hbarStacked" | "hbar100" | "line" | "lineStacked" | "area" | "areaStacked" | "pie" | "doughnut" | "scatter" | "scatterLines" | "bubble"
+  | "radar" | "histogram" | "waterfall" | "funnel";
+export const CHART_KINDS: readonly ChartKind[] = ["bar", "barStacked", "bar100", "hbar", "hbarStacked", "hbar100", "line", "lineStacked", "area", "areaStacked", "pie", "doughnut", "scatter", "scatterLines", "bubble",
+  "radar", "histogram", "waterfall", "funnel"];
 
 // Office's palette, series by series.
 export const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47"];
@@ -285,7 +287,95 @@ function pie(data: ChartData, w: number, h: number, title: string, hole = 0, o: 
 }
 
 // A chart as shapes, in a w x h box.
+// A radar: a spoke a category, a ring a tick, a polygon a series.
+function radar(data: ChartData, w: number, h: number, title: string, o: ChartOptions): Shape[] {
+  const all = data.series.flatMap((s) => s.values), scale = niceScale(Math.min(...all, 0), Math.max(...all, 0));
+  const top = title ? 28 : 12, bottom = h - (data.series.length > 1 && (o.legend ?? "bottom") !== "none" ? 40 : 16);
+  const r = Math.min(w - 80, bottom - top - 20) / 2, cx = w / 2, cy = (top + bottom) / 2, n = Math.max(3, data.labels.length);
+  const at = (i: number, v: number) => { const a = (2 * Math.PI * i) / n, d = ((v - scale.lo) / (scale.hi - scale.lo)) * r; return [cx + d * Math.sin(a), cy - d * Math.cos(a)]; };
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  for (let t = scale.lo + scale.step; t <= scale.hi + scale.step / 2; t = tidy(t + scale.step)) {
+    if (o.gridlines !== false) out.push({ kind: "polyline", points: [...Array.from({ length: n }, (_, i) => at(i, t)).flat(), ...at(0, t)], stroke: "#d9d9d9", width: 1 });
+    out.push(text(cx + 3, at(0, t)[1] + 3, show(t), "start", 9, "#808080"));
+  }
+  data.labels.forEach((l, i) => {
+    const [x, y] = at(i, scale.hi);
+    out.push({ kind: "line", x1: cx, y1: cy, x2: x, y2: y, stroke: "#d9d9d9", width: 1 });
+    const [lx, ly] = at(i, scale.hi + scale.step * 0.35);
+    out.push(text(lx, ly + 3, l, Math.abs(lx - cx) < 4 ? "middle" : lx > cx ? "start" : "end"));
+  });
+  data.series.forEach((s, j) => {
+    const pts = s.values.map((v, i) => at(i, v));
+    out.push({ kind: "polyline", points: [...pts.flat(), ...pts[0]], stroke: PALETTE[j % PALETTE.length], width: 2 });
+    for (const [x, y] of pts) out.push({ kind: "circle", cx: x, cy: y, r: 2.5, fill: PALETTE[j % PALETTE.length] });
+  });
+  if (data.series.length > 1 && (o.legend ?? "bottom") !== "none") out.push(...legend(data.series.map((x) => x.name), 10, h - 8));
+  return out;
+}
+
+// A histogram's bins, as Excel's automatic ones: Scott's width (3.5 times
+// the deviation over the cube root of the count), from the least value;
+// the first [a, b], the others (a, b].
+export function bins(values: readonly number[]): { from: number; to: number; count: number }[] {
+  if (!values.length) return [];
+  const n = values.length, lo = Math.min(...values), hi = Math.max(...values), mean = values.reduce((s, v) => s + v, 0) / n;
+  const sd = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / Math.max(1, n - 1));
+  const width = sd > 0 ? (3.5 * sd) / Math.cbrt(n) : 1, k = Math.max(1, Math.ceil((hi - lo) / width) || 1);
+  const out = Array.from({ length: k }, (_, i) => ({ from: tidy(lo + i * width), to: tidy(lo + (i + 1) * width), count: 0 }));
+  // The first bin closed at both ends, each after it open on the left, as Excel's.
+  for (const v of values) out[Math.max(0, Math.min(k - 1, Math.ceil((v - lo) / width - 1e-12) - 1))].count++;
+  return out;
+}
+
+// Histogram, waterfall and funnel: one series read their own way.
+function special(kind: ChartKind, data: ChartData, w: number, h: number, title: string, o: ChartOptions): Shape[] {
+  const s = data.series[0] ?? { name: "", values: [] };
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  const x0 = kind === "funnel" ? 10 : 40, x1 = w - 10, y0 = title ? 28 : 12, y1 = h - 24;
+  if (kind === "funnel") {
+    const most = Math.max(...s.values.map(Math.abs), 1e-9), band = (y1 - y0) / Math.max(1, s.values.length), mid = (x0 + x1) / 2;
+    s.values.forEach((v, i) => {
+      const width = (Math.abs(v) / most) * (x1 - x0);
+      out.push({ kind: "rect", x: mid - width / 2, y: y0 + i * band + band * 0.1, w: width, h: band * 0.8, fill: PALETTE[0] });
+      out.push(text(mid, y0 + i * band + band / 2 + 3, `${data.labels[i]}: ${show(v)}`, "middle", 10, "#ffffff"));
+    });
+    return out;
+  }
+  // Waterfall: each bar from the running total; a category named Total (or
+  // Subtotal) shows the total itself.
+  const isTotal = (l: string) => /^(sub)?total$/i.test(l.trim());
+  let run = 0;
+  const steps = s.values.map((v, i) => {
+    if (kind === "histogram") return { from: 0, to: v, colour: PALETTE[0] };
+    if (isTotal(data.labels[i])) return { from: 0, to: run, colour: PALETTE[2] };
+    const from = run;
+    run += v;
+    return { from, to: run, colour: v >= 0 ? PALETTE[0] : PALETTE[1] };
+  });
+  const hist = kind === "histogram" ? bins(s.values) : [];
+  const bars = kind === "histogram" ? hist.map((b) => ({ from: 0, to: b.count, colour: PALETTE[0] })) : steps;
+  const labels = kind === "histogram" ? hist.map((b) => `${show(b.from)}-${show(b.to)}`) : data.labels;
+  const ends = bars.flatMap((b) => [b.from, b.to]), scale = niceScale(Math.min(...ends, 0), Math.max(...ends, 0));
+  const yOf = (v: number) => y1 - ((v - scale.lo) / (scale.hi - scale.lo)) * (y1 - y0), band = (x1 - x0) / Math.max(1, bars.length);
+  for (let t = scale.lo; t <= scale.hi + scale.step / 2; t = tidy(t + scale.step)) {
+    if (o.gridlines !== false || t === 0) out.push({ kind: "line", x1: x0, y1: yOf(t), x2: x1, y2: yOf(t), stroke: t === 0 ? "#808080" : "#d9d9d9", width: 1 });
+    out.push(text(x0 - 4, yOf(t) + 3, show(t), "end"));
+  }
+  // A histogram's bars touch; a waterfall's have room and connectors.
+  const gap = kind === "histogram" ? 0 : band * 0.2;
+  bars.forEach((b, i) => {
+    const top = yOf(Math.max(b.from, b.to)), bottom = yOf(Math.min(b.from, b.to));
+    out.push({ kind: "rect", x: x0 + i * band + gap / 2, y: top, w: band - gap, h: Math.max(bottom - top, 0.5), fill: b.colour });
+    if (kind === "waterfall" && i + 1 < bars.length) out.push({ kind: "line", x1: x0 + i * band + band - gap / 2, y1: yOf(b.to), x2: x0 + (i + 1) * band + gap / 2, y2: yOf(b.to), stroke: "#808080", width: 1 });
+    if (o.labels) out.push(text(x0 + (i + 0.5) * band, top - 3, show(kind === "histogram" ? b.to : s.values[i]), "middle", 9));
+  });
+  labels.forEach((l, i) => out.push(text(x0 + (i + 0.5) * band, y1 + 14, l, "middle", 9)));
+  return out;
+}
+
 export function layout(kind: ChartKind, data: ChartData, title: string, w: number, h: number, o: ChartOptions = {}): Shape[] {
+  if (kind === "radar") return radar(data, w, h, title, o);
+  if (kind === "histogram" || kind === "waterfall" || kind === "funnel") return special(kind, data, w, h, title, o);
   return kind === "pie" ? pie(data, w, h, title, 0, o) : kind === "doughnut" ? pie(data, w, h, title, 0.5, o) : kind.startsWith("scatter") || kind === "bubble" ? xy(kind, data, w, h, title, o) : axes(kind, data, w, h, title, o);
 }
 
