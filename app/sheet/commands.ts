@@ -2211,6 +2211,46 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // Forecast Sheet: a timeline and its values (two ranges of a size,
+    // evenly spaced), forecast to end= (a point on the timeline) on a new
+    // sheet: the timeline, the values, then the forecast and its lower and
+    // upper bounds as FORECAST.ETS formulas (so they follow the data), and
+    // a line chart of them. confidence= (0.95) and seasonality= (found).
+    id: "data.forecastSheet", label: "Forecast Sheet", params: ["timeline", "values", "end"], optional: ["confidence", "seasonality", "to"], journaled: true,
+    run: async (wb, p) => {
+      if (wb.sheet.language.name !== "Excel") refuse("Forecast Sheet writes FORECAST.ETS formulas: Excel formulas only");
+      const tl = [...range(...rangeOf(p.timeline))], vs = [...range(...rangeOf(p.values))];
+      if (tl.length !== vs.length || tl.length < 3) refuse("the timeline and the values are the same size, three or more");
+      const ts = tl.map((k) => wb.sheet.value(k)), ys = vs.map((k) => wb.sheet.value(k));
+      if (ts.some((t) => typeof t !== "number") || ys.some((y) => typeof y !== "number")) refuse("the timeline and the values are numbers (dates are)");
+      const step = (ts[1] as number) - (ts[0] as number), last = ts[ts.length - 1] as number, end = Number(p.end);
+      if (!(step > 0)) refuse("the timeline goes up in even steps");
+      if (!(end > last)) refuse(`end ${p.end} is not past the timeline's end (${last})`);
+      const n = Math.ceil((end - last) / step - 1e-9);
+      if (tl.length + n + 1 > ROWS) refuse(`${n} forecasts do not fit on a sheet`);
+      const conf = p.confidence ?? "0.95", season = p.seasonality ?? "1", source = sheetPrefix(wb.active);
+      const fmt = wb.notes.get(tl[0]).look?.number;
+      let name = (p.to ?? "Forecast").trim();
+      for (let i = 2; wb.page(name); i++) name = `${(p.to ?? "Forecast").trim()} ${i}`;
+      await wb.add(name);
+      const rows = tl.length + n, vr = `$B$2:$B$${tl.length + 1}`, tr = `$A$2:$A$${tl.length + 1}`;
+      const entries: [string, string][] = [["A1", "Timeline"], ["B1", "Values"], ["C1", "Forecast"], ["D1", "Lower Confidence Bound"], ["E1", "Upper Confidence Bound"]];
+      tl.forEach((k, i) => { entries.push([`A${i + 2}`, `=${source}${k}`], [`B${i + 2}`, `=${source}${vs[i]}`]); });
+      // The last value's row starts the forecast's line, as Excel's does.
+      entries.push([`C${tl.length + 1}`, `=B${tl.length + 1}`], [`D${tl.length + 1}`, `=B${tl.length + 1}`], [`E${tl.length + 1}`, `=B${tl.length + 1}`]);
+      for (let h = 1; h <= n; h++) {
+        const r = tl.length + 1 + h;
+        entries.push([`A${r}`, `=A${r - 1}+${step}`], [`C${r}`, `=FORECAST.ETS(A${r},${vr},${tr},${season === "found" ? "" : season})`.replace(",)", ")")],
+          [`D${r}`, `=C${r}-FORECAST.ETS.CONFINT(A${r},${vr},${tr},${conf},${season})`], [`E${r}`, `=C${r}+FORECAST.ETS.CONFINT(A${r},${vr},${tr},${conf},${season})`]);
+      }
+      const o = await setting(wb, entries, `forecast to ${p.end} on ${name}: ${n} point${n === 1 ? "" : "s"}`);
+      if (fmt) for (let r = 2; r <= rows + 1; r++) wb.notes.set(`A${r}`, { look: { number: fmt } });
+      wb.page(name)!.charts.push({ kind: "line", range: rangeOf(`A1:E${rows + 1}`), title: "Forecast" });
+      await wb.settle();
+      return o;
+    },
+  },
+  {
     // Scenario Manager's Add: a name, its changing cells ("B1,B2" or
     // "B1:B3"), their values (comma-separated; the cells' own when left
     // out); the same name again edits it.

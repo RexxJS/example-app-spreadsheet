@@ -348,6 +348,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const g = text(goal).trim(), value = isFinite(Number(g)) && g !== "" ? g : "";
     return (await must(exec, "solver.solve", { objective: text(objective), changing: text(changing), goal: value ? "value" : g || "max", ...(value ? { value } : {}), ...(text(constraints).trim() ? { constraints: text(constraints) } : {}), ...pairs(opts) })).message;
   },
+  // Forecast Sheet: FORECASTSHEET("A2:A20", "B2:B20", 45700, "confidence=0.9;seasonality=12").
+  FORECASTSHEET: async (exec, t, v, end, opts) => (await must(exec, "data.forecastSheet", { timeline: text(t), values: text(v), end: text(end), ...pairs(opts) })).message,
   // Data Analysis: ANALYZE("regression", "A1:C20", "E1", "labels=1;alpha=0.05").
   ANALYZE: async (exec, tool, input, output, opts) => (await must(exec, "data.analyze", { tool: text(tool), input: text(input), output: text(output), ...pairs(opts) })).message,
   // Scenario Manager: ADDSCENARIO("Best", "B1,B2", "10,0.2"), SHOWSCENARIO("Best"),

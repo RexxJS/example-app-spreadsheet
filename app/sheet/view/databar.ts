@@ -37,6 +37,14 @@ export function dataBar(v: SheetView): void {
     const beside = () => { const s = v.selection(); return s ? keyOf({ col: Math.max(s[0].col, s[1].col) + 2, row: Math.min(s[0].row, s[1].row) }) : "A1"; };
     v.btn("Descriptive statistics", () => v.run("data.analyze", { tool: "descriptive", input: v.range(), output: beside(), labels: "1" }));
     v.btn("Regression", () => v.run("data.analyze", { tool: "regression", input: v.range(), output: beside(), labels: "1" }));
+    // Forecast Sheet: the selection's first column the timeline, its last
+    // the values, forecast to the goal field's point.
+    v.btn("Forecast sheet", () => {
+      const s = v.selection();
+      if (!s) return;
+      const top = Math.min(s[0].row, s[1].row), bottom = Math.max(s[0].row, s[1].row), l = Math.min(s[0].col, s[1].col), r = Math.max(s[0].col, s[1].col);
+      return v.run("data.forecastSheet", { timeline: `${keyOf({ col: l, row: top })}:${keyOf({ col: l, row: bottom })}`, values: `${keyOf({ col: r, row: top })}:${keyOf({ col: r, row: bottom })}`, end: goal.value });
+    });
     v.btn("Solver", () => v.run("solver.solve", { objective: v.here(), changing: by.value, ...(criteria.value.trim() ? { constraints: criteria.value } : {}), report: "1" }));
     bind(ui.textfield("row input", () => {}), rowInput);
     bind(ui.textfield("column input", () => {}), columnInput);

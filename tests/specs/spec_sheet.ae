@@ -1907,6 +1907,20 @@ main() {
             spec.assert_true(g.wait_cell("D", 2, "4"), "the mean")
             g.command("view.panel name=none")
         }
+        spec.it("Forecast sheet from the Data panel: a line forecast on a new sheet, with its chart") callback {
+            g.command("sheet.add name=Line")
+            g.command("formulas.use language=Excel")
+            g.script("DO i = 1 TO 12; LET r = SETCELL('A' || i, i); LET r = SETCELL('B' || i, 1 + 2 * i); END")
+            spec.assert_true(g.wait_cell("B", 12, "25"), "the data")
+            g.command("view.panel name=data")
+            g.command("view.select range=A1:B12")
+            b.set_field_by("goal", "14")
+            b.click("Forecast sheet")
+            spec.assert_true(wait_button("Forecast"), "the new sheet's tab")
+            spec.assert_true(g.wait_cell("C", 14, "27"), "the first forecast")
+            spec.assert_true(g.wait_cell("C", 15, "29"), "the second")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

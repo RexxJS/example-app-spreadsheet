@@ -110,6 +110,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   EXPORTHTML: fn([opt("range", "range", "the used range when left out"), opt("header", "flag", "1: the first row th")], "The cells as an HTML table, as they show, their looks inline", "the HTML"),
   SOLVER: fn([p("objective", "cell"), p("goal", "text", "max, min, or a number to reach"), p("changing", "text", "the cells Solver changes, \"B1:B3\" or \"B1,C4\""), opt("constraints", "text", "split by ';': B5<=40, B6>=B7, B1:B3=int, B4=bin"), opt("options", "text", "name=value pairs: nonneg=0 (free the unconstrained), restore=1 (keep the cells as they were), report=1 (an Answer Report sheet)")],
     "Solver, Simplex LP: the sheet's formulas linear in the changing cells", "what it found"),
+  FORECASTSHEET: fn([p("timeline", "range", "evenly spaced numbers or dates"), p("values", "range", "the same size"), p("end", "number", "the last point to forecast"), opt("options", "text", "name=value pairs: confidence= (0.95), seasonality= (1 none, or a period), to= (the sheet's name)")],
+    "Forecast Sheet: FORECAST.ETS's forecast and bounds on a new sheet, with a line chart", "what was written"),
   ANALYZE: fn([p("tool", "text", "descriptive, correlation, covariance, histogram, movingAverage, exponentialSmoothing, rankPercentile, regression (y first, then the xs), tTestPaired, tTestEqual, tTestUnequal, fTest, anova"),
     p("input", "range", "a column a variable"), p("output", "cell", "the report's top-left"), opt("options", "text", "name=value pairs: labels=1, alpha=, interval=, damping=, bins= (a range), difference=, confidence=")],
     "The Analysis ToolPak's tools: their reports as values", "what was written"),

@@ -8,6 +8,7 @@ import { numberFormat } from "./numfmt.ts";
 import type { ArrayValue, Comparison, Result, Value } from "./values.ts";
 import { sortOrder } from "./sortfind.ts";
 import { SPARKLINE_TYPES, sparkline, sparklineOptions } from "./charts.ts";
+import { confidence, etsStat, fitEts, forecastAt, seasonality } from "./ets.ts";
 import type { SparklineType } from "./charts.ts";
 import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
 import { db, depreciation, fv, ipmt, irr, mirr, nper, npv, pmt, ppmt, pv, rate, vdb, xirr, xnpv } from "./finance.ts";
@@ -921,6 +922,41 @@ def("FORECAST.LINEAR", 3, 3, (args) => {
   return f.intercept + f.slope * num(args, 0);
 });
 def("FORECAST", 3, 3, (args) => call("FORECAST.LINEAR", args));
+// The FORECAST.ETS family (ets.ts): values and their timeline, evenly
+// spaced (sorted first); a seasonality (1 none, left out found);
+// data_completion and aggregation taken as Excel's defaults.
+const etsSeries = (name: string, args: readonly Arg[], vi: number, ti: number): { ys: number[]; ts: number[]; step: number } => {
+  const [ys0, ts0] = pairs(name, [args[vi], args[ti]], 0, 1, 3);
+  const order = ts0.map((t, i) => [t, ys0[i]]).sort((a, b) => a[0] - b[0]), ts = order.map((o) => o[0]), ys = order.map((o) => o[1]);
+  const step = ts[1] - ts[0];
+  if (!(step > 0) || ts.some((t, i) => i > 0 && Math.abs(t - ts[i - 1] - step) > 1e-9 * Math.max(1, Math.abs(step)))) return fail("#NUM!", `${name}'s timeline is not evenly spaced`);
+  return { ys, ts, step };
+};
+const etsModel = (name: string, ys: number[], season: number | undefined) => {
+  try { return fitEts(ys, season); } catch (e) { return fail("#NUM!", `${name}: ${(e as Error).message}`); }
+};
+const etsSeason = (args: readonly Arg[], i: number): number | undefined => (absent(args, i) ? undefined : num(args, i, 1) === 0 ? 1 : num(args, i, 1));
+def("FORECAST.ETS", 3, 6, (args) => {
+  const { ys, ts, step } = etsSeries("FORECAST.ETS", args, 1, 2), m = etsModel("FORECAST.ETS", ys, etsSeason(args, 3)), at = num(args, 0);
+  const h = (at - ts[ts.length - 1]) / step;
+  if (h <= 0) return fail("#NUM!", "FORECAST.ETS forecasts past the timeline's end");
+  return forecastAt(m, Math.ceil(h - 1e-9));
+});
+def("FORECAST.ETS.CONFINT", 3, 7, (args) => {
+  const { ys, ts, step } = etsSeries("FORECAST.ETS.CONFINT", args, 1, 2), level = absent(args, 3) ? 0.95 : num(args, 3);
+  if (!(level > 0 && level < 1)) return fail("#NUM!", "a confidence level is between 0 and 1");
+  const m = etsModel("FORECAST.ETS.CONFINT", ys, etsSeason(args, 4)), h = (num(args, 0) - ts[ts.length - 1]) / step;
+  if (h <= 0) return fail("#NUM!", "FORECAST.ETS.CONFINT forecasts past the timeline's end");
+  return confidence(m, ys, Math.ceil(h - 1e-9), level, D.normalInverse);
+});
+def("FORECAST.ETS.SEASONALITY", 2, 4, (args) => {
+  const { ys } = etsSeries("FORECAST.ETS.SEASONALITY", args, 0, 1);
+  return seasonality(ys);
+});
+def("FORECAST.ETS.STAT", 3, 6, (args) => {
+  const { ys, step } = etsSeries("FORECAST.ETS.STAT", args, 0, 1), m = etsModel("FORECAST.ETS.STAT", ys, etsSeason(args, 3)), kind = Math.trunc(num(args, 2));
+  try { return etsStat(m, ys, kind, step); } catch (e) { return fail("#NUM!", (e as Error).message); }
+});
 const line = (name: string, args: readonly Arg[], log: boolean): Result => {
   const [y0, x] = pairs(name, known(args, 1), 0, 1, 2);
   if (log && y0.some((v) => v <= 0)) return fail("#NUM!", `${name} of a y that is not positive`);
