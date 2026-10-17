@@ -327,7 +327,7 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   EXPORTCSV: async (exec, r, d) => (await must(exec, "file.exportCsv", { ...(text(r).trim() ? { range: text(r) } : {}), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).output,
   // XLSX: OPENXLSX(base64, "Book.xlsx") opens one; FILEREPORT() a stem of
   // what it held that the app left out.
-  OPENXLSX: async (exec, b64, n) => (await must(exec, "file.importXlsx", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  OPENXLSX: async (exec, b64, n, pw) => (await must(exec, "file.importXlsx", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}), ...(text(pw) ? { password: text(pw) } : {}) })).message,
   // OPENXLS(base64, "Book.xls"): an Excel 97-2003 workbook.
   OPENXLS: async (exec, b64, n) => (await must(exec, "file.importXls", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
   // OPENODS(base64, "Book.ods"): an ODS file's tables, their cached values.

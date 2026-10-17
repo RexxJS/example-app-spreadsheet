@@ -5,7 +5,8 @@
 // detected; or JSON rows, or an HTML page's table); the Excel example, the Tauri
 // app's three sample sheets (RexxJS formulas), an empty sheet, and the way
 // home. As an installed app with `documents`, files the person picks too:
-// a workbook in the Tauri app's format (.json, .rexxsheet), an XLSX or CSV opened,
+// a workbook in the Tauri app's format (.json, .rexxsheet), an XLSX (an
+// encrypted one by the password field's password) or CSV opened,
 // the workbook saved, the selection exported as CSV; the page never sees
 // where they are.
 import type { SheetView } from "./view.ts";
@@ -68,13 +69,17 @@ function documentsRow(v: SheetView): void {
       v.status.set(String((e as Error)?.message ?? e));
     }
   };
+  // An encrypted XLSX's password, typed here before Open file (its text
+  // shown nowhere).
+  let password = "";
   ui.hstack(() => {
+    ui.securefield("file password", (t: string) => { password = t; });
     v.btn("Open file", tried(async () => {
       const d = await documents.pick_open("Open a workbook, an XLSX, or a CSV file");
       if (!d) return;
       // An XLSX is bytes: read as base64 (sae's documents.read_base64).
       if (/\.xlsx$/i.test(d.name)) {
-        await v.run("file.importXlsx", { base64: await d.read_base64(), name: d.name });
+        await v.run("file.importXlsx", { base64: await d.read_base64(), name: d.name, ...(password ? { password } : {}) });
         return;
       }
       if (/\.xls$/i.test(d.name)) {

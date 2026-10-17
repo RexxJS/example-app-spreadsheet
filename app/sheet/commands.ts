@@ -17,6 +17,7 @@ import { fromHtml, fromJson, toHtml } from "./tabular.ts";
 import { readXlsx } from "./xlsx.ts";
 import { readOds } from "./ods.ts";
 import { readXls } from "./xls.ts";
+import { decryptPackage, isEncrypted } from "./encrypted.ts";
 import { writeXlsx } from "./xlsxwrite.ts";
 import type { XlsxRead } from "./xlsx.ts";
 import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toBase64, toCsv } from "./csv.ts";
@@ -2803,12 +2804,19 @@ const SPECS: readonly Spec[] = [
     // An XLSX file opened (base64= its bytes): its sheets, cells, formulas,
     // number formats, merges, sizes, frozen panes and names (xlsx.ts), as
     // a workbook opened is; what it held that the app does not, reported.
-    id: "file.importXlsx", label: "Open XLSX", params: ["base64"], optional: ["name"], journaled: true, unstepped: true,
+    // An encrypted one (Agile or Standard AES) is opened by its password=.
+    id: "file.importXlsx", label: "Open XLSX", params: ["base64"], optional: ["name", "password"], journaled: true, unstepped: true,
     run: async (wb, p) => {
       let read: XlsxRead;
       try {
-        read = readXlsx(fromBase64(p.base64), p.name ?? "Workbook");
+        let bytes = fromBase64(p.base64);
+        if (isEncrypted(bytes)) {
+          if (!p.password) refuse(`${p.name ?? "the file"} is encrypted: open it with its password`);
+          bytes = decryptPackage(bytes, p.password!);
+        }
+        read = readXlsx(bytes, p.name ?? "Workbook");
       } catch (e) {
+        if (e instanceof Refused) throw e;
         return refuse((e as Error).message);
       }
       wb.fileReport = read.report;
