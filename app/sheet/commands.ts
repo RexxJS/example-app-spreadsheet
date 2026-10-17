@@ -15,6 +15,7 @@ import { copied, filled, pasted } from "./copy.ts";
 import type { FillWay } from "./copy.ts";
 import { fromHtml, fromJson, toHtml } from "./tabular.ts";
 import { readXlsx } from "./xlsx.ts";
+import { readOds } from "./ods.ts";
 import { writeXlsx } from "./xlsxwrite.ts";
 import type { XlsxRead } from "./xlsx.ts";
 import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toBase64, toCsv } from "./csv.ts";
@@ -2813,6 +2814,23 @@ const SPECS: readonly Spec[] = [
       const o = await open(wb, readSheetFile(read.file));
       wb.carried = read.kept;
       return { ...o, message: `${o.message}${read.report.length ? `; left out: ${read.report.join("; ")}` : ""}`, output: read.report };
+    },
+  },
+  {
+    // An ODS file opened (base64= its bytes): its tables, their cells'
+    // cached values (ods.ts); what was left out, reported.
+    id: "file.importOds", label: "Open ODS", params: ["base64"], optional: ["name"], journaled: true, unstepped: true,
+    run: async (wb, p) => {
+      let read: { file: Record<string, unknown>; report: string[] };
+      try {
+        read = readOds(fromBase64(p.base64), p.name ?? "Workbook");
+      } catch (e) {
+        return refuse((e as Error).message);
+      }
+      wb.fileReport = read.report;
+      const o = await open(wb, readSheetFile(read.file));
+      wb.carried = [];
+      return { ...o, message: `${o.message}${read.report.length ? `; ${read.report.join("; ")}` : ""}`, output: read.report };
     },
   },
   {

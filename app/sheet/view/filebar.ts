@@ -77,6 +77,10 @@ function documentsRow(v: SheetView): void {
         await v.run("file.importXlsx", { base64: await d.read_base64(), name: d.name });
         return;
       }
+      if (/\.ods$/i.test(d.name)) {
+        await v.run("file.importOds", { base64: await d.read_base64(), name: d.name });
+        return;
+      }
       const text = await d.read_text();
       if (/\.(csv|tsv|tab|txt)$/i.test(d.name)) await v.run("file.importCsv", { at: v.here(), text, ...(/\.(tsv|tab)$/i.test(d.name) ? { delimiter: "tab" } : {}) });
       else if (/\.html?$/i.test(d.name)) await v.run("file.importHtml", { at: v.here(), text });

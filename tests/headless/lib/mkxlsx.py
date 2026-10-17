@@ -58,6 +58,16 @@ WB3='''<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/mai
 WB3RELS='''<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId4" Target="styles.xml"/><Relationship Id="rId5" Target="theme/theme1.xml"/></Relationships>'''
 parts=make([("[Content_Types].xml",CT),("_rels/.rels",RELS),("xl/workbook.xml",WB3),("xl/_rels/workbook.xml.rels",WB3RELS),("xl/styles.xml",STY3),("xl/worksheets/sheet1.xml",S4),("xl/worksheets/_rels/sheet1.xml.rels",S4RELS),("xl/tables/table1.xml",TB),
   ("xl/theme/theme1.xml",'<a:theme xmlns:a="a" name="Mine"/>'),("docProps/core.xml",'<cp:coreProperties xmlns:cp="c"><dc:creator xmlns:dc="d">Paul</dc:creator></cp:coreProperties>'),("xl/charts/chart1.xml","<c/>"),("xl/media/image1.png","PNG"),("xl/pivotTables/pivotTable1.xml","<p/>")])
+CONTENT='''<?xml version="1.0" encoding="UTF-8"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"><office:body><office:spreadsheet>
+<table:table table:name="Stock"><table:table-column table:number-columns-repeated="3"/>
+<table:table-row><table:table-cell office:value-type="string"><text:p>Item</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Qty</text:p></table:table-cell><table:table-cell table:number-columns-spanned="2" office:value-type="string"><text:p>Wide</text:p></table:table-cell><table:covered-table-cell/></table:table-row>
+<table:table-row><table:table-cell office:value-type="string"><text:p>pens<text:s text:c="2"/>red</text:p></table:table-cell><table:table-cell office:value-type="float" office:value="3"><text:p>3</text:p></table:table-cell><table:table-cell table:formula="of:=[.B2]*2" office:value-type="float" office:value="6"><text:p>6</text:p></table:table-cell><table:table-cell office:value-type="percentage" office:value="0.25"><text:p>25%</text:p></table:table-cell></table:table-row>
+<table:table-row table:number-rows-repeated="2"><table:table-cell office:value-type="boolean" office:boolean-value="true"><text:p>TRUE</text:p></table:table-cell><table:table-cell table:number-columns-repeated="2" office:value-type="string"><text:p>007</text:p></table:table-cell></table:table-row>
+<table:table-row><table:table-cell office:value-type="date" office:date-value="2024-01-15"><text:p>01/15/24</text:p></table:table-cell><table:table-cell office:value-type="time" office:time-value="PT36H00M00S"><text:p>36:00:00</text:p></table:table-cell></table:table-row>
+<table:table-row table:number-rows-repeated="1048570"><table:table-cell table:number-columns-repeated="1024"/></table:table-row>
+</table:table><table:table table:name="Two"><table:table-row><table:table-cell office:value-type="float" office:value="1.5"><text:p>1.5</text:p></table:table-cell></table:table-row></table:table>
+</office:spreadsheet></office:body></office:document-content>'''
+ods=make([("mimetype","application/vnd.oasis.opendocument.spreadsheet"),("content.xml",CONTENT)])
 big=make([("a.txt","hello "*5000+"".join(chr(32+(i*7)%90) for i in range(3000)))])
 open('/Users/paul/scm/spraedsheet/tests/headless/lib/xlsx_fixtures.ts','w').write(f'''// XLSX files made by hand for the tests: their XML written in
 // mkxlsx.py beside this file (by hand, not by GridCraft or Excel), zipped by
@@ -71,10 +81,14 @@ open('/Users/paul/scm/spraedsheet/tests/headless/lib/xlsx_fixtures.ts','w').writ
 // PARTS: conditional formatting (nine rules, one of a kind there is not),
 // a table with a totals row, an x14 sparkline group, a theme and document
 // properties to carry over, a chart, a picture and a pivot to report.
+// ODS: an OpenDocument spreadsheet, two tables: strings, floats, a formula
+// with its cached value, a percentage, booleans, a date, a duration,
+// repeated rows and columns (the last row a million of them, empty), a span.
 export const BASIC = "{basic}";
 export const STORED = "{stored}";
 export const BIG = "{big}";
 export const STYLED = "{styled}";
 export const PARTS = "{parts}";
+export const ODS = "{ods}";
 ''')
 print(len(basic),len(stored),len(big))
