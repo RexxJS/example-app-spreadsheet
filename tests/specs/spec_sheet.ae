@@ -1659,6 +1659,16 @@ main() {
             spec.assert_true(b.wait_for_text("item\tqty\npens\t3"), "out as TSV")
             g.command("view.panel name=none")
         }
+        spec.it("JSON rows pasted into the File panel's box come in under their keys") callback {
+            g.command("sheet.add name=Jsoned")
+            g.command("view.panel name=file")
+            g.command("view.select range=A1")
+            b.set_field_by("CSV", "[{\"item\":\"pens\",\"qty\":3},{\"item\":\"ink\",\"qty\":1}]")
+            b.click("Import JSON")
+            spec.assert_true(g.wait_cell("B", 1, "qty"), "the keys the header row")
+            spec.assert_true(g.wait_cell("A", 3, "ink"), "a record a row")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

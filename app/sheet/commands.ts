@@ -13,6 +13,7 @@ import { evaluationSteps } from "./audit.ts";
 import type { Addr } from "./address.ts";
 import { copied, filled, pasted } from "./copy.ts";
 import type { FillWay } from "./copy.ts";
+import { fromHtml, fromJson, toHtml } from "./tabular.ts";
 import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toCsv } from "./csv.ts";
 import { readSheetFile, writeSheetFile } from "./file.ts";
 import type { SheetFile } from "./file.ts";
@@ -268,6 +269,15 @@ const savedNames = (store: Store): string[] => {
 };
 const savedName = (store: Store, name: string): string =>
   savedNames(store).find((n) => n.toUpperCase() === name.trim().toUpperCase()) ?? refuse(`no saved file ${name}`);
+
+// Rows of inputs set from a cell, refused when they do not fit.
+function placed(wb: Workbook, at: Addr, rows: string[][], what: string): Promise<Outcome> {
+  const cols = Math.max(0, ...rows.map((r) => r.length));
+  if (at.col + cols > COLS) refuse(`${cols} columns from ${keyOf(at)} do not fit on the sheet`);
+  if (at.row + rows.length > ROWS) refuse(`${rows.length} rows from ${keyOf(at)} do not fit on the sheet`);
+  const entries = rows.flatMap((row, i) => row.map((input, j): [string, string] => [keyOf({ col: at.col + j, row: at.row + i }), input]));
+  return setting(wb, entries, `imported ${rows.length} rows of ${what} at ${keyOf(at)}`);
+}
 
 // A delimiter by name (comma, tab, semicolon, bar, space) or as itself.
 const delimiterOf = (s: string): string => CSV_DELIMITERS[s.trim().toLowerCase()] ?? (s.length === 1 && !/[A-Za-z0-9"\r\n]/.test(s) ? s : refuse(`${s} is not a delimiter (${Object.keys(CSV_DELIMITERS).join(", ")})`));
@@ -2782,6 +2792,32 @@ const SPECS: readonly Spec[] = [
       if (at.row + rows.length > ROWS) refuse(`${rows.length} rows from ${keyOf(at)} do not fit on the sheet`);
       const entries = rows.flatMap((row, i) => row.map((input, j): [string, string] => [keyOf({ col: at.col + j, row: at.row + i }), input]));
       return setting(wb, entries, `imported ${rows.length} rows at ${keyOf(at)}${d === "," ? "" : `, split by ${Object.entries(CSV_DELIMITERS).find(([, x]) => x === d)?.[0] ?? d}`}`);
+    },
+  },
+  {
+    // JSON rows in at a cell: an array of objects (their keys the header
+    // row), or of arrays.
+    id: "file.importJson", label: "Import JSON", params: ["at", "text"], journaled: true,
+    run: (wb, p) => placed(wb, rangeOf(p.at)[0], fromJson(p.text), "JSON"),
+  },
+  {
+    // An HTML page's table (table= its number, the first by default) in at
+    // a cell.
+    id: "file.importHtml", label: "Import HTML", params: ["at", "text"], optional: ["table"], journaled: true,
+    run: (wb, p) => placed(wb, rangeOf(p.at)[0], fromHtml(p.text, countOf(p.table ?? "1")), "HTML"),
+  },
+  {
+    // The cells as an HTML table, as they show, their looks inline;
+    // header=1 makes the first row th.
+    id: "file.exportHtml", label: "Export HTML", params: [], optional: ["range", "header"], journaled: false,
+    run: async (wb, p) => {
+      const r = p.range === undefined ? usedRange(wb) : rangeOf(p.range), tl = topLeft(r);
+      const rows = Math.abs(r[0].row - r[1].row) + 1, cols = Math.abs(r[0].col - r[1].col) + 1;
+      const html = toHtml(Array.from({ length: rows }, (_, i) => Array.from({ length: cols }, (_, j) => {
+        const k = keyOf({ col: tl.col + j, row: tl.row + i });
+        return { text: wb.textOf(k), style: wb.styleOf(k) };
+      })), flag(p.header));
+      return { ok: true, message: `${named(r)} as HTML: ${rows} rows`, changed: [], output: html };
     },
   },
   {

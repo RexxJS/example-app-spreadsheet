@@ -325,6 +325,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // encoding; EXPORTCSV("A1:C9", "tab").
   IMPORTCSV: async (exec, at, t, d, enc) => (await must(exec, "file.importCsv", { at: text(at), ...(text(enc).trim() ? { base64: text(t), encoding: text(enc) } : { text: text(t) }), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).message,
   EXPORTCSV: async (exec, r, d) => (await must(exec, "file.exportCsv", { ...(text(r).trim() ? { range: text(r) } : {}), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).output,
+  // JSON and HTML: IMPORTJSON("A1", text), IMPORTHTML("A1", html, 2) its
+  // second table, EXPORTHTML("A1:C9", 1) the first row a header.
+  IMPORTJSON: async (exec, at, t) => (await must(exec, "file.importJson", { at: text(at), text: text(t) })).message,
+  IMPORTHTML: async (exec, at, t, n) => (await must(exec, "file.importHtml", { at: text(at), text: text(t), ...(text(n).trim() ? { table: text(n) } : {}) })).message,
+  EXPORTHTML: async (exec, r, header) => (await must(exec, "file.exportHtml", { ...(text(r).trim() ? { range: text(r) } : {}), ...(yes(header) ? { header: "1" } : {}) })).output,
   // Slicers: ADDSLICER("Sales", "region"), SLICE("region", "north,south"),
   // SLICE("region", "west", 1) to add it; CLEARSLICER(slicer),
   // DELETESLICER(slicer), LISTSLICERS().

@@ -1,7 +1,8 @@
 // Files: the workbook saved to and opened from the page's storage by name
 // (every sheet, its notes and names, in the Tauri app's format), the saved
 // files listed; a new workbook; CSV out (what the selection, or everything
-// used, shows; or TSV) and in (at the selected cell, its delimiter detected); the Excel example, the Tauri
+// used, shows; or TSV, or HTML) and in (at the selected cell, its delimiter
+// detected; or JSON rows, or an HTML page's table); the Excel example, the Tauri
 // app's three sample sheets (RexxJS formulas), an empty sheet, and the way
 // home. As an installed app with `documents`, files the person picks too:
 // a workbook in the Tauri app's format (.json, .rexxsheet) or CSV opened,
@@ -36,6 +37,13 @@ export function fileBar(v: SheetView): void {
     });
     bind(ui.textarea("CSV"), csv);
     v.btn("Import CSV", () => v.run("file.importCsv", { at: v.here(), text: csv.value }));
+    v.btn("Import JSON", () => v.run("file.importJson", { at: v.here(), text: csv.value }));
+    v.btn("Import HTML", () => v.run("file.importHtml", { at: v.here(), text: csv.value }));
+    v.btn("Export HTML", async () => {
+      const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
+      const o = await v.run("file.exportHtml", { ...(many ? { range: v.range() } : {}), header: "1" });
+      shown.set(String(o.output ?? ""));
+    });
   });
   bind(ui.text_wrapped("", 720), shown);
   if (typeof documents !== "undefined") documentsRow(v);
@@ -66,6 +74,9 @@ function documentsRow(v: SheetView): void {
       if (!d) return;
       const text = await d.read_text();
       if (/\.(csv|tsv|tab|txt)$/i.test(d.name)) await v.run("file.importCsv", { at: v.here(), text, ...(/\.(tsv|tab)$/i.test(d.name) ? { delimiter: "tab" } : {}) });
+      else if (/\.html?$/i.test(d.name)) await v.run("file.importHtml", { at: v.here(), text });
+      // JSON rows (an array), or a workbook in the Tauri app's format.
+      else if (/^\s*\[/.test(text)) await v.run("file.importJson", { at: v.here(), text });
       else await v.run("file.import", { text });
     }));
     v.btn("Save file", tried(async () => {
