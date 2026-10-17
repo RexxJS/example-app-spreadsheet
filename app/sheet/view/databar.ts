@@ -33,6 +33,10 @@ export function dataBar(v: SheetView): void {
     v.btn("Scenario summary", () => v.run("scenario.summary", { results: v.range() }));
     // Solver: the selected cell maximised by changing the "by changing"
     // field's cells, under the criteria range field's constraints.
+    // Data Analysis over the selection, the report beside it.
+    const beside = () => { const s = v.selection(); return s ? keyOf({ col: Math.max(s[0].col, s[1].col) + 2, row: Math.min(s[0].row, s[1].row) }) : "A1"; };
+    v.btn("Descriptive statistics", () => v.run("data.analyze", { tool: "descriptive", input: v.range(), output: beside(), labels: "1" }));
+    v.btn("Regression", () => v.run("data.analyze", { tool: "regression", input: v.range(), output: beside(), labels: "1" }));
     v.btn("Solver", () => v.run("solver.solve", { objective: v.here(), changing: by.value, ...(criteria.value.trim() ? { constraints: criteria.value } : {}), report: "1" }));
     bind(ui.textfield("row input", () => {}), rowInput);
     bind(ui.textfield("column input", () => {}), columnInput);

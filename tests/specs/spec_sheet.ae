@@ -1895,6 +1895,18 @@ main() {
             spec.assert_true(wait_button("Answer Report 1"), "the report's sheet tab")
             g.command("view.panel name=none")
         }
+        spec.it("Descriptive statistics from the Data panel, its report beside the selection") callback {
+            g.command("sheet.add name=Stats")
+            g.script("LET r = SETCELL('A1', 'Score'); LET r = SETCELL('A2', 2); LET r = SETCELL('A3', 4); LET r = SETCELL('A4', 6)")
+            spec.assert_true(g.wait_cell("A", 4, "6"), "the data")
+            g.command("view.panel name=data")
+            g.command("view.select range=A1:A4")
+            b.click("Descriptive statistics")
+            spec.assert_true(b.wait_for_console("sheet: descriptive of A1:A4 at C1"), "written")
+            spec.assert_true(g.wait_cell("C", 2, "Mean"), "its labels")
+            spec.assert_true(g.wait_cell("D", 2, "4"), "the mean")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

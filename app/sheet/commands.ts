@@ -52,6 +52,8 @@ import { BAND, bandedKeys, slicedRows, slicerValues } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
 import { CONSOLIDATE_FUNCTIONS, consolidate } from "./consolidate.ts";
 import { solveLp } from "./solver.ts";
+import { TOOLS, analyze } from "./analysis.ts";
+import type { Column } from "./analysis.ts";
 import type { LpRow, Relation } from "./solver.ts";
 import { MOST_LEVELS, SUBTOTAL_FUNCTIONS, depth, detailOf, hiddenAtLevel, regrouped, runs } from "./outline.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows, sortedRowsBy } from "./sortfind.ts";
@@ -2176,6 +2178,36 @@ const SPECS: readonly Spec[] = [
         await wb.settle();
         throw e;
       }
+    },
+  },
+  {
+    // Data Analysis (analysis.ts): tool= one of the ToolPak's thirteen over
+    // input= (a column a variable; labels=1 when its first row names them),
+    // the report's values written at output=; alpha=, interval=, damping=,
+    // bins= (a range), difference= as each tool takes.
+    id: "data.analyze", label: "Data Analysis", params: ["tool", "input", "output"], optional: ["labels", "alpha", "interval", "damping", "bins", "difference", "confidence"], journaled: true,
+    run: async (wb, p) => {
+      const tool = TOOLS.find((t) => t.toLowerCase() === p.tool.trim().toLowerCase()) ?? refuse(`${p.tool} is not a tool (${TOOLS.join(", ")})`);
+      const [a, b] = rangeOf(p.input), labels = flag(p.labels);
+      const cols: Column[] = [];
+      for (let c = Math.min(a.col, b.col); c <= Math.max(a.col, b.col); c++) {
+        const top = Math.min(a.row, b.row), bottom = Math.max(a.row, b.row), vs: number[] = [];
+        for (let r = top + (labels ? 1 : 0); r <= bottom; r++) { const v = wb.sheet.value(keyOf({ col: c, row: r })); if (typeof v === "number") vs.push(v); }
+        cols.push({ name: labels ? show(wb.sheet.value(keyOf({ col: c, row: top }))) : `Column ${cols.length + 1}`, values: vs });
+      }
+      if (cols.some((c) => c.values.length < 2)) refuse(`${p.input}: each column needs two numbers or more`);
+      const n = (v: string | undefined) => (v === undefined ? undefined : isFinite(Number(v)) ? Number(v) : refuse(`${v} is not a number`));
+      const bins = p.bins === undefined ? undefined : [...range(...rangeOf(p.bins))].map((k) => wb.sheet.value(k)).filter((v): v is number => typeof v === "number");
+      let table: (string | number)[][];
+      try {
+        table = analyze(tool, cols, { alpha: n(p.alpha), interval: n(p.interval), damping: n(p.damping), bins, difference: n(p.difference), confidence: n(p.confidence) });
+      } catch (e) {
+        return refuse((e as Error).message);
+      }
+      const at = cellAddr(cellOf(p.output))!;
+      if (at.row + table.length > ROWS || at.col + Math.max(...table.map((r) => r.length)) > COLS) refuse(`the ${tool} report does not fit at ${p.output}`);
+      const entries = table.flatMap((row, r) => row.map((v, c): [string, string] => [keyOf({ col: at.col + c, row: at.row + r }), typeof v === "number" ? (isFinite(v) ? String(Number(v.toPrecision(15))) : "#NUM!") : NUMERIC_TEXT.test(v) ? `'${v}` : v]));
+      return setting(wb, entries, `${tool} of ${p.input} at ${p.output}`);
     },
   },
   {

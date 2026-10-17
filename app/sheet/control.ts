@@ -348,6 +348,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     const g = text(goal).trim(), value = isFinite(Number(g)) && g !== "" ? g : "";
     return (await must(exec, "solver.solve", { objective: text(objective), changing: text(changing), goal: value ? "value" : g || "max", ...(value ? { value } : {}), ...(text(constraints).trim() ? { constraints: text(constraints) } : {}), ...pairs(opts) })).message;
   },
+  // Data Analysis: ANALYZE("regression", "A1:C20", "E1", "labels=1;alpha=0.05").
+  ANALYZE: async (exec, tool, input, output, opts) => (await must(exec, "data.analyze", { tool: text(tool), input: text(input), output: text(output), ...pairs(opts) })).message,
   // Scenario Manager: ADDSCENARIO("Best", "B1,B2", "10,0.2"), SHOWSCENARIO("Best"),
   // SCENARIOSUMMARY("B5"), LISTSCENARIOS(), DELETESCENARIO("Best").
   ADDSCENARIO: async (exec, n, cells, values) => (await must(exec, "scenario.add", { name: text(n), cells: text(cells), ...(text(values).trim() ? { values: text(values) } : {}) })).message,
