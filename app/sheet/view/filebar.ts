@@ -36,6 +36,7 @@ export function fileBar(v: SheetView): void {
       const o = await v.run("file.exportCsv", { ...(many ? { range: v.range() } : {}), delimiter: "tab" });
       shown.set(String(o.output ?? ""));
     });
+    v.btn("Export PDF", () => v.run("file.exportPdf", { gridlines: "1" }));
     bind(ui.textarea("CSV"), csv);
     v.btn("Import CSV", () => v.run("file.importCsv", { at: v.here(), text: csv.value }));
     v.btn("Import JSON", () => v.run("file.importJson", { at: v.here(), text: csv.value }));
@@ -112,6 +113,14 @@ function documentsRow(v: SheetView): void {
       await d.write_base64(String(o.output));
       print(`sheet: saved ${d.name}`);
       v.status.set(`Saved ${d.name}${v.wb.fileReport.length ? `: ${v.wb.fileReport.join("; ")}` : ""}`);
+    }));
+    v.btn("Export PDF file", tried(async () => {
+      const d = await documents.pick_save(`${v.wb.name}.pdf`);
+      if (!d) return;
+      const o = await v.cmds.execute("file.exportPdf", { gridlines: "1" });
+      await d.write_base64(String(o.output));
+      print(`sheet: exported ${d.name}: ${o.message}`);
+      v.status.set(`Exported ${d.name}`);
     }));
     v.btn("Export CSV file", tried(async () => {
       const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);

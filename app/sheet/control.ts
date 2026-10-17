@@ -332,6 +332,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   OPENXLS: async (exec, b64, n) => (await must(exec, "file.importXls", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
   // OPENODS(base64, "Book.ods"): an ODS file's tables, their cached values.
   OPENODS: async (exec, b64, n) => (await must(exec, "file.importOds", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  // EXPORTPDF("A1:F40", "paper=letter;landscape=1;gridlines=1;headings=1"),
+  // EXPORTPDF("", "sheets=all"): the PDF's bytes in base64.
+  EXPORTPDF: async (exec, r, opts) => (await must(exec, "file.exportPdf", { ...(text(r).trim() ? { range: text(r) } : {}), ...pairs(opts) })).output,
   // SAVEXLSX(): the workbook as an XLSX file, its bytes in base64.
   SAVEXLSX: async (exec) => (await must(exec, "file.exportXlsx")).output,
   FILEREPORT: async (exec) => stem((await must(exec, "file.report")).output as string[]),

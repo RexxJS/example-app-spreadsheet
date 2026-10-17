@@ -31,7 +31,7 @@ export const panelItem = (label: string): string => `${label} panel`;
 export const MENUS: readonly Menu[] = [
   { label: "File", items: [
     i("New", "file.new"), i("Open", "file.open"), i("Open file", "file.import"), i("Save", "file.save", "Ctrl+S"), i("Save file", "file.export"), i("Delete file", "file.delete"), "-",
-    i("Import CSV", "file.importCsv"), i("Export CSV", "file.exportCsv"), i("Export TSV", "file.exportCsv"), i("Import JSON", "file.importJson"), i("Import HTML", "file.importHtml"), i("Export HTML", "file.exportHtml"), i("Export CSV file", "file.exportCsv"), "-",
+    i("Import CSV", "file.importCsv"), i("Export CSV", "file.exportCsv"), i("Export TSV", "file.exportCsv"), i("Import JSON", "file.importJson"), i("Import HTML", "file.importHtml"), i("Export HTML", "file.exportHtml"), i("Export PDF", "file.exportPdf"), i("Export CSV file", "file.exportCsv"), "-",
     i("Paste example", "example.paste"), i("Budget (RexxJS)", "file.open"), i("Test sheet (RexxJS)", "file.open"), i("Formatted (RexxJS)", "file.open"), "-",
     i("Clear all", "sheet.clear"),
   ] },

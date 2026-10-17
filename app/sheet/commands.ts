@@ -18,6 +18,8 @@ import { readXlsx } from "./xlsx.ts";
 import { readOds } from "./ods.ts";
 import { readXls } from "./xls.ts";
 import { decryptPackage, isEncrypted } from "./encrypted.ts";
+import { PAPER, writePdf } from "./pdf.ts";
+import type { PdfSheet } from "./pdf.ts";
 import { writeXlsx } from "./xlsxwrite.ts";
 import type { XlsxRead } from "./xlsx.ts";
 import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toBase64, toCsv } from "./csv.ts";
@@ -32,7 +34,7 @@ import { check, describeRule, errorOf, ruleOf } from "./validation.ts";
 import { asApp, editorOf, refusal, toggled } from "./editors.ts";
 import { ICONS, PERIODS, THRESHOLDS, describeRule as describeCf, rangeName } from "./rules.ts";
 import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
-import { colour, toStyle } from "./formats.ts";
+import { borderLine, colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
 import { ROLES, THEMES, isRole, resolved } from "./themes.ts";
 import type { Role, Theme } from "./themes.ts";
@@ -449,6 +451,34 @@ async function sliced(wb: Workbook, page: Page, said: string): Promise<Outcome> 
   await wb.hiddenChanged();
   return changedBy(wb, wb.sheet.keys(), `${said} (${rows.size} row${rows.size === 1 ? "" : "s"} hidden)`);
 }
+
+// A sheet as pdf.ts lays it out: its used range (or the one asked), each
+// cell as it shows, in its look; sizes in points (a pixel three quarters
+// of one), hidden rows and columns left out.
+function pdfSheet(wb: Workbook, page: Page, r: [Addr, Addr] | null): PdfSheet {
+  const used = page.sheet.keys().map((k) => cellAddr(k)!);
+  const [a, b] = r ?? [{ col: 0, row: 0 }, { col: Math.max(0, ...used.map((x) => x.col)), row: Math.max(0, ...used.map((x) => x.row)) }];
+  const c0 = Math.min(a.col, b.col), r0 = Math.min(a.row, b.row);
+  const cols = Array.from({ length: Math.abs(a.col - b.col) + 1 }, (_, i) => c0 + i).filter((c) => !page.hiddenCols.has(c));
+  const rows = Array.from({ length: Math.abs(a.row - b.row) + 1 }, (_, i) => r0 + i).filter((x) => !page.hiddenRows.has(x) && !page.filtered?.has(x));
+  const was = wb.active;
+  return {
+    name: page.name, rows: rows.length, cols: cols.length, firstRow: r0, firstCol: c0,
+    colWidth: (c) => (page.widths.get(cols[c]) ?? PDF_COLUMN_PX) * 0.75, rowHeight: (x) => (page.heights.get(rows[x]) ?? PDF_ROW_PX) * 0.75,
+    cells: (ri, ci) => {
+      const key = keyOf({ col: cols[ci], row: rows[ri] }), note = page.notes.get(key), look = wb.lookOf(note) ?? {}, v = page.sheet.value(key);
+      if (was !== page.name) wb.activate(page.name);
+      const text = wb.textOf(key);
+      if (was !== page.name) wb.activate(was);
+      if (!text && !look.fill && !look.borders) return null;
+      const line = (s?: string) => (s ? borderLine(s).split(" ").pop() : undefined);
+      return { text, bold: look.bold, italic: look.italic, size: look.size ? look.size * 0.75 : undefined, color: look.color ? resolved(look.color) : v instanceof CellError ? "#c0392b" : undefined,
+        fill: look.fill ? resolved(look.fill) : undefined, align: look.align ?? (typeof v === "number" ? "end" : "start"),
+        borders: look.borders ? { top: line(look.borders.top), right: line(look.borders.right), bottom: line(look.borders.bottom), left: line(look.borders.left) } : undefined };
+    },
+  };
+}
+const PDF_COLUMN_PX = 80, PDF_ROW_PX = 24;
 
 // A theme as words: its accents and fonts.
 const themeSaid = (t: Theme): string => `accents ${["accent1", "accent2", "accent3", "accent4", "accent5", "accent6"].map((r) => t.colors[r as Role]).join(" ")}, headings ${t.fonts.major}, body ${t.fonts.minor}`;
@@ -2857,6 +2887,24 @@ const SPECS: readonly Spec[] = [
       const o = await open(wb, readSheetFile(read.file));
       wb.carried = [];
       return { ...o, message: `${o.message}${read.report.length ? `; ${read.report.join("; ")}` : ""}`, output: read.report };
+    },
+  },
+  {
+    // The sheet (or every sheet shown, sheets=all) as a PDF (pdf.ts): its
+    // used range or range=, on paper= a4 or letter, landscape=1, with
+    // gridlines=1 and headings=1 when asked; the bytes as base64.
+    id: "file.exportPdf", label: "Export PDF", params: [], optional: ["range", "sheets", "paper", "landscape", "gridlines", "headings", "margin"], journaled: false,
+    run: async (wb, p) => {
+      const paper = (p.paper ?? "a4").trim().toLowerCase();
+      if (!(paper in PAPER)) refuse(`${p.paper} is not a paper size (${Object.keys(PAPER).join(", ")})`);
+      const margin = p.margin === undefined ? 36 : Number(p.margin);
+      if (!(margin >= 0 && margin <= 144)) refuse(`${p.margin} is not a margin (0 to 144 points)`);
+      const all = (p.sheets ?? "").trim().toLowerCase() === "all";
+      if (all && p.range !== undefined) refuse("a range is the active sheet's: not with sheets=all");
+      const pages = all ? wb.pages().filter((x) => !x.hiddenSheet) : [wb.page(wb.active)!];
+      const sheets = pages.map((page) => pdfSheet(wb, page, p.range === undefined ? null : rangeOf(p.range)));
+      const { bytes, pages: n } = writePdf(sheets, { paper: paper as "a4" | "letter", landscape: flag(p.landscape), margin, gridlines: flag(p.gridlines), headings: flag(p.headings) });
+      return { ok: true, message: `${wb.name}.pdf: ${n} page${n === 1 ? "" : "s"}, ${bytes.length} bytes`, changed: [], output: toBase64(bytes) };
     },
   },
   {

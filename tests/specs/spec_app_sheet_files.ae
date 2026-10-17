@@ -142,6 +142,15 @@ main() {
             b.click("Open file")
             spec.assert_true(g.wait_cell("B", 1, "42"), "and the workbook before it again")
         }
+        spec.it("Export PDF file writes the sheet as a PDF where the person chose") callback {
+            uidriver.answer_prompt("save", "${dir}/out.pdf")
+            b.click("Export PDF file")
+            spec.assert_true(b.wait_for_console("sheet: exported out.pdf: Spec book.pdf: 1 page, "), "exported")
+            body, n, _e = fs.read_binary("${dir}/out.pdf")
+            spec.assert_true(n > 500, "a file")
+            spec.assert_true(string.starts_with(body, "%PDF-1.4") == 1, "a PDF")
+            spec.assert_true(string.contains(body, "(42) Tj") == 1, "its cell's value drawn")
+        }
         spec.it("Save XLSX file writes the workbook as XLSX, and Open file reads it back") callback {
             uidriver.answer_prompt("save", "${dir}/round.xlsx")
             b.click("Save XLSX file")
