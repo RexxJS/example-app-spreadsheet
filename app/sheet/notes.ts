@@ -36,6 +36,8 @@ export interface Hyperlink {
 
 export class CellNotes {
   readonly #notes = new Map<string, Note>();
+  // The notes as saved() last gave them, until they change.
+  #snap: ReadonlyMap<string, Note> | null = null;
 
   get(key: string): Note {
     return this.#notes.get(key) ?? {};
@@ -43,6 +45,7 @@ export class CellNotes {
 
   // Some parts of a cell's note; an empty part is none.
   set(key: string, parts: Note): void {
+    this.#snap = null;
     const note: Record<string, unknown> = { ...this.get(key), ...parts };
     for (const [k, v] of Object.entries(note)) if (v === "" || v === null || v === undefined) delete note[k];
     if (Object.keys(note).length) this.#notes.set(key, note as Note); else this.#notes.delete(key);
@@ -63,6 +66,7 @@ export class CellNotes {
   // note whose cell went is gone.
   remap(to: (a: Addr) => Addr | null, rewrite: (expression: string, from: Addr, to: Addr) => string = (e) => e): void {
     const notes = [...this.#notes];
+    this.#snap = null;
     this.#notes.clear();
     for (const [key, note] of notes) {
       const from = addrOf(key)!, a = to(from);
@@ -71,16 +75,19 @@ export class CellNotes {
   }
 
   clear(): void {
+    this.#snap = null;
     this.#notes.clear();
   }
 
   // Every note, to be put back (undo); a note is never changed in place.
   saved(): ReadonlyMap<string, Note> {
-    return new Map(this.#notes);
+    this.#snap ??= new Map(this.#notes);
+    return this.#snap;
   }
 
   restore(saved: ReadonlyMap<string, Note>): void {
     this.#notes.clear();
     for (const [k, n] of saved) this.#notes.set(k, n);
+    this.#snap = saved;
   }
 }

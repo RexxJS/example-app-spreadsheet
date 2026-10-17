@@ -162,6 +162,9 @@ export class Sheet {
   // sheet is calculated.
   readonly #stale = new Set<string>();
 
+  // The sheet as saved() last gave it, until it changes.
+  #snap: SavedSheet | null = null;
+
   constructor(listener?: SheetListener, language: Language = EXCEL, context: Context = alone()) {
     this.#listener = listener;
     this.#language = language;
@@ -228,8 +231,11 @@ export class Sheet {
 
   // What the sheet holds, to be put back (the workbook's undo): its
   // language, inputs, names and tables. Values are worked out again.
+  // The same object while the sheet is unchanged: each step of undo
+  // shares the sheets it did not change (a snapshot is never changed).
   saved(): SavedSheet {
-    return { language: this.#language, inputs: new Map(this.#inputs), names: new Map(this.#names), formulas: new Map(this.#formulas), tables: new Map(this.#tables) };
+    this.#snap ??= { language: this.#language, inputs: new Map(this.#inputs), names: new Map(this.#names), formulas: new Map(this.#formulas), tables: new Map(this.#tables) };
+    return this.#snap;
   }
 
   // The sheet put back as it was saved: the cells whose input differs set
@@ -241,6 +247,7 @@ export class Sheet {
       const list = [...keys].filter((k) => this.input(k) !== (saved.inputs.get(k) ?? "")).map((k): [string, string] => [k, saved.inputs.get(k) ?? ""]);
       const same = <V>(a: Map<string, V>, b: ReadonlyMap<string, V>) => a.size === b.size && [...b].every(([k, v]) => a.get(k) === v);
       const relink = this.#language !== saved.language || !same(this.#names, saved.names) || !same(this.#formulas, saved.formulas) || !same(this.#tables, saved.tables);
+      this.#snap = null;
       this.#language = saved.language;
       this.#names.clear();
       for (const [n, r] of saved.names) this.#names.set(n, r);
@@ -249,11 +256,13 @@ export class Sheet {
       this.#tables.clear();
       for (const [n, t] of saved.tables) this.#tables.set(n, t);
       const changed = await this.#apply(list);
+      this.#snap = saved;
       return relink ? [...new Set([...changed, ...(await this.#recomputeAll())])] : changed;
     });
   }
 
   #apply(list: readonly (readonly [string, string])[]): Promise<string[]> {
+    if (list.length) this.#snap = null;
     for (const [key, input] of list) {
       if (input === "") this.#inputs.delete(key); else this.#inputs.set(key, input);
       this.#compile(key);
@@ -265,6 +274,7 @@ export class Sheet {
   // it, and the whole sheet worked out again.
   setLanguage(language: Language): Promise<string[]> {
     return this.#inTurn(() => {
+      this.#snap = null;
       this.#language = language;
       return this.#recomputeAll();
     });
@@ -315,6 +325,7 @@ export class Sheet {
   define(n: string, r: [Addr, Addr] | string | null): Promise<string[]> {
     return this.#inTurn(() => {
       const key = n.toUpperCase();
+      this.#snap = null;
       this.#names.delete(key);
       this.#formulas.delete(key);
       if (typeof r === "string") this.#formulas.set(key, r); else if (r) this.#names.set(key, r);
@@ -335,6 +346,7 @@ export class Sheet {
   // compiled again, as any may read it.
   defineTable(n: string, t: TableDef | null): Promise<string[]> {
     return this.#inTurn(() => {
+      this.#snap = null;
       if (t) this.#tables.set(n.toUpperCase(), t); else this.#tables.delete(n.toUpperCase());
       return this.#recomputeAll();
     });

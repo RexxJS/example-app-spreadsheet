@@ -21,6 +21,7 @@ export function commandBar(v: SheetView): void {
         print(`sheet: say ${l}`);
       });
       v.refresh();
+      if (!o.ok) print(`sheet: script failed: ${o.message}`);
       said.set([...lines, o.ok ? "" : `script failed: ${o.message}`].filter((l) => l).join(" | "));
     });
     v.btn("Commands", () => said.set(v.cmds.catalogue().map((c) => c.id).join(", ")));
