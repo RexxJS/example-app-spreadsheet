@@ -15,8 +15,9 @@ import { copied, filled, pasted } from "./copy.ts";
 import type { FillWay } from "./copy.ts";
 import { fromHtml, fromJson, toHtml } from "./tabular.ts";
 import { readXlsx } from "./xlsx.ts";
+import { writeXlsx } from "./xlsxwrite.ts";
 import type { XlsxRead } from "./xlsx.ts";
-import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toCsv } from "./csv.ts";
+import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toBase64, toCsv } from "./csv.ts";
 import { readSheetFile, writeSheetFile } from "./file.ts";
 import type { SheetFile } from "./file.ts";
 import { show } from "./format.ts";
@@ -2811,6 +2812,16 @@ const SPECS: readonly Spec[] = [
       wb.fileReport = read.report;
       const o = await open(wb, readSheetFile(read.file));
       return { ...o, message: `${o.message}${read.report.length ? `; left out: ${read.report.join("; ")}` : ""}`, output: read.report };
+    },
+  },
+  {
+    // The workbook as an XLSX file (xlsxwrite.ts): its bytes as base64 in
+    // the output; what it could not write, reported.
+    id: "file.exportXlsx", label: "Save as XLSX", params: [], journaled: false,
+    run: async (wb) => {
+      const { bytes, report } = writeXlsx(wb);
+      wb.fileReport = report;
+      return { ok: true, message: `${wb.name}.xlsx: ${bytes.length} bytes, ${wb.pages().length} sheet${wb.pages().length === 1 ? "" : "s"}${report.length ? `; ${report.join("; ")}` : ""}`, changed: [], output: toBase64(bytes) };
     },
   },
   {

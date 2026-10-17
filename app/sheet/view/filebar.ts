@@ -92,6 +92,14 @@ function documentsRow(v: SheetView): void {
       print(`sheet: saved ${d.name}`);
       v.status.set(`Saved ${d.name}`);
     }));
+    v.btn("Save XLSX file", tried(async () => {
+      const d = await documents.pick_save(`${v.wb.name}.xlsx`);
+      if (!d) return;
+      const o = await v.cmds.execute("file.exportXlsx");
+      await d.write_base64(String(o.output));
+      print(`sheet: saved ${d.name}`);
+      v.status.set(`Saved ${d.name}${v.wb.fileReport.length ? `: ${v.wb.fileReport.join("; ")}` : ""}`);
+    }));
     v.btn("Export CSV file", tried(async () => {
       const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
       const d = await documents.pick_save(`${v.wb.name}.csv`);

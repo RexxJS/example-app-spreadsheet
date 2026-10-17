@@ -328,6 +328,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // XLSX: OPENXLSX(base64, "Book.xlsx") opens one; FILEREPORT() a stem of
   // what it held that the app left out.
   OPENXLSX: async (exec, b64, n) => (await must(exec, "file.importXlsx", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  // SAVEXLSX(): the workbook as an XLSX file, its bytes in base64.
+  SAVEXLSX: async (exec) => (await must(exec, "file.exportXlsx")).output,
   FILEREPORT: async (exec) => stem((await must(exec, "file.report")).output as string[]),
   // JSON and HTML: IMPORTJSON("A1", text), IMPORTHTML("A1", html, 2) its
   // second table, EXPORTHTML("A1:C9", 1) the first row a header.
