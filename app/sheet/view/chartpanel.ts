@@ -52,6 +52,7 @@ export function chartPanel(v: SheetView): void {
       ui.btn(`Gridlines ${c.n}`, () => v.run("chart.option", { index: String(c.n), gridlines: o.gridlines === false ? "1" : "0" }));
       ui.btn(`Switch row/column ${c.n}`, () => v.run("chart.option", { index: String(c.n), byRows: o.byRows ? "0" : "1" }));
       ui.btn(`Use selection ${c.n}`, () => v.run("chart.data", { index: String(c.n), range: v.range() }));
+      ui.btn(`Linear trendline ${c.n}`, () => v.run("chart.trendline", { index: String(c.n), series: "1", type: o.trendlines?.length ? "none" : "linear", equation: "1", r2: "1" }));
     });
     vg.scene(`0 0 ${CHART_W} ${CHART_H}`, CHART_W, CHART_H, () => {
       vg.rect(0, 0, CHART_W, CHART_H, () => vg.fill("#ffffff"));

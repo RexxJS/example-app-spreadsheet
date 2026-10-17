@@ -391,6 +391,10 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     if (!k) throw new Error(`SETCHARTOPTION: ${text(name)} is not title, xTitle, yTitle, legend, labels, gridlines or byRows`);
     return (await must(exec, "chart.option", { index: text(n), [k]: text(v) })).message;
   },
+  // ADDTRENDLINE(1, "North", "linear", "equation=1;r2=1"), (1, 2,
+  // "polynomial", "order=3"), (1, 1, "movingAverage", "period=3"),
+  // (1, 1, "none") to take it off.
+  ADDTRENDLINE: async (exec, n, series, type, opts) => (await must(exec, "chart.trendline", { index: text(n), series: text(series), type: text(type), ...pairs(opts) })).message,
   SETCHARTDATA: async (exec, n, r) => (await must(exec, "chart.data", { index: text(n), range: text(r) })).message,
   SETCHARTTYPE: async (exec, n, kind) => (await must(exec, "chart.data", { index: text(n), kind: text(kind) })).message,
   LISTCHARTS: async (exec) => stem((await must(exec, "chart.list")).output as string[]),

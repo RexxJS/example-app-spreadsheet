@@ -1703,6 +1703,19 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("a linear trendline from a chart's button, its equation and R² drawn") callback {
+            g.command("sheet.add name=Trend")
+            g.script("LET r = SETCELL('A2', 'a'); LET r = SETCELL('A3', 'b'); LET r = SETCELL('A4', 'c'); LET r = SETCELL('B1', 'N'); LET r = SETCELL('B2', 2); LET r = SETCELL('B3', 4); LET r = SETCELL('B4', 6)")
+            spec.assert_true(g.wait_cell("B", 4, "6"), "the data")
+            g.command("view.panel name=chart")
+            g.command("chart.insert kind=line range=A1:B4")
+            spec.assert_true(b.wait_for_text("Chart 1: line chart of A1:B4"), "a chart")
+            b.click("Linear trendline 1")
+            spec.assert_true(b.wait_for_console("sheet: chart 1, N: a linear trendline: y = 2x   R² = 1"), "fitted")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"y = 2x   R² = 1\"") == 1, "its label drawn")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

@@ -40,7 +40,8 @@ import { ROLES, THEMES, isRole, resolved } from "./themes.ts";
 import type { Role, Theme } from "./themes.ts";
 import type { Look } from "./formats.ts";
 import { CHART_KINDS, LEGENDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
-import type { ChartOptions } from "./charts.ts";
+import type { ChartOptions, Shape, Trendline } from "./charts.ts";
+import { TREND_TYPES } from "./trend.ts";
 import type { ChartKind } from "./charts.ts";
 import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
@@ -2241,6 +2242,33 @@ const SPECS: readonly Spec[] = [
       page.charts = page.charts.map((x, j) => (j === i ? { ...x, ...(p.title !== undefined ? { title: p.title } : {}), options: o as ChartOptions } : x));
       const said = [p.title !== undefined ? `title ${p.title || "none"}` : "", ...Object.entries(o).map(([k, v]) => `${k} ${v}`)].filter((x) => x).join(", ");
       return changedBy(wb, [], `chart ${i + 1}: ${said || "as it was"}`);
+    },
+  },
+  {
+    // A trendline on a series (by its number from 1, or its name): type=
+    // linear, exponential, logarithmic, polynomial (order= 2 to 6), power,
+    // movingAverage (period=), or none to take it off; equation=1, r2=1
+    // label it.
+    id: "chart.trendline", label: "Trendline", params: ["index", "series", "type"], optional: ["order", "period", "equation", "r2"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, i = Number(p.index) - 1, c = page.charts[i] ?? refuse(`no chart ${p.index}`);
+      const names = wb.charts()[i].data.series.map((x) => x.name);
+      const si = /^\d+$/.test(p.series.trim()) ? Number(p.series) - 1 : names.findIndex((n) => n.toLowerCase() === p.series.trim().toLowerCase());
+      if (si < 0 || si >= names.length) refuse(`${p.series} is not a series of chart ${i + 1} (${names.join(", ")})`);
+      const kind = p.type.trim().toLowerCase(), others = (c.options?.trendlines ?? []).filter((t) => t.series !== si);
+      let said: string;
+      if (kind === "none") { page.charts = page.charts.map((x, j) => (j === i ? { ...x, options: { ...x.options, trendlines: others } } : x)); said = "no trendline"; }
+      else {
+        const type = TREND_TYPES.find((t) => t.toLowerCase() === kind) ?? refuse(`${p.type} is not a trendline (${TREND_TYPES.join(", ")}, none)`);
+        const order = p.order === undefined ? undefined : Number(p.order), period = p.period === undefined ? undefined : Number(p.period);
+        if (order !== undefined && !(Number.isInteger(order) && order >= 2 && order <= 6)) refuse(`${p.order} is not an order (2 to 6)`);
+        if (period !== undefined && !(Number.isInteger(period) && period >= 2)) refuse(`${p.period} is not a period (2 or more)`);
+        const t: Trendline = { series: si, type, ...(type === "polynomial" ? { order: order ?? 2 } : {}), ...(type === "movingAverage" ? { period: period ?? 2 } : {}), ...(flag(p.equation) ? { equation: true } : {}), ...(flag(p.r2) ? { r2: true } : {}) };
+        page.charts = page.charts.map((x, j) => (j === i ? { ...x, options: { ...x.options, trendlines: [...others, t] } } : x));
+        said = `a ${type === "polynomial" ? `polynomial (order ${t.order})` : type === "movingAverage" ? `${t.period}-point moving average` : type} trendline`;
+      }
+      const shown = wb.charts()[i].shapes.filter((x): x is Extract<Shape, { kind: "text" }> => x.kind === "text" && /^y = |R² = /.test(x.text)).map((x) => x.text);
+      return { ...await changedBy(wb, [], `chart ${i + 1}, ${names[si]}: ${said}${shown.length ? `: ${shown.join("; ")}` : ""}`), output: shown };
     },
   },
   {

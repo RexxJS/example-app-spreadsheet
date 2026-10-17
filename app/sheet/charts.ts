@@ -7,6 +7,8 @@ import { range } from "./address.ts";
 import type { Addr } from "./address.ts";
 import { show } from "./format.ts";
 import type { Value } from "./values.ts";
+import { coef, fit, movingAverage } from "./trend.ts";
+import type { TrendType } from "./trend.ts";
 
 // Excel's kinds: columns (bar here, as the app first named it), stacked
 // and 100% stacked; horizontal bars (hbar) the same three; a line with
@@ -21,7 +23,16 @@ export const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "
 // Chart Elements and Select Data: axis titles, the legend's place (or
 // none), data labels, gridlines (on unless off), the series by rows
 // (Switch Row/Column).
+export interface Trendline {
+  readonly series: number;          // from 0
+  readonly type: TrendType;
+  readonly order?: number;          // a polynomial's
+  readonly period?: number;         // a moving average's
+  readonly equation?: boolean;
+  readonly r2?: boolean;
+}
 export interface ChartOptions {
+  readonly trendlines?: readonly Trendline[];
   readonly xTitle?: string;
   readonly yTitle?: string;
   readonly legend?: "bottom" | "top" | "right" | "left" | "none";
@@ -186,7 +197,37 @@ function axes(kind: ChartKind, data: ChartData, w: number, h: number, title: str
     });
   }
   data.labels.forEach((l, i) => out.push(horizontal ? text(x0 - 4, cOf(i) + 3, l, "end") : text(cOf(i), y1 + 14, l)));
+  // Trendlines on a category chart: x the category's number, from 1.
+  if (!horizontal && !stacked) out.push(...trendShapes(o, data.series, data.labels.map((_, i) => i + 1), (x) => cOf(x - 1), vOf, f));
   out.push(...axisTitles(o, f, h), ...placedLegend(data.series.map((s) => s.name), o, f, w, h, title));
+  return out;
+}
+
+// Each trendline asked for: the fit drawn across the plot, its equation
+// and R² at the top right; a moving average through its means.
+function trendShapes(o: ChartOptions, series: readonly Series[], xs: readonly number[], X: (x: number) => number, Y: (y: number) => number, f: Frame): Shape[] {
+  const out: Shape[] = [];
+  let line = 0;
+  for (const t of o.trendlines ?? []) {
+    const s = series[t.series];
+    if (!s) continue;
+    const colour = PALETTE[t.series % PALETTE.length], lo = Math.min(...xs), hi = Math.max(...xs);
+    if (t.type === "movingAverage") {
+      const pts = movingAverage(xs, s.values, Math.max(2, t.period ?? 2)).flatMap(([x, y]) => [X(x), Y(y)]);
+      if (pts.length >= 4) out.push({ kind: "polyline", points: pts, stroke: colour, width: 1.5 });
+      continue;
+    }
+    const fitted = fit(t.type, xs, s.values, t.order ?? 2);
+    if (!fitted) continue;
+    const pts: number[] = [];
+    for (let k = 0; k <= 40; k++) {
+      const x = lo + ((hi - lo) * k) / 40, y = fitted.at(x);
+      if (isFinite(y)) pts.push(X(x), Math.max(f.y0, Math.min(f.y1, Y(y))));
+    }
+    out.push({ kind: "polyline", points: pts, stroke: colour, width: 1.5 });
+    const said = [t.equation ? fitted.equation : "", t.r2 && fitted.r2 !== null ? `R² = ${coef(fitted.r2)}` : ""].filter((x) => x).join("   ");
+    if (said) out.push(text(f.x1 - 4, f.y0 + 12 + line++ * 12, said, "end", 9, colour));
+  }
   return out;
 }
 
@@ -213,6 +254,7 @@ function xy(kind: ChartKind, data: ChartData, w: number, h: number, title: strin
     for (let k = 0; k < points.length; k += 2) out.push({ kind: "circle", cx: points[k], cy: points[k + 1], r: size ? 3 + 17 * Math.sqrt(Math.abs(size.values[k / 2]) / biggest) : 3, fill: colour });
     if (o.labels) for (let k = 0; k < points.length; k += 2) out.push(text(points[k], points[k + 1] - 6, show(s.values[k / 2]), "middle", 9));
   });
+  if (kind !== "bubble") out.push(...trendShapes(o, series.map(({ s }) => s), xs, X, Y, f));
   out.push(...axisTitles(o, f, h), ...placedLegend(series.map(({ s }) => s.name), o, f, w, h, title));
   return out;
 }

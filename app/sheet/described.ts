@@ -133,6 +133,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   INSERTCHART: fn([p("range", "range", "categories down its first column, series across its first row"), opt("kind", "text", "bar (columns, the default), barStacked, bar100, hbar, hbarStacked, hbar100, line, lineStacked, area, areaStacked, pie, doughnut, scatter, scatterLines, bubble"), opt("title", "text")],
     "Inserts a chart of the range", "what was inserted"),
   SETCHARTOPTION: fn([p("index", "number"), p("option", "text", "title, xTitle, yTitle, legend (bottom, top, right, left, none), labels, gridlines or byRows (Switch Row/Column)"), p("value", "text", "the text, the place, or 1 or 0")], "A chart's elements", "what the chart has now"),
+  ADDTRENDLINE: fn([p("index", "number", "the chart"), p("series", "text", "its number from 1, or its name"), p("type", "text", "linear, exponential, logarithmic, polynomial, power, movingAverage, or none"), opt("options", "text", "name=value pairs split by ';': order= (2 to 6), period=, equation=1, r2=1")],
+    "A trendline on a chart's series, its equation and R² when asked", "what was done, with the equation and R²"),
   SETCHARTDATA: fn([p("index", "number"), p("range", "range")], "Select Data: the chart's range", "what was done"),
   SETCHARTTYPE: fn([p("index", "number"), p("kind", "text", "one of INSERTCHART's kinds")], "Change Chart Type", "what was done"),
   LISTCHARTS: fn([], "The sheet's charts", "a stem of \"n. title: kind chart of range\" lines"),
