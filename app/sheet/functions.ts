@@ -2103,6 +2103,26 @@ function dbCondition(c: Value): (v: Value) => boolean {
   }
   return criterion(c);
 }
+// A criteria range's rows (its header row first) as a test of a record
+// whose fields `header` names; or why it cannot be one. Advanced Filter's
+// criteria too (commands.ts).
+export function recordTest(header: readonly Value[], cRows: readonly (readonly Value[])[]): ((rec: readonly Value[]) => boolean) | string {
+  const names = header.map(label), cHead = (cRows[0] ?? []).map(label);
+  const tests: [number, (v: Value) => boolean][][] = [];
+  for (const row of cRows.slice(1)) {
+    const t: [number, (v: Value) => boolean][] = [];
+    for (let j = 0; j < row.length; j++) {
+      const c = row[j];
+      if (c === null || c === "") continue;
+      const at = names.indexOf(cHead[j]);
+      if (at < 0) return `the criteria's ${toText(cRows[0][j])} is not a field of the database`;
+      t.push([at, dbCondition(c)]);
+    }
+    tests.push(t);
+  }
+  return (rec) => tests.length === 0 || tests.some((row) => row.every(([at, t]) => t(rec[at] ?? null)));
+}
+
 // The field's values in the records that match.
 function matching(name: string, args: readonly Arg[], fieldOptional: boolean): { values: Value[]; count: number } {
   const db = rowsOfArg(args[0]);
@@ -2118,14 +2138,9 @@ function matching(name: string, args: readonly Arg[], fieldOptional: boolean): {
   } else if (!fieldOptional) return fail("#VALUE!", `${name} takes a field`);
   const cRows = rowsOfArg(crit);
   if (cRows.length < 1) return fail("#VALUE!", `${name}'s criteria have no header row`);
-  const cHead = cRows[0].map(label);
-  const tests = cRows.slice(1).map((row) => row.flatMap((c, j): [number, (v: Value) => boolean][] => {
-    if (c === null || c === "") return [];
-    const at = header.indexOf(cHead[j]);
-    if (at < 0) return fail("#VALUE!", `${name}: the criteria's ${toText(cRows[0][j])} is not a field of the database`);
-    return [[at, dbCondition(c)]];
-  }));
-  const keep = records.filter((rec) => (tests.length === 0 ? true : tests.some((row) => row.every(([at, t]) => t(rec[at] ?? null)))));
+  const test = recordTest(db[0], cRows);
+  if (typeof test === "string") return fail("#VALUE!", `${name}: ${test}`);
+  const keep = records.filter(test);
   return { values: column < 0 ? keep.map(() => 1) : keep.map((rec) => rec[column] ?? null), count: keep.length };
 }
 const dbNumbers = (vs: readonly Value[]): number[] => vs.filter((v): v is number => typeof v === "number");

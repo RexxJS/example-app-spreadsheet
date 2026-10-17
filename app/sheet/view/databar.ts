@@ -2,7 +2,9 @@
 // Goal Seek (the selected formula to the goal, by changing a cell), Data
 // Table (the selection, with a row input, a column input, or both), Remove
 // Duplicates, Text to Columns (split at the delimiter, a comma by default);
-// and for the table the selected cell is in, Table Design's Total Row and
+// Custom Sort (the sort keys field's, "B desc, C asc", the first row a
+// header) and Advanced Filter (the criteria range field's) over the
+// selection; and for the table the selected cell is in, Table Design's Total Row and
 // Banded Rows (each on, or off when it has it) and Convert to Range.
 import type { SheetView } from "./view.ts";
 import { addrOf } from "../address.ts";
@@ -28,6 +30,13 @@ export function dataBar(v: SheetView): void {
     bind(ui.textfield("delimiter", () => {}), delimiter);
     v.btn("Flash fill", () => v.run("data.flashFill", { range: v.range() }));
     v.btn("Text to columns", () => v.run("data.textToColumns", { range: v.range(), ...given({ delimiter: delimiter.value }) }));
+  });
+  const keys = state(""), criteria = state("");
+  ui.hstack(() => {
+    bind(ui.textfield("sort keys", () => {}), keys);
+    v.btn("Custom sort", () => v.run("data.sort", { range: v.range(), keys: keys.value, headers: "1" }));
+    bind(ui.textfield("criteria range", () => {}), criteria);
+    v.btn("Advanced filter", () => v.run("data.advancedFilter", { range: v.range(), criteria: criteria.value }));
   });
   ui.hstack(() => {
     v.btn("Total row", () => v.run("table.totals", { name: tableHere(v), ...(v.wb.sheet.table(tableHere(v))?.totals ? { on: "0" } : {}) }));

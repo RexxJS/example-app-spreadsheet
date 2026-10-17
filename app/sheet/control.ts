@@ -240,8 +240,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     if (!way) throw new Error("AUTOFILL: the target must lie beside the source");
     return (await must(exec, `edit.fill${way}`, spanned(text(s), text(t), "AUTOFILL", way === "Right" || way === "Left")), "");
   },
-  SORTRANGE: async (exec, r, by, ascending) => {
-    const id = ascending === undefined || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
+  // SORTRANGE("A1:C9", "B") by one column; ("A1:C9", "B desc, C asc")
+  // or a stem of such keys (k.1 = "B desc"), several levels; a key may be
+  // "C fill=#ffff00", that cell colour on top; headers 1 keeps the first row.
+  SORTRANGE: async (exec, r, by, ascending, headers) => {
+    const keys = typeof by === "object" && by !== null ? unstem(by).map(text).join(", ") : text(by);
+    if (/[,\s=]/.test(keys.trim())) return (await must(exec, "data.sort", { range: text(r), keys, ...(yes(headers) ? { headers: "1" } : {}) }), "OK");
+    const id = ascending === undefined || text(ascending).trim() === "" || yes(ascending) ? "data.sortAscending" : "data.sortDescending";
     return (await must(exec, id, { range: text(r), by: col(by, "SORTRANGE") }), "OK");
   },
   // AutoFit: AUTOFIT("B") a column (or "B:D"), AUTOFIT(3) a row (or "3:5").
@@ -302,6 +307,9 @@ export const CONTROL: Readonly<Record<string, Control>> = {
       : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
     return done.message;
   },
+  // Advanced Filter: ADVANCEDFILTER("A1:D20", "F1:G3") in place, or
+  // ("A1:D20", "F1:G3", "I1", 1) copied to I1, each record once.
+  ADVANCEDFILTER: async (exec, r, c, to, unique) => (await must(exec, "data.advancedFilter", { range: text(r), criteria: text(c), ...(text(to).trim() ? { copyTo: text(to) } : {}), ...(yes(unique) ? { unique: "1" } : {}) })).message,
   // A table's totals row, calculated columns, banding and Convert to
   // Range: SETTABLETOTALS("Sales", "Qty=sum,Price=average"), ("Sales", 0)
   // off; SETCALCULATEDCOLUMN("Sales", "Total", "=[@Qty]*[@Price]");

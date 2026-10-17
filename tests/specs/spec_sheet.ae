@@ -1511,6 +1511,26 @@ main() {
             spec.assert_true(g.wait_cell("B", 4, "13"), "its total, as cells now, still adds up")
             g.command("view.panel name=none")
         }
+        spec.it("Custom sort by two keys from the Data panel; Advanced filter by a criteria range") callback {
+            g.command("sheet.add name=Sorts")
+            g.script("LET r = SETCELL('A1', 'Region'); LET r = SETCELL('B1', 'Sales'); LET r = SETCELL('A2', 'south'); LET r = SETCELL('B2', 5); LET r = SETCELL('A3', 'north'); LET r = SETCELL('B3', 1); LET r = SETCELL('A4', 'north'); LET r = SETCELL('B4', 9)")
+            spec.assert_true(g.wait_cell("B", 4, "9"), "the records")
+            g.command("view.panel name=data")
+            g.command("view.select range=A1:B4")
+            b.set_field_by("sort keys", "A asc, B desc")
+            b.click("Custom sort")
+            spec.assert_true(g.wait_cell("B", 2, "9"), "north first, its larger sale first")
+            spec.assert_true(g.wait_cell("B", 4, "5"), "south last")
+            spec.assert_true(g.wait_cell("A", 1, "Region"), "the header kept")
+            g.command("cell.set cell=D1 input=Sales")
+            g.command("cell.set cell=D2 input=>4")
+            g.command("view.select range=A1:B4")
+            b.set_field_by("criteria range", "D1:D2")
+            b.click("Advanced filter")
+            spec.assert_true(b.wait_for_console("sheet: filtered A1:B4 by D1:D2: 2 records shown, 1 hidden"), "the one under 4 hidden")
+            g.command("data.clearFilter")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

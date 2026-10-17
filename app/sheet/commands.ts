@@ -36,9 +36,10 @@ import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from ".
 import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
 import { BAND, bandedKeys } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
-import { found, rearranged, rearrangedMoves, replaced, sortedRows } from "./sortfind.ts";
+import { found, rearranged, rearrangedMoves, replaced, sortedRows, sortedRowsBy } from "./sortfind.ts";
+import type { SortKey } from "./sortfind.ts";
 import { distinctRows, secant, splitText } from "./whatif.ts";
-import { criterion } from "./functions.ts";
+import { criterion, recordTest } from "./functions.ts";
 import { errorCheck } from "./errorcheck.ts";
 import { PANELS, menuLines } from "./menus.ts";
 import { complete, cycleRef } from "./complete.ts";
@@ -1014,6 +1015,76 @@ const SPECS: readonly Spec[] = [
       if (to < 0 || to >= COLS) refuse(`${colName(at)} is the ${way === "left" ? "first" : "last"} column: it cannot move ${way}`);
       const entries = await reshaped(wb, "col", (moves) => swapped("col", at, to, moves));
       return setting(wb, entries, `moved column ${colName(at)} ${way}`);
+    },
+  },
+  {
+    // A multilevel sort, as Excel's Sort dialog: keys="B desc, C asc" (or
+    // "C fill=#ffff00": that cell colour on top; "C font=#ff0000": that
+    // text colour), each deciding where the ones before tie; headers=1
+    // keeps the first row where it is.
+    id: "data.sort", label: "Custom Sort", params: ["range", "keys"], optional: ["headers"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range), left = Math.min(r[0].col, r[1].col), right = Math.max(r[0].col, r[1].col);
+      const keys = p.keys.split(",").map((k) => k.trim()).filter((k) => k).map((k): SortKey => {
+        const m = /^\$?([A-Za-z]{1,3})(?:\s+(asc|ascending|desc|descending|(fill|font)\s*=\s*(\S+)))?$/i.exec(k) ?? refuse(`${k} is not a sort key (a column, then asc, desc, fill=colour or font=colour)`);
+        const col = columnOf(m[1]);
+        if (col < left || col > right) refuse(`${m[1]} is not a column of ${named(r)}`);
+        if (m[3]) {
+          const c = colour(m[4]) ?? refuse(`${m[4]} is not a colour`);
+          return { col: col - left, ascending: true, colour: { of: m[3].toLowerCase() as "fill" | "font", is: c } };
+        }
+        return { col: col - left, ascending: !/^desc/i.test(m[2] ?? "") };
+      });
+      if (!keys.length) refuse("a sort needs a key");
+      if (keys.length > 64) refuse("a sort takes 64 keys at most, as Excel's");
+      const look = (k: string, of: "fill" | "font") => (of === "fill" ? wb.notes.get(k).look?.fill : wb.notes.get(k).look?.color) ?? "";
+      const entries = rearranging(wb, r, sortedRowsBy(wb.sheet, r[0], r[1], keys, look, flag(p.headers)));
+      const said = keys.map((k) => `${colName(left + k.col)} ${k.colour ? `${k.colour.of} ${k.colour.is} on top` : k.ascending ? "ascending" : "descending"}`).join(", then ");
+      return setting(wb, entries, `sorted ${named(r)} by ${said}`);
+    },
+  },
+  {
+    // Advanced Filter: the range's records (its first row their fields'
+    // names) that a criteria range picks (as the D* functions read one: a
+    // row's conditions all hold, any row will do), shown in place (the rest
+    // hidden, as a filter's) or copied to copyTo= with their header row,
+    // unique=1 each record once.
+    id: "data.advancedFilter", label: "Advanced Filter", params: ["range", "criteria"], optional: ["copyTo", "unique"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range), c = rangeOf(p.criteria), page = wb.page(wb.active)!;
+      const rowOf = (row: number, [a, b]: [Addr, Addr]) => Array.from({ length: Math.abs(a.col - b.col) + 1 }, (_, i) => wb.sheet.value(keyOf({ col: Math.min(a.col, b.col) + i, row })));
+      const top = Math.min(r[0].row, r[1].row), bottom = Math.max(r[0].row, r[1].row), left = Math.min(r[0].col, r[1].col), width = Math.abs(r[0].col - r[1].col) + 1;
+      const cTop = Math.min(c[0].row, c[1].row), cBottom = Math.max(c[0].row, c[1].row);
+      const test = recordTest(rowOf(top, r), Array.from({ length: cBottom - cTop + 1 }, (_, i) => rowOf(cTop + i, c)));
+      if (typeof test === "string") refuse(test);
+      const seen = new Set<string>(), picked: number[] = [];
+      for (let row = top + 1; row <= bottom; row++) {
+        const rec = rowOf(row, r);
+        if (!(test as (rec: readonly Value[]) => boolean)(rec)) continue;
+        const said = JSON.stringify(rec.map(show));
+        if (flag(p.unique) && seen.has(said)) continue;
+        seen.add(said);
+        picked.push(row);
+      }
+      if (p.copyTo === undefined) {
+        const keep = new Set(picked), hidden = new Set<number>();
+        for (let row = top + 1; row <= bottom; row++) if (!keep.has(row)) hidden.add(row);
+        page.filter = null;
+        page.filtered = hidden;
+        await wb.hiddenChanged();
+        return changedBy(wb, wb.sheet.keys(), `filtered ${named(r)} by ${named(c)}: ${picked.length} record${picked.length === 1 ? "" : "s"} shown, ${hidden.size} hidden`);
+      }
+      const to = cellAddr(cellOf(p.copyTo))!;
+      if (to.row + picked.length >= ROWS || to.col + width > COLS) refuse(`${picked.length} records do not fit at ${p.copyTo}`);
+      // The values, as they show, under the header row.
+      const entries: [string, string][] = [];
+      [top, ...picked].forEach((row, i) => {
+        for (let j = 0; j < width; j++) {
+          const from = keyOf({ col: left + j, row }), v = wb.sheet.value(from);
+          entries.push([keyOf({ col: to.col + j, row: to.row + i }), v === null ? "" : typeof v === "string" && (NUMERIC_TEXT.test(v) || v.startsWith("=") || v.startsWith("'")) ? `'${v}` : show(v)]);
+        }
+      });
+      return setting(wb, entries, `copied ${picked.length} record${picked.length === 1 ? "" : "s"} of ${named(r)} to ${keyOf(to)}`);
     },
   },
   { id: "data.sortAscending", label: "Sort A to Z", params: ["range", "by"], journaled: true, run: sort(true) },

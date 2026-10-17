@@ -44,6 +44,34 @@ export function sortedRows(cells: Cells, a: Addr, b: Addr, col: number, ascendin
   }).map(({ row }) => row);
 }
 
+// One level of a multilevel sort: a column (from the rectangle's left
+// edge), and its order: ascending, descending, or a colour on top (Sort On
+// Cell Color or Font Color: the rows whose cell has it first).
+export interface SortKey {
+  readonly col: number;
+  readonly ascending: boolean;
+  readonly colour?: { readonly of: "fill" | "font"; readonly is: string };
+}
+
+// The rows sorted by each key in turn, the first deciding first, equal
+// rows keeping their order; `colourOf` reads a cell's fill or font colour.
+export function sortedRowsBy(cells: Cells, a: Addr, b: Addr, keys: readonly SortKey[], colourOf: (key: string, of: "fill" | "font") => string, skipFirst = false): number[] {
+  const top = Math.min(a.row, b.row) + (skipFirst ? 1 : 0), bottom = Math.max(a.row, b.row), left = Math.min(a.col, b.col);
+  const rows: number[] = [];
+  for (let row = top; row <= bottom; row++) rows.push(row);
+  const at = (row: number, col: number) => keyOf({ col: left + col, row });
+  const sorted = rows.map((row, i) => ({ row, i })).sort((p, q) => {
+    for (const k of keys) {
+      const c = k.colour
+        ? Number(colourOf(at(q.row, k.col), k.colour.of) === k.colour.is) - Number(colourOf(at(p.row, k.col), k.colour.of) === k.colour.is)
+        : sortOrder(cells.value(at(p.row, k.col)), cells.value(at(q.row, k.col)), k.ascending);
+      if (c) return c;
+    }
+    return p.i - q.i;
+  }).map(({ row }) => row);
+  return skipFirst ? [top - 1, ...sorted] : sorted;
+}
+
 // Where each cell went in that sort (cells outside the rectangle stay), for
 // what a cell carries besides its input (notes.ts) to follow its row.
 export const sortMoves = (cells: Cells, a: Addr, b: Addr, col: number, ascending: boolean): (at: Addr) => Addr =>

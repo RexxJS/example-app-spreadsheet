@@ -49,7 +49,7 @@ eq("each with its signature, what it does and gives", [setcell.signature, setcel
 eq("its parameters a stem, typed", unstem(setcell.params).map((x: any) => [x.name, x.type, x.optional]), [["cell", "cell", 0], ["value", "text", 0]]);
 const sort = described.find((d) => d.name === "SORTRANGE")!;
 eq("an optional one in brackets, and said so", [sort.signature, unstem(sort.params)[2].optional, unstem(sort.params)[2].about],
-  ["SORTRANGE(range, by, [ascending])", 1, "1 or left out: ascending; 0: descending"]);
+  ["SORTRANGE(range, by, [ascending], [headers])", 1, "1 or left out: ascending; 0: descending (one column)"]);
 eq("the rest of the arguments as ...", signature("SETCELLVALIDATION", DESCRIBED.SETCELLVALIDATION), "SETCELLVALIDATION(range, type, [limits...])");
 eq("LISTCOMMANDS(0) is the names, as before", unstem(await asked("LISTCOMMANDS(0)")), names);
 eq("asking changes nothing: no step of undo", wb.canUndo, false);
