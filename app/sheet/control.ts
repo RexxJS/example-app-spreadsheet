@@ -381,15 +381,15 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Charts: INSERTCHART("A1:C9", "barStacked", "Sales") (bar, barStacked,
   // bar100, hbar, hbarStacked, hbar100, line, lineStacked, area,
   // areaStacked, pie, doughnut, scatter, scatterLines, bubble, radar,
-  // histogram, waterfall, funnel, treemap, sunburst, box);
+  // histogram, waterfall, funnel, treemap, sunburst, box, stock, combo);
   // LISTCHARTS(), DELETECHART(n).
   INSERTCHART: async (exec, r, kind, title) => (await must(exec, "chart.insert", { range: text(r), kind: text(kind) || "bar", ...(text(title).trim() ? { title: text(title) } : {}) })).message,
   // SETCHARTOPTION(1, "legend", "right"), (1, "xTitle", "Quarter"),
   // (1, "labels", 1), (1, "gridlines", 0), (1, "byRows", 1), (1, "title", "Sales");
   // SETCHARTDATA(1, "A1:C9"); SETCHARTTYPE(1, "area").
   SETCHARTOPTION: async (exec, n, name, v) => {
-    const k = ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows"].find((x) => x.toLowerCase() === text(name).trim().toLowerCase());
-    if (!k) throw new Error(`SETCHARTOPTION: ${text(name)} is not title, xTitle, yTitle, legend, labels, gridlines or byRows`);
+    const k = ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows", "secondary"].find((x) => x.toLowerCase() === text(name).trim().toLowerCase());
+    if (!k) throw new Error(`SETCHARTOPTION: ${text(name)} is not title, xTitle, yTitle, legend, labels, gridlines, byRows or secondary`);
     return (await must(exec, "chart.option", { index: text(n), [k]: text(v) })).message;
   },
   // ADDTRENDLINE(1, "North", "linear", "equation=1;r2=1"), (1, 2,

@@ -2226,7 +2226,9 @@ const SPECS: readonly Spec[] = [
     // Chart Elements: title=, xTitle=, yTitle= (none takes one off),
     // legend= bottom, top, right, left or none, labels= (data labels),
     // gridlines=, byRows= (Switch Row/Column): each 1 or 0.
-    id: "chart.option", label: "Chart Elements", params: ["index"], optional: ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows"], journaled: true,
+    // secondary= the series (numbers from 1, comma-separated; none) a
+    // combo draws on its secondary axis.
+    id: "chart.option", label: "Chart Elements", params: ["index"], optional: ["title", "xTitle", "yTitle", "legend", "labels", "gridlines", "byRows", "secondary"], journaled: true,
     run: async (wb, p) => {
       const page = wb.page(wb.active)!, i = Number(p.index) - 1, c = page.charts[i] ?? refuse(`no chart ${p.index}`);
       const o: Record<string, unknown> = { ...c.options };
@@ -2239,6 +2241,11 @@ const SPECS: readonly Spec[] = [
       }
       for (const k of ["labels", "byRows"] as const) if (p[k] !== undefined) { if (flag(p[k])) o[k] = true; else delete o[k]; }
       if (p.gridlines !== undefined) { if (flag(p.gridlines)) delete o.gridlines; else o.gridlines = false; }
+      if (p.secondary !== undefined) {
+        const ns = /^\s*(none)?\s*$/i.test(p.secondary) ? [] : p.secondary.split(",").map((x) => Number(x.trim()) - 1);
+        if (ns.some((n) => !Number.isInteger(n) || n < 0)) refuse(`${p.secondary} is not series numbers (1, 2 ...)`);
+        if (ns.length) o.secondary = ns; else delete o.secondary;
+      }
       page.charts = page.charts.map((x, j) => (j === i ? { ...x, ...(p.title !== undefined ? { title: p.title } : {}), options: o as ChartOptions } : x));
       const said = [p.title !== undefined ? `title ${p.title || "none"}` : "", ...Object.entries(o).map(([k, v]) => `${k} ${v}`)].filter((x) => x).join(", ");
       return changedBy(wb, [], `chart ${i + 1}: ${said || "as it was"}`);

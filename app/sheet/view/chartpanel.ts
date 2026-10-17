@@ -37,6 +37,8 @@ export function chartPanel(v: SheetView): void {
     v.btn("Treemap", insert("treemap"));
     v.btn("Sunburst", insert("sunburst"));
     v.btn("Box and whisker", insert("box"));
+    v.btn("Stock chart", insert("stock"));
+    v.btn("Combo chart", insert("combo"));
     // A sparkline in the cell right of the selection's top row.
     const spark = (type: string, options = "") => () => {
       const s = v.selection();

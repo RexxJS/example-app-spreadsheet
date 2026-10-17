@@ -1830,6 +1830,20 @@ main() {
             spec.assert_eq(grown, 1, "the formula field grows with the window (from ${narrow})")
             spec.assert_true(uidriver.widget_int_field_by_id(nb, "w") <= ws[0] + 4, "the Name Box stays")
         }
+        spec.it("a combo chart from the Charts panel, its line on a secondary axis") callback {
+            g.command("sheet.add name=Combo")
+            g.script("LET r = SETCELL('A2', 'Q1'); LET r = SETCELL('A3', 'Q2'); LET r = SETCELL('B1', 'U'); LET r = SETCELL('C1', 'M'); LET r = SETCELL('B2', 10); LET r = SETCELL('B3', 20); LET r = SETCELL('C2', 0.1); LET r = SETCELL('C3', 0.4)")
+            spec.assert_true(g.wait_cell("C", 3, "0.4"), "the data")
+            g.command("view.panel name=chart")
+            g.command("view.select range=A1:C3")
+            b.click("Combo chart")
+            spec.assert_true(b.wait_for_text("Chart 1: combo chart of A1:C3"), "inserted")
+            g.command("chart.option index=1 secondary=2")
+            spec.assert_true(b.wait_for_console("sheet: chart 1: secondary 1"), "the line on the right axis")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"0.4\"") == 1, "its scale drawn at the right")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

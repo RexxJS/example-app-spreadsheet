@@ -15,9 +15,9 @@ import type { TrendType } from "./trend.ts";
 // markers, a stacked one; areas, stacked; pie and doughnut; scatter, with
 // lines, bubble.
 export type ChartKind = "bar" | "barStacked" | "bar100" | "hbar" | "hbarStacked" | "hbar100" | "line" | "lineStacked" | "area" | "areaStacked" | "pie" | "doughnut" | "scatter" | "scatterLines" | "bubble"
-  | "radar" | "histogram" | "waterfall" | "funnel" | "treemap" | "sunburst" | "box";
+  | "radar" | "histogram" | "waterfall" | "funnel" | "treemap" | "sunburst" | "box" | "stock" | "combo";
 export const CHART_KINDS: readonly ChartKind[] = ["bar", "barStacked", "bar100", "hbar", "hbarStacked", "hbar100", "line", "lineStacked", "area", "areaStacked", "pie", "doughnut", "scatter", "scatterLines", "bubble",
-  "radar", "histogram", "waterfall", "funnel", "treemap", "sunburst", "box"];
+  "radar", "histogram", "waterfall", "funnel", "treemap", "sunburst", "box", "stock", "combo"];
 
 // Office's palette, series by series.
 export const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47"];
@@ -35,6 +35,8 @@ export interface Trendline {
 }
 export interface ChartOptions {
   readonly trendlines?: readonly Trendline[];
+  // A combo's series (from 0) on the secondary axis, at the right.
+  readonly secondary?: readonly number[];
   readonly xTitle?: string;
   readonly yTitle?: string;
   readonly legend?: "bottom" | "top" | "right" | "left" | "none";
@@ -497,7 +499,66 @@ function box(data: ChartData, w: number, h: number, title: string, o: ChartOptio
   return out;
 }
 
+// A stock chart: high, low and close (three series), or open, high, low
+// and close (four): a line from low to high a category, a tick for the
+// close; with an open, a box from open to close, white when it rose,
+// dark when it fell.
+function stock(data: ChartData, w: number, h: number, title: string, o: ChartOptions): Shape[] {
+  const four = data.series.length >= 4, [op, hi, lo, cl] = four ? data.series : [undefined, ...data.series];
+  const all = data.series.flatMap((s) => s.values), scale = niceScale(Math.min(...all), Math.max(...all));
+  const x0 = 40, x1 = w - 10, y0 = title ? 28 : 12, y1 = h - 24;
+  const Y = (v: number) => y1 - ((v - scale.lo) / (scale.hi - scale.lo)) * (y1 - y0), band = (x1 - x0) / Math.max(1, data.labels.length);
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  for (let t = scale.lo; t <= scale.hi + scale.step / 2; t = tidy(t + scale.step)) {
+    if (o.gridlines !== false) out.push({ kind: "line", x1: x0, y1: Y(t), x2: x1, y2: Y(t), stroke: "#d9d9d9", width: 1 });
+    out.push(text(x0 - 4, Y(t) + 3, show(t), "end"));
+  }
+  data.labels.forEach((l, i) => {
+    const cx = x0 + (i + 0.5) * band;
+    if (hi && lo) out.push({ kind: "line", x1: cx, y1: Y(hi.values[i]), x2: cx, y2: Y(lo.values[i]), stroke: "#404040", width: 1 });
+    if (op && cl) {
+      const up = cl.values[i] >= op.values[i], top = Y(Math.max(op.values[i], cl.values[i])), bottom = Y(Math.min(op.values[i], cl.values[i]));
+      out.push({ kind: "rect", x: cx - band * 0.2, y: top, w: band * 0.4, h: Math.max(1, bottom - top), fill: up ? "#ffffff" : "#404040" });
+      out.push({ kind: "polyline", points: [cx - band * 0.2, top, cx + band * 0.2, top, cx + band * 0.2, top + Math.max(1, bottom - top), cx - band * 0.2, top + Math.max(1, bottom - top), cx - band * 0.2, top], stroke: "#404040", width: 1 });
+    } else if (cl) out.push({ kind: "line", x1: cx, y1: Y(cl.values[i]), x2: cx + band * 0.2, y2: Y(cl.values[i]), stroke: "#404040", width: 2 });
+    out.push(text(cx, y1 + 14, l));
+  });
+  return out;
+}
+
+// A combo: the first series columns, the rest lines; those asked for on a
+// secondary axis at the right, its own scale.
+function combo(data: ChartData, w: number, h: number, title: string, o: ChartOptions): Shape[] {
+  const second = new Set(o.secondary ?? []), right = second.size ? 40 : 10;
+  const f = frame(w, h, title, o, data.series.length), x0 = f.x0, x1 = f.x1 - right + 10, y0 = f.y0, y1 = f.y1;
+  const primary = data.series.filter((_, j) => !second.has(j)).flatMap((s) => s.values), secondaryVals = data.series.filter((_, j) => second.has(j)).flatMap((s) => s.values);
+  const sp = niceScale(Math.min(...primary, 0), Math.max(...primary, 0)), ss = secondaryVals.length ? niceScale(Math.min(...secondaryVals, 0), Math.max(...secondaryVals, 0)) : sp;
+  const Y = (v: number, j: number) => { const sc = second.has(j) ? ss : sp; return y1 - ((v - sc.lo) / (sc.hi - sc.lo)) * (y1 - y0); };
+  const band = (x1 - x0) / Math.max(1, data.labels.length), cx = (i: number) => x0 + (i + 0.5) * band;
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  for (let t = sp.lo; t <= sp.hi + sp.step / 2; t = tidy(t + sp.step)) {
+    const y = y1 - ((t - sp.lo) / (sp.hi - sp.lo)) * (y1 - y0);
+    if (o.gridlines !== false) out.push({ kind: "line", x1: x0, y1: y, x2: x1, y2: y, stroke: "#d9d9d9", width: 1 });
+    out.push(text(x0 - 4, y + 3, show(t), "end"));
+  }
+  if (second.size) for (let t = ss.lo; t <= ss.hi + ss.step / 2; t = tidy(t + ss.step)) out.push(text(x1 + 4, y1 - ((t - ss.lo) / (ss.hi - ss.lo)) * (y1 - y0) + 3, show(t), "start"));
+  data.series.forEach((s, j) => {
+    const colour = PALETTE[j % PALETTE.length];
+    if (j === 0) s.values.forEach((v, i) => { const top = Y(Math.max(v, 0), j), bottom = Y(Math.min(v, 0), j); out.push({ kind: "rect", x: cx(i) - band * 0.3, y: top, w: band * 0.6, h: bottom - top, fill: colour }); });
+    else {
+      const pts = s.values.flatMap((v, i) => [cx(i), Y(v, j)]);
+      out.push({ kind: "polyline", points: pts, stroke: colour, width: 2 });
+      for (let k = 0; k < pts.length; k += 2) out.push({ kind: "circle", cx: pts[k], cy: pts[k + 1], r: 2.5, fill: colour });
+    }
+  });
+  data.labels.forEach((l, i) => out.push(text(cx(i), y1 + 14, l)));
+  out.push(...axisTitles(o, f, h), ...placedLegend(data.series.map((s) => s.name), o, f, w, h, title));
+  return out;
+}
+
 export function layout(kind: ChartKind, data: ChartData, title: string, w: number, h: number, o: ChartOptions = {}): Shape[] {
+  if (kind === "stock") return stock(data, w, h, title, o);
+  if (kind === "combo") return combo(data, w, h, title, o);
   if (kind === "treemap") return treemap(data, w, h, title);
   if (kind === "sunburst") return sunburst(data, w, h, title);
   if (kind === "box") return box(data, w, h, title, o);
