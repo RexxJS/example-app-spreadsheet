@@ -31,6 +31,17 @@ wait_formula(want: string) -> int {
     return 0
 }
 
+// 1 once there is a button reading `label`.
+wait_button(label: string) -> int {
+    i = 0
+    while i < 40 {
+        if uidriver.widget_id_last_of("button", label) > 0 { return 1 }
+        sleep(100)
+        i = i + 1
+    }
+    return 0
+}
+
 // A sheet tab: the newest button with the sheet's name.
 tab(name: string) -> int { return uidriver.widget_id_last_of("button", name) }
 
@@ -1616,6 +1627,23 @@ main() {
             spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#0f6fc6\"", 40), "Harbour's")
             b.click("Theme Office")
             spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#4472c4\"", 40), "and back")
+            g.command("view.panel name=none")
+        }
+        spec.it("a slicer from the Data panel: its tiles, one clicked showing only its rows") callback {
+            g.command("sheet.add name=Sliced")
+            g.script("LET r = SETCELL('A1', 'Region'); LET r = SETCELL('A2', 'north'); LET r = SETCELL('A3', 'south'); LET r = SETCELL('A4', 'north')")
+            spec.assert_true(g.wait_cell("A", 4, "north"), "the rows")
+            g.command("table.define name=Area range=A1:A4 headers=1")
+            g.command("view.panel name=data")
+            g.command("view.select range=A2")
+            b.click("Insert slicer")
+            spec.assert_true(b.wait_for_console("sheet: slicer Region for Area[Region]: north, south"), "inserted")
+            spec.assert_true(b.wait_for_text("Region (Area[Region])"), "its caption")
+            b.click("Region: south")
+            spec.assert_true(b.wait_for_console("sheet: Region: south (2 rows hidden)"), "only south's row")
+            spec.assert_true(wait_button("Region: ✓ south"), "the tile picked")
+            b.click("Clear Region")
+            spec.assert_true(b.wait_for_console("sheet: Region: all (0 rows hidden)"), "cleared")
             g.command("view.panel name=none")
         }
     }

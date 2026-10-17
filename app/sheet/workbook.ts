@@ -105,6 +105,23 @@ export interface Page {
   // Its outline (outline.ts): each grouped row's (column's) level, 1 to 8.
   rowLevels: Map<number, number>;
   colLevels: Map<number, number>;
+  // Its slicers: tiles of a table column's values, filtering the table's
+  // rows to those picked (none picked: every row).
+  slicers: Slicer[];
+}
+
+export interface Slicer {
+  readonly name: string;
+  readonly table: string;
+  readonly column: string;
+  readonly picked: readonly string[];
+}
+
+// What a slicer shows: its tiles, each value with whether it is picked.
+export interface SlicerView {
+  readonly name: string;
+  readonly caption: string;
+  readonly tiles: readonly { readonly value: string; readonly picked: boolean }[];
 }
 
 // A pivot table (pivot.ts) by its id: its source range, the cell it is
@@ -186,7 +203,7 @@ const viewOf = (p: Omit<Page, "name" | "sheet" | "notes">): Omit<Page, "name" | 
   rules: [...p.rules], charts: [...p.charts], hiddenRows: new Set(p.hiddenRows), hiddenCols: new Set(p.hiddenCols),
   filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, frozenCols: p.frozenCols, merges: [...p.merges],
   heights: new Map(p.heights), widths: new Map(p.widths), autoId: p.autoId, pivots: new Map(p.pivots),
-  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels),
+  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels), slicers: [...p.slicers],
 });
 
 // A name for the whole workbook: a range of one of its sheets, or a
@@ -219,6 +236,39 @@ export function statsLine(s: Stats): string {
 // A banded table's shade (Excel's light blue band), and the cells it
 // shades: the first data row and every other one after it.
 export const BAND = "#d9e1f2";
+
+// A slicer's column's cells, by row, in its table's data rows (none if the
+// table or column is gone).
+export function slicerColumn(page: Page, sl: Slicer): [number, string][] {
+  const t = page.sheet.table(sl.table);
+  if (!t) return [];
+  const left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col), top = Math.min(t.range[0].row, t.range[1].row);
+  const names = Array.from({ length: right - left + 1 }, (_, i) => (t.columns ? t.columns[i] ?? "" : t.headers ? show(page.sheet.value(keyOf({ col: left + i, row: top }))) : String.fromCharCode(65 + left + i)));
+  const at = names.findIndex((n) => n.trim().toLowerCase() === sl.column.trim().toLowerCase());
+  if (at < 0) return [];
+  const [d1, d2] = dataRows(t), out: [number, string][] = [];
+  for (let r = d1; r <= d2; r++) out.push([r, show(page.sheet.value(keyOf({ col: left + at, row: r })))]);
+  return out;
+}
+
+// Its values, each once (any case), in the order first seen.
+export function slicerValues(page: Page, sl: Slicer): string[] {
+  const out: string[] = [];
+  for (const [, v] of slicerColumn(page, sl)) if (!out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+  return out;
+}
+
+// The rows the page's slicers hide: a table's data row whose value is not
+// among a slicer's picked ones (each slicer with some picked).
+export function slicedRows(page: Page): Set<number> {
+  const out = new Set<number>();
+  for (const sl of page.slicers) {
+    if (!sl.picked.length) continue;
+    const picked = new Set(sl.picked.map((x) => x.toLowerCase()));
+    for (const [r, v] of slicerColumn(page, sl)) if (!picked.has(v.toLowerCase())) out.add(r);
+  }
+  return out;
+}
 export function bandedKeys(t: TableDef): string[] {
   const [d1, d2] = dataRows(t), left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col);
   const out: string[] = [];
@@ -361,7 +411,7 @@ export class Workbook {
       keys.add(key);
     };
     page = { name, sheet: new Sheet({ changed }, language, context), notes: new CellNotes(), rules: [], charts: [],
-      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map() };
+      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map(), slicers: [] };
     return page;
   }
 
@@ -778,6 +828,13 @@ export class Workbook {
   watches(): Watch[] {
     this.#watches = this.#watches.filter((w) => this.#pages.includes(w.page));
     return this.#watches.map(({ page, cell }) => ({ sheet: page.name, cell, input: page.sheet.input(cell), shown: this.#shown(page, cell) }));
+  }
+
+  // The active sheet's slicers, their tiles each a value of the column (in
+  // the order first seen), picked or not.
+  slicerViews(): SlicerView[] {
+    return this.#active.slicers.map((sl) => ({ name: sl.name, caption: `${sl.name} (${sl.table}[${sl.column}])`,
+      tiles: slicerValues(this.#active, sl).map((value) => ({ value, picked: sl.picked.some((x) => x.toLowerCase() === value.toLowerCase()) })) }));
   }
 
   // The active sheet's charts, laid out from its cells as they are now.

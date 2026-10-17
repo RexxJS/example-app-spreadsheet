@@ -37,7 +37,7 @@ import type { TableDef } from "./language.ts";
 import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from "./shift.ts";
 import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
 import { TABLE_STYLE_NAMES, styleNamed } from "./styles.ts";
-import { BAND, bandedKeys } from "./workbook.ts";
+import { BAND, bandedKeys, slicedRows, slicerValues } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
 import { CONSOLIDATE_FUNCTIONS, consolidate } from "./consolidate.ts";
 import { MOST_LEVELS, SUBTOTAL_FUNCTIONS, depth, detailOf, hiddenAtLevel, regrouped, runs } from "./outline.ts";
@@ -219,6 +219,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.widths = new Map(s.view.colWidths);
     page.rowLevels = new Map(s.view.rowLevels);
     page.colLevels = new Map(s.view.colLevels);
+    page.slicers = [...s.slicers];
     page.autoId = s.autoId;
     page.pivots = new Map(s.pivots);
     page.merges = s.merges.map((m) => parseRange(m)!);
@@ -241,6 +242,12 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   wb.calculation = file.calculation;
   // A filter is worked out once every sheet's cells are.
   for (const s of file.sheets) if (s.view.filter) filtering(wb.page(s.name)!, s.view.filter);
+  // And a slicer's picks.
+  for (const s of file.sheets) {
+    const page = wb.page(s.name)!;
+    if (page.slicers.some((x) => x.picked.length)) page.filtered = slicedRows(page);
+  }
+  if (file.sheets.some((s) => s.slicers.length)) await wb.hiddenChanged();
   const cells = file.sheets.reduce((n, s) => n + s.entries.length, 0);
   const message = `opened ${file.name}: ${cells} cells, ${file.language} formulas`;
   return { ok: true, message: failed ? `${message}; its setup script failed: ${failed.split("\n").pop()}` : message, changed: [...new Set([...before, ...wb.sheet.keys()])] };
@@ -412,6 +419,16 @@ function sort(ascending: boolean) {
     const entries = rearranging(wb, r, sortedRows(wb.sheet, r[0], r[1], by - left, ascending));
     return setting(wb, entries, `sorted ${named(r)} by ${colName(by)}, ${ascending ? "ascending" : "descending"}`);
   };
+}
+
+// The rows the page's slicers hide, as its filter's (the AutoFilter's
+// taken off: a table's slicers are its filter).
+async function sliced(wb: Workbook, page: Page, said: string): Promise<Outcome> {
+  const rows = slicedRows(page);
+  page.filter = null;
+  page.filtered = rows.size || page.slicers.some((x) => x.picked.length) ? rows : null;
+  await wb.hiddenChanged();
+  return changedBy(wb, wb.sheet.keys(), `${said} (${rows.size} row${rows.size === 1 ? "" : "s"} hidden)`);
 }
 
 // A theme as words: its accents and fonts.
@@ -1953,6 +1970,59 @@ const SPECS: readonly Spec[] = [
   {
     id: "theme.get", label: "About the Theme", params: [], journaled: false,
     run: async (wb) => ({ ok: true, message: `theme ${wb.theme.name}: ${themeSaid(wb.theme)}`, changed: [], output: wb.theme }),
+  },
+  {
+    // A slicer for a table's column (Insert Slicer): its values as tiles;
+    // picking some shows only the table's rows holding one (the table's
+    // filter, as the sheet's AutoFilter is), none picked shows them all.
+    id: "slicer.add", label: "Insert Slicer", params: ["table", "column"], optional: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.table) ?? refuse(`no table ${p.table}`), page = wb.page(wb.active)!;
+      const column = tableColumns(wb, t).find((c) => c.toLowerCase() === p.column.trim().toLowerCase()) ?? refuse(`${t.name} has no column ${p.column}`);
+      const name = (p.name ?? column).trim() || column;
+      if (page.slicers.some((x) => x.name.toLowerCase() === name.toLowerCase())) refuse(`there is a slicer ${name} already`);
+      page.slicers = [...page.slicers, { name, table: t.name, column, picked: [] }];
+      return changedBy(wb, [], `slicer ${name} for ${t.name}[${column}]: ${slicerValues(page, page.slicers[page.slicers.length - 1]).join(", ")}`);
+    },
+  },
+  {
+    // Its tiles picked: values= (comma-separated) picks them alone; add=1
+    // adds them (Multi-Select), toggle=1 picks or unpicks each.
+    id: "slicer.select", label: "Slicer", params: ["name", "values"], optional: ["add", "toggle"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, i = page.slicers.findIndex((x) => x.name.toLowerCase() === p.name.trim().toLowerCase());
+      if (i < 0) refuse(`no slicer ${p.name}`);
+      const sl = page.slicers[i], known = slicerValues(page, sl);
+      const asked = p.values.split(",").map((v) => v.trim()).filter((v) => v).map((v) => known.find((k) => k.toLowerCase() === v.toLowerCase()) ?? refuse(`${v} is not a value of ${sl.name} (${known.join(", ")})`));
+      const has = (xs: readonly string[], v: string) => xs.some((x) => x.toLowerCase() === v.toLowerCase());
+      const picked = flag(p.toggle) ? [...sl.picked.filter((x) => !has(asked, x)), ...asked.filter((v) => !has(sl.picked, v))] : flag(p.add) ? [...sl.picked, ...asked.filter((v) => !has(sl.picked, v))] : asked;
+      page.slicers = page.slicers.map((x, j) => (j === i ? { ...x, picked } : x));
+      return sliced(wb, page, `${sl.name}: ${picked.length ? picked.join(", ") : "all"}`);
+    },
+  },
+  {
+    // Clear Filter: every tile picked again, the rows shown.
+    id: "slicer.clear", label: "Clear Slicer", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, sl = page.slicers.find((x) => x.name.toLowerCase() === p.name.trim().toLowerCase()) ?? refuse(`no slicer ${p.name}`);
+      page.slicers = page.slicers.map((x) => (x === sl ? { ...x, picked: [] } : x));
+      return sliced(wb, page, `${sl.name}: all`);
+    },
+  },
+  {
+    id: "slicer.delete", label: "Delete Slicer", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, sl = page.slicers.find((x) => x.name.toLowerCase() === p.name.trim().toLowerCase()) ?? refuse(`no slicer ${p.name}`);
+      page.slicers = page.slicers.filter((x) => x !== sl);
+      return sliced(wb, page, `deleted slicer ${sl.name}`);
+    },
+  },
+  {
+    id: "slicer.list", label: "Slicers", params: [], journaled: false,
+    run: async (wb) => {
+      const views = wb.slicerViews(), listed = views.map((x) => `${x.caption}: ${x.tiles.map((t) => (t.picked ? `[${t.value}]` : t.value)).join(" ")}`);
+      return { ok: true, message: listed.length ? listed.join("; ") : "no slicers", changed: [], output: listed };
+    },
   },
   {
     // A cell style defined or edited: its look from a cell's (from=A1, as

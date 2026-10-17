@@ -13,7 +13,7 @@ import { COLUMN_WIDTH, ROWS_WHEN_SPLIT, ROWS_WITH_PANEL, ROW_PX, buildPane } fro
 
 // aether-ui's datagrid's own row height, which a zoom scales.
 const ROW_HEIGHT = 24;
-import type { ChartView, Watch } from "../workbook.ts";
+import type { ChartView, SlicerView, Watch } from "../workbook.ts";
 import { statsLine } from "../workbook.ts";
 import type { CellEditor } from "../editors.ts";
 
@@ -42,6 +42,7 @@ export class SheetView {
   readonly active = state("Sheet1");
   readonly watches = state<Watch[]>([]);
   readonly charts = state<(ChartView & { n: number })[]>([]);
+  readonly slicers = state<SlicerView[]>([]);
   grid = 0;
   // The split pane (grid.ts's splitPane), its box, and whether it shows.
   pane = 0;
@@ -207,6 +208,7 @@ export class SheetView {
       this.active.set(this.wb.active);
       this.watches.set(this.wb.watches());
       this.charts.set(this.wb.charts().map((c, i) => ({ ...c, n: i + 1 })));
+      this.slicers.set(this.wb.slicerViews());
       this.formulas.set(this.wb.sheet.language.name);
       this.setup.set(this.wb.setupScript ? `Setup script: ${this.wb.setupScript}` : "");
       const u = this.wb.undoLabel, r = this.wb.redoLabel;

@@ -27,6 +27,7 @@ import type { CfRule } from "./rules.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
 import type { TableDef } from "./language.ts";
+import type { Slicer } from "./workbook.ts";
 import type { Look } from "./formats.ts";
 import { CELL_STYLES } from "./styles.ts";
 import { ROLES, THEMES } from "./themes.ts";
@@ -58,6 +59,7 @@ export interface FileSheet {
     readonly hidden: boolean;
   };
   readonly merges: readonly string[];
+  readonly slicers: readonly Slicer[];
   readonly tables: readonly TableDef[];
   readonly autoId: AutoId | null;
   readonly pivots: readonly [string, Pivot][];
@@ -185,6 +187,8 @@ function sheetOf(name: string, s: any): FileSheet {
     view: viewOf(s?.view),
     merges: Array.isArray(s?.merges) ? s.merges.map(String).filter((m: string) => parseRange(m)) : [],
     tables: tablesOf(s?.tables),
+    slicers: Array.isArray(s?.slicers) ? s.slicers.filter((x: any) => x && typeof x.name === "string" && typeof x.table === "string" && typeof x.column === "string")
+      .map((x: any): Slicer => ({ name: x.name, table: x.table, column: x.column, picked: Array.isArray(x.picked) ? x.picked.map(String) : [] })) : [],
     autoId: autoIdOf(s?.autoId),
     pivots: pivotsOf(s?.pivots),
   };
@@ -282,7 +286,7 @@ const viewIn = (page: Page) => ({
 
 // A sheet's parts as the file has them.
 const sheetIn = (p: Page) => ({
-  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p),
+  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p), ...(p.slicers.length ? { slicers: p.slicers } : {}),
   ...(p.autoId ? { autoId: { column: colName(p.autoId.column), next: p.autoId.next, prefix: p.autoId.prefix } } : {}),
   ...(p.pivots.size ? {
     pivots: [...p.pivots].map(([id, pv]) => ({

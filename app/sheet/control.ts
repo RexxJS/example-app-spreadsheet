@@ -320,6 +320,14 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
   CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
   SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
+  // Slicers: ADDSLICER("Sales", "region"), SLICE("region", "north,south"),
+  // SLICE("region", "west", 1) to add it; CLEARSLICER(slicer),
+  // DELETESLICER(slicer), LISTSLICERS().
+  ADDSLICER: async (exec, t, c, n) => (await must(exec, "slicer.add", { table: text(t), column: text(c), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  SLICE: async (exec, n, values, add) => (await must(exec, "slicer.select", { name: text(n), values: text(values), ...(yes(add) ? { add: "1" } : {}) })).message,
+  CLEARSLICER: async (exec, n) => (await must(exec, "slicer.clear", { name: text(n) })).message,
+  DELETESLICER: async (exec, n) => (await must(exec, "slicer.delete", { name: text(n) })).message,
+  LISTSLICERS: async (exec) => stem((await must(exec, "slicer.list")).output as string[]),
   // Themes: SETTHEME("Harbour"), GETTHEME(), SETTHEMECOLOR("accent1",
   // "#123456"), SETTHEMEFONTS("Georgia", "Verdana").
   SETTHEME: async (exec, n) => (await must(exec, "theme.set", { name: text(n) })).message,

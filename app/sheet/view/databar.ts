@@ -9,7 +9,8 @@
 // selection; and for the table the selected cell is in, Table Design's Total Row and
 // Banded Rows (each on, or off when it has it) and Convert to Range.
 import type { SheetView } from "./view.ts";
-import { addrOf, colName } from "../address.ts";
+import { addrOf, colName, keyOf } from "../address.ts";
+import type { SlicerView } from "../workbook.ts";
 
 // The table the selected cell is in, by name, or "" (the command refuses).
 function tableHere(v: SheetView): string {
@@ -62,5 +63,21 @@ export function dataBar(v: SheetView): void {
     v.btn("Banded rows", () => v.run("table.banding", { name: tableHere(v), rows: v.wb.sheet.table(tableHere(v))?.banded ? "0" : "1" }));
     v.btn("Convert to range", () => v.run("table.toRange", { name: tableHere(v) }));
     for (const style of ["Light", "Medium", "Green", "Orange"]) v.btn(`Table style ${style}`, () => v.run("table.style", { name: tableHere(v), style }));
+    // A slicer for the selected cell's table column.
+    v.btn("Insert slicer", () => {
+      const t = v.wb.sheet.table(tableHere(v)), at = addrOf(v.here());
+      if (!t || !at) return v.run("slicer.add", { table: tableHere(v), column: "" });
+      const header = t.headers ? keyOf({ col: at.col, row: Math.min(t.range[0].row, t.range[1].row) }) : "";
+      return v.run("slicer.add", { table: t.name, column: header ? v.wb.textOf(header) : colName(at.col) });
+    });
+  });
+  // The sheet's slicers: each a row of tiles, a click picking one alone (a
+  // picked one ✓), and Clear.
+  each(v.slicers, (sl: SlicerView) => `${sl.name}|${sl.tiles.map((t) => `${t.value}${t.picked ? "+" : ""}`).join(",")}`, (sl: SlicerView) => {
+    ui.hstack(() => {
+      ui.text(sl.caption);
+      for (const t of sl.tiles) ui.btn(`${sl.name}: ${t.picked ? "✓ " : ""}${t.value}`, () => v.run("slicer.select", { name: sl.name, values: t.value, toggle: "1" }));
+      ui.btn(`Clear ${sl.name}`, () => v.run("slicer.clear", { name: sl.name }));
+    });
   });
 }
