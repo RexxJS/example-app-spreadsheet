@@ -58,7 +58,7 @@ export const MENUS: readonly Menu[] = [
   ] },
   { label: "Format", items: [
     i("Bold", "format.font", "Ctrl+B"), i("Italic", "format.font", "Ctrl+I"), i("Underline", "format.font", "Ctrl+U"), i("Strikethrough", "format.font"), "-",
-    i("Outline borders", "format.border"), i("All borders", "format.border"), i("No borders", "format.border"), "-",
+    i("Outline borders", "format.border"), i("All borders", "format.border"), i("Inside borders", "format.border"), i("Bottom border", "format.border"), i("Thick outline", "format.border"), i("No borders", "format.border"), "-",
     i("Align left", "format.align"), i("Align center", "format.align"), i("Align right", "format.align"),
     i("Comma style", "format.number"), i("Currency style", "format.number"), i("Percent style", "format.number"),
     i("Fill yellow", "format.fill"), i("Text red", "format.color"), "-",

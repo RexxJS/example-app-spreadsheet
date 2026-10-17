@@ -29,7 +29,7 @@ eq("format.border: the outline of a range, or every edge, or none", [await messa
 eq("an edge in a colour", [await message("format.border range=C1 edge=bottom color=#ff0000"), wb.styleOf("C1")], ["C1: bottom border", "border-bottom: 1px solid #ff0000"]);
 eq("format.wrap", [await message("format.wrap range=A1"), wb.styleOf("A1").includes("white-space: normal"), wb.wrapped()], ["A1: wrapped", true, [0]]);
 eq("refusals", [await message("format.border range=A1 edge=diagonal"), await message("format.font range=A1 size=x")],
-  ["diagonal is not an edge (outline, all, top, right, bottom, left, none)", "x is not a size"]);
+  ["diagonal is not an edge (outline, all, inside, horizontal, vertical, top, right, bottom, left, none)", "x is not a size"]);
 await cmds.run("edit.copy range=A1");
 await cmds.run("edit.pasteSpecial at=D4 what=formats");
 eq("Paste Special formats takes the look", wb.styleOf("D4"), wb.styleOf("A1"));

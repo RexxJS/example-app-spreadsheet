@@ -84,6 +84,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   SETALIGNMENT: fn([p("range", "range"), p("align", "text", "left, center, right or general")], "Aligns the cells' text", "OK"),
   SETFILLCOLOR: fn([p("range", "range"), p("color", "text", "a colour's name or #rrggbb; none takes it off")], "The cells' fill colour", "OK"),
   SETTEXTCOLOR: fn([p("range", "range"), p("color", "text", "a colour's name or #rrggbb; none takes it off")], "The cells' text colour", "OK"),
+  SETBORDER: fn([p("range", "range"), opt("edge", "text", "outline (the default), all, inside, horizontal, vertical, top, right, bottom, left, or none"), opt("style", "text", "thin (the default), medium, thick, double, dashed, dotted, hair, or none to take those lines off"), opt("color", "text", "a colour's name or #rrggbb; black by default")], "Borders on the range, as Excel's Borders menu", "what was done"),
+  CLEARBORDERS: fn([p("range", "range")], "Takes every border off the range", "what was done"),
   FORMATVALUE: fn([p("value", "text", "a number, or text"), p("format", "text", "an Excel code (\"#,##0.00;[Red](#,##0.00)\") or a category: general, number, currency, accounting, date, time, percentage, fraction, scientific, text, elapsed")], "A value in a number format, as a cell in it shows it (and TEXT() gives it)", "the text"),
   SETNUMBERFORMAT: fn([p("range", "range"), p("format", "text", "number, currency, percent, accounting, fraction, scientific, date, time, text, general, or a pattern such as 0.00")], "The cells' number format", "OK"),
   SETWRAPTEXT: fn([p("range", "range"), p("on", "flag")], "Wraps text in a range's cells, or stops", "\"OK\""),

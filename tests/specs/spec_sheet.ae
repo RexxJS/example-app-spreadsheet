@@ -1427,6 +1427,19 @@ main() {
             g.command("sheet.activate name=Orders")
             spec.assert_true(g.wait_cell("H", 2, "30"), "and following it")
         }
+        spec.it("borders: a thick outline from the Looks panel, a red bottom line by command, each drawn") callback {
+            g.command("sheet.add name=Borders")
+            g.command("view.panel name=looks")
+            g.goto("B2")
+            g.pick("B", 2)
+            b.click("Thick outline")
+            spec.assert_true(b.wait_for_console("sheet: B2: outline borders, thick"), "the Looks panel's Thick outline")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("B", 2)}", "\"borderTop\":\"3 #000000\"", 40), "drawn 3px wide")
+            g.command("format.border range=D2:D4 edge=bottom style=medium color=red")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("D", 4)}", "\"borderBottom\":\"2 #ff0000\"", 40), "the range's bottom, medium and red")
+            spec.assert_eq(g.cell_has("D", 2, "borderBottom"), 0, "not every cell's")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

@@ -279,6 +279,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SETALIGNMENT: async (exec, r, how) => (await must(exec, "format.align", { range: text(r), align: text(how) }), "OK"),
   SETFILLCOLOR: async (exec, r, c) => (await must(exec, "format.fill", { range: text(r), color: text(c) }), "OK"),
   SETTEXTCOLOR: async (exec, r, c) => (await must(exec, "format.color", { range: text(r), color: text(c) }), "OK"),
+  // Borders: SETBORDER("A1:C3", "outline", "thick", "red"), the edge
+  // outline, all, inside, horizontal, vertical, top, right, bottom, left or
+  // none; CLEARBORDERS("A1:C3").
+  SETBORDER: async (exec, r, edge, style, c) => (await must(exec, "format.border", { range: text(r), edge: text(edge) || "outline", ...(text(style).trim() ? { style: text(style) } : {}), ...(text(c).trim() ? { color: text(c) } : {}) })).message,
+  CLEARBORDERS: async (exec, r) => (await must(exec, "format.border", { range: text(r), edge: "none" })).message,
   // A value in a number format: FORMATVALUE(1234.5, "#,##0.00"), FORMATVALUE(0.5, "fraction").
   FORMATVALUE: async (exec, v, f) => (await must(exec, "format.preview", { value: text(v), format: text(f) })).output,
   SETNUMBERFORMAT: async (exec, r, f) => (await must(exec, "format.number", { range: text(r), format: text(f) }), "OK"),

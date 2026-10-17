@@ -512,7 +512,13 @@ function coloured(wb: Workbook, p: Params, part: "fill" | "color"): Promise<Outc
   return changedBy(wb, relook(wb, r, (look) => ({ ...look, [part]: c })), `${rangeName(r)}: ${part === "fill" ? "fill" : "text"} ${c ?? "none"}`);
 }
 
-const EDGES = ["outline", "all", "top", "right", "bottom", "left", "none"];
+// Excel's Borders menu: the range's outline, every cell's every side, the
+// lines inside it (both ways, or across or down only), one side of the
+// range, or none (Clear borders, as the eraser over all of it).
+const EDGES = ["outline", "all", "inside", "horizontal", "vertical", "top", "right", "bottom", "left", "none"];
+// A line's style, as Excel's Line Style list (formats.ts draws its width).
+const LINE_STYLES = ["thin", "medium", "thick", "double", "dashed", "dotted", "hair", "none"];
+
 
 // ---- Rows and columns out of view.
 
@@ -1183,22 +1189,36 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "format.border", label: "Borders", params: ["range", "edge"], optional: ["color"], journaled: true,
+    id: "format.border", label: "Borders", params: ["range", "edge"], optional: ["color", "style"], journaled: true,
     run: async (wb, p) => {
-      const r = rangeOf(p.range), edge = p.edge.toLowerCase(), color = (p.color ?? "#000000").toLowerCase();
+      const r = rangeOf(p.range), edge = p.edge.toLowerCase(), color = colour(p.color ?? "#000000") ?? refuse(`${p.color} is not a colour (a name such as red, or #rrggbb)`);
+      const style = (p.style ?? "thin").trim().toLowerCase();
       if (!EDGES.includes(edge)) refuse(`${p.edge} is not an edge (${EDGES.join(", ")})`);
-      if (!/^#[0-9a-f]{6}$/.test(color)) refuse(`${p.color} is not a colour (#rrggbb)`);
+      if (!LINE_STYLES.includes(style)) refuse(`${p.style} is not a line style (${LINE_STYLES.join(", ")})`);
+      const line = style === "none" ? undefined : style === "thin" ? color : `${style} ${color}`;
       const [a, b] = r, top = Math.min(a.row, b.row), bottom = Math.max(a.row, b.row), left = Math.min(a.col, b.col), right = Math.max(a.col, b.col);
       const keys = relook(wb, r, (look, k) => {
         const at = parseRange(k)![0];
         if (edge === "none") return { ...look, borders: undefined };
-        const on = (e: "top" | "right" | "bottom" | "left") => edge === "all" || edge === e
-          || (edge === "outline" && ((e === "top" && at.row === top) || (e === "bottom" && at.row === bottom) || (e === "left" && at.col === left) || (e === "right" && at.col === right)));
-        const borders = { ...look.borders };
-        for (const e of ["top", "right", "bottom", "left"] as const) if (on(e)) borders[e] = color;
-        return { ...look, borders };
+        const outer = { top: at.row === top, bottom: at.row === bottom, left: at.col === left, right: at.col === right };
+        const on = (e: "top" | "right" | "bottom" | "left") => {
+          const across = e === "top" || e === "bottom";
+          switch (edge) {
+            case "all": return true;
+            case "outline": return outer[e];
+            case "inside": return !outer[e];
+            case "horizontal": return across && !outer[e];
+            case "vertical": return !across && !outer[e];
+            default: return edge === e && outer[e];
+          }
+        };
+        const borders: Record<string, string | undefined> = { ...look.borders };
+        for (const e of ["top", "right", "bottom", "left"] as const) if (on(e)) borders[e] = line;
+        for (const e of Object.keys(borders)) if (borders[e] === undefined) delete borders[e];
+        return { ...look, borders: Object.keys(borders).length ? borders : undefined };
       });
-      return changedBy(wb, keys, `${rangeName(r)}: ${edge === "none" ? "no" : edge} border${edge === "none" || edge === "all" || edge === "outline" ? "s" : ""}`);
+      const what = edge === "none" ? "no borders" : `${edge === "all" || edge === "outline" || edge === "inside" ? `${edge} borders` : `${edge} border`}${style === "thin" ? "" : `, ${style}`}`;
+      return changedBy(wb, keys, `${rangeName(r)}: ${what}`);
     },
   },
   {

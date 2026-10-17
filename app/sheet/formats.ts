@@ -144,6 +144,16 @@ export interface Look {
   readonly number?: string;
 }
 
+// A border as the look keeps it ("#rrggbb" a thin line, or "medium
+// #rrggbb": Excel's line styles) as the grid draws it: its width (thin,
+// hair, dashed and dotted 1px, medium 2px, thick and double 3px) and
+// colour; the grid draws every line solid.
+const LINE_WIDTH: Record<string, number> = { thin: 1, hair: 1, dashed: 1, dotted: 1, medium: 2, thick: 3, double: 3 };
+export function borderLine(kept: string): string {
+  const [style, c] = kept.includes(" ") ? kept.split(" ") : ["thin", kept];
+  return `${LINE_WIDTH[style] ?? 1}px ${style === "dashed" || style === "dotted" || style === "double" ? style : "solid"} ${c}`;
+}
+
 export function lookStyle(look: Look | undefined): string {
   if (!look) return "";
   const lines = [look.underline ? "underline" : "", look.strike ? "line-through" : ""].filter((x) => x).join(" ");
@@ -152,7 +162,7 @@ export function lookStyle(look: Look | undefined): string {
     look.bold ? "font-weight: bold" : "", look.italic ? "font-style: italic" : "", lines ? `text-decoration: ${lines}` : "",
     look.size ? `font-size: ${look.size}px` : "", look.wrap ? "white-space: normal" : "", look.align ? `text-align: ${look.align}` : "",
     look.fill ? `background: ${look.fill}` : "", look.color ? `color: ${look.color}` : "",
-    ...(["top", "right", "bottom", "left"] as const).map((e) => (b[e] ? `border-${e}: 1px solid ${b[e]}` : "")),
+    ...(["top", "right", "bottom", "left"] as const).map((e) => (b[e] ? `border-${e}: ${borderLine(b[e]!)}` : "")),
   ].filter((p) => p).join("; ");
 }
 
