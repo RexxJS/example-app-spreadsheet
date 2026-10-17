@@ -15,9 +15,9 @@ import type { TrendType } from "./trend.ts";
 // markers, a stacked one; areas, stacked; pie and doughnut; scatter, with
 // lines, bubble.
 export type ChartKind = "bar" | "barStacked" | "bar100" | "hbar" | "hbarStacked" | "hbar100" | "line" | "lineStacked" | "area" | "areaStacked" | "pie" | "doughnut" | "scatter" | "scatterLines" | "bubble"
-  | "radar" | "histogram" | "waterfall" | "funnel";
+  | "radar" | "histogram" | "waterfall" | "funnel" | "treemap" | "sunburst" | "box";
 export const CHART_KINDS: readonly ChartKind[] = ["bar", "barStacked", "bar100", "hbar", "hbarStacked", "hbar100", "line", "lineStacked", "area", "areaStacked", "pie", "doughnut", "scatter", "scatterLines", "bubble",
-  "radar", "histogram", "waterfall", "funnel"];
+  "radar", "histogram", "waterfall", "funnel", "treemap", "sunburst", "box"];
 
 // Office's palette, series by series.
 export const PALETTE = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47"];
@@ -52,6 +52,9 @@ export interface Series {
 export interface ChartData {
   readonly labels: readonly string[];
   readonly series: readonly Series[];
+  // Two columns of text: each label's group (the first column's, an empty
+  // one the group above), for a treemap's and a sunburst's levels.
+  readonly groups?: readonly string[];
 }
 
 export type Shape =
@@ -77,15 +80,18 @@ export function chartData([a, b]: [Addr, Addr], value: (key: string) => Value, b
   // Switch Row/Column: the series are the rows, the categories the columns.
   const grid = byRows ? byCol[0].map((_, c) => byCol.map((row) => row[c])) : byCol;
   const labelled = cols > 1 && grid.slice(1).some((row) => isText(row[0]));
-  const headed = grid.length > 1 && grid[0].slice(labelled ? 1 : 0).some(isText);
+  const twoLevel = labelled && cols > 2 && grid.slice(1).some((row) => isText(row[1])) && !grid.slice(1).some((row) => isNumber(row[1]));
+  const first = twoLevel ? 2 : labelled ? 1 : 0;
+  const headed = grid.length > 1 && grid[0].slice(first).some(isText);
   const rows = headed ? grid.slice(1) : grid;
-  const first = labelled ? 1 : 0;
+  let group = "";
   return {
-    labels: rows.map((row, i) => (labelled ? show(row[0]) : String(i + 1))),
+    labels: rows.map((row, i) => (twoLevel ? show(row[1]) : labelled ? show(row[0]) : String(i + 1))),
     series: grid[0].slice(first).map((h, j) => ({
       name: headed ? show(h) : `Series ${j + 1}`,
       values: rows.map((row) => numberOf(row[first + j])),
     })),
+    ...(twoLevel ? { groups: rows.map((row) => (group = show(row[0]) || group)) } : {}),
   };
 }
 
@@ -373,7 +379,128 @@ function special(kind: ChartKind, data: ChartData, w: number, h: number, title: 
   return out;
 }
 
+// A squarified treemap ([Bruls, Huizing, van Wijk]): areas as values, each
+// row of rectangles laid along the box's shorter side while it keeps their
+// shapes nearest square.
+export function squarify(values: readonly number[], x: number, y: number, w: number, h: number): { x: number; y: number; w: number; h: number }[] {
+  const total = values.reduce((s, v) => s + Math.max(0, v), 0);
+  const out = values.map(() => ({ x, y, w: 0, h: 0 }));
+  if (!total || w <= 0 || h <= 0) return out;
+  const order = values.map((v, i) => ({ v: (Math.max(0, v) / total) * w * h, i })).filter((e) => e.v > 0).sort((a, b) => b.v - a.v);
+  let box = { x, y, w, h };
+  const worst = (row: number[], side: number) => { const sum = row.reduce((a, b) => a + b, 0); return Math.max(...row.map((r) => Math.max((side * side * r) / (sum * sum), (sum * sum) / (side * side * r)))); };
+  while (order.length) {
+    const side = Math.min(box.w, box.h), row: typeof order = [];
+    while (order.length && (row.length === 0 || worst([...row, order[0]].map((e) => e.v), side) <= worst(row.map((e) => e.v), side))) row.push(order.shift()!);
+    const sum = row.reduce((a, e) => a + e.v, 0), thick = sum / side;
+    let at = 0;
+    for (const e of row) {
+      const len = e.v / thick;
+      out[e.i] = box.w >= box.h ? { x: box.x, y: box.y + at, w: thick, h: len } : { x: box.x + at, y: box.y, w: len, h: thick };
+      at += len;
+    }
+    box = box.w >= box.h ? { x: box.x + thick, y: box.y, w: box.w - thick, h: box.h } : { x: box.x, y: box.y + thick, w: box.w, h: box.h - thick };
+  }
+  return out;
+}
+
+// The groups of a two-level range, in order, each its labels' indexes.
+const grouped = (data: ChartData): [string, number[]][] => {
+  const out: [string, number[]][] = [];
+  (data.groups ?? data.labels.map(() => "")).forEach((g, i) => { const last = out[out.length - 1]; if (last && last[0] === g) last[1].push(i); else out.push([g, [i]]); });
+  return out;
+};
+
+function treemap(data: ChartData, w: number, h: number, title: string): Shape[] {
+  const values = (data.series[0]?.values ?? []).map((v) => Math.max(0, v));
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  const top = title ? 28 : 8, groups = grouped(data);
+  const outer = squarify(groups.map(([, is]) => is.reduce((s, i) => s + values[i], 0)), 8, top, w - 16, h - top - 8);
+  groups.forEach(([g, is], k) => {
+    const box = outer[k], inner = squarify(is.map((i) => values[i]), box.x, box.y + (data.groups ? 14 : 0), box.w, box.h - (data.groups ? 14 : 0));
+    if (data.groups) { out.push({ kind: "rect", x: box.x, y: box.y, w: box.w, h: box.h, fill: PALETTE[k % PALETTE.length] }); out.push(text(box.x + 3, box.y + 11, g, "start", 10, "#ffffff")); }
+    is.forEach((i, j) => {
+      const r = inner[j];
+      out.push({ kind: "rect", x: r.x + 1, y: r.y + 1, w: Math.max(0, r.w - 2), h: Math.max(0, r.h - 2), fill: PALETTE[(data.groups ? k : j) % PALETTE.length] });
+      if (r.w > 24 && r.h > 14) out.push(text(r.x + 4, r.y + 13, data.labels[i], "start", 10, "#ffffff"));
+    });
+  });
+  return out;
+}
+
+// A sunburst: the groups the inner ring, their labels the outer, each arc
+// its share.
+function sunburst(data: ChartData, w: number, h: number, title: string): Shape[] {
+  const values = (data.series[0]?.values ?? []).map((v) => Math.max(0, v)), total = values.reduce((s, v) => s + v, 0);
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  const top = title ? 28 : 8, r = Math.min(w - 20, h - top - 8) / 2, cx = w / 2, cy = top + r;
+  const at = (a: number, rad: number) => [cx + rad * Math.sin(a), cy - rad * Math.cos(a)];
+  const arc = (a0: number, a1: number, r0: number, r1: number, fill: string, label: string) => {
+    const [ax, ay] = at(a0, r1), [bx, by] = at(a1, r1), [cx1, cy1] = at(a1, r0), [dx, dy] = at(a0, r0), big = a1 - a0 > Math.PI ? 1 : 0;
+    const full = a1 - a0 >= 2 * Math.PI - 1e-9;
+    out.push({ kind: "path", d: full ? `M ${cx - r1} ${cy} A ${r1} ${r1} 0 1 1 ${cx + r1} ${cy} A ${r1} ${r1} 0 1 1 ${cx - r1} ${cy} Z M ${cx - r0} ${cy} A ${r0} ${r0} 0 1 0 ${cx + r0} ${cy} A ${r0} ${r0} 0 1 0 ${cx - r0} ${cy} Z`
+      : `M ${dx} ${dy} L ${ax} ${ay} A ${r1} ${r1} 0 ${big} 1 ${bx} ${by} L ${cx1} ${cy1} A ${r0} ${r0} 0 ${big} 0 ${dx} ${dy} Z`, fill, stroke: "#ffffff" });
+    const [lx, ly] = at((a0 + a1) / 2, (r0 + r1) / 2);
+    if (a1 - a0 > 0.25) out.push(text(lx, ly + 3, label, "middle", 9, "#ffffff"));
+  };
+  if (!total) return out;
+  let a = 0;
+  grouped(data).forEach(([g, is], k) => {
+    const sum = is.reduce((s, i) => s + values[i], 0), sweep = (sum / total) * 2 * Math.PI;
+    if (data.groups) arc(a, a + sweep, r * 0.25, r * 0.6, PALETTE[k % PALETTE.length], g);
+    let b = a;
+    is.forEach((i, j) => {
+      const sw = (values[i] / total) * 2 * Math.PI;
+      if (sw > 0) arc(b, b + sw, data.groups ? r * 0.6 : r * 0.3, r, PALETTE[(data.groups ? k : j) % PALETTE.length], data.labels[i]);
+      b += sw;
+    });
+    a += sweep;
+  });
+  return out;
+}
+
+// Excel's box and whisker quartiles (exclusive median): the median of
+// each half, the middle value left out of both when the count is odd.
+export function boxStats(values: readonly number[]): { q1: number; median: number; q3: number; mean: number; low: number; high: number; outliers: number[] } | null {
+  const v = [...values].sort((a, b) => a - b), n = v.length;
+  if (!n) return null;
+  const med = (xs: number[]) => (xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2);
+  const lowerHalf = v.slice(0, Math.floor(n / 2)), upperHalf = v.slice(Math.ceil(n / 2));
+  const median = med(v), q1 = lowerHalf.length ? med(lowerHalf) : v[0], q3 = upperHalf.length ? med(upperHalf) : v[n - 1];
+  const iqr = q3 - q1, inside = v.filter((x) => x >= q1 - 1.5 * iqr && x <= q3 + 1.5 * iqr);
+  return { q1, median, q3, mean: v.reduce((s, x) => s + x, 0) / n, low: Math.min(...inside), high: Math.max(...inside), outliers: v.filter((x) => !inside.includes(x)) };
+}
+
+function box(data: ChartData, w: number, h: number, title: string, o: ChartOptions): Shape[] {
+  const stats = data.series.map((s) => boxStats(s.values));
+  const all = data.series.flatMap((s) => s.values), scale = niceScale(Math.min(...all, 0), Math.max(...all, 0));
+  const x0 = 40, x1 = w - 10, y0 = title ? 28 : 12, y1 = h - 24;
+  const Y = (v: number) => y1 - ((v - scale.lo) / (scale.hi - scale.lo)) * (y1 - y0), band = (x1 - x0) / Math.max(1, stats.length);
+  const out: Shape[] = title ? [text(w / 2, 16, title, "middle", 13)] : [];
+  for (let t = scale.lo; t <= scale.hi + scale.step / 2; t = tidy(t + scale.step)) {
+    if (o.gridlines !== false) out.push({ kind: "line", x1: x0, y1: Y(t), x2: x1, y2: Y(t), stroke: "#d9d9d9", width: 1 });
+    out.push(text(x0 - 4, Y(t) + 3, show(t), "end"));
+  }
+  stats.forEach((st, j) => {
+    if (!st) return;
+    const cx = x0 + (j + 0.5) * band, bw = band * 0.4, colour = PALETTE[j % PALETTE.length];
+    out.push({ kind: "line", x1: cx, y1: Y(st.high), x2: cx, y2: Y(st.q3), stroke: "#404040", width: 1 });
+    out.push({ kind: "line", x1: cx, y1: Y(st.q1), x2: cx, y2: Y(st.low), stroke: "#404040", width: 1 });
+    out.push({ kind: "line", x1: cx - bw / 4, y1: Y(st.high), x2: cx + bw / 4, y2: Y(st.high), stroke: "#404040", width: 1 });
+    out.push({ kind: "line", x1: cx - bw / 4, y1: Y(st.low), x2: cx + bw / 4, y2: Y(st.low), stroke: "#404040", width: 1 });
+    out.push({ kind: "rect", x: cx - bw / 2, y: Y(st.q3), w: bw, h: Y(st.q1) - Y(st.q3), fill: colour });
+    out.push({ kind: "line", x1: cx - bw / 2, y1: Y(st.median), x2: cx + bw / 2, y2: Y(st.median), stroke: "#ffffff", width: 2 });
+    out.push(text(cx, Y(st.mean) + 4, "×", "middle", 12, "#ffffff"));
+    for (const x of st.outliers) out.push({ kind: "circle", cx, cy: Y(x), r: 2.5, fill: colour });
+    out.push(text(cx, y1 + 14, data.series[j].name));
+  });
+  return out;
+}
+
 export function layout(kind: ChartKind, data: ChartData, title: string, w: number, h: number, o: ChartOptions = {}): Shape[] {
+  if (kind === "treemap") return treemap(data, w, h, title);
+  if (kind === "sunburst") return sunburst(data, w, h, title);
+  if (kind === "box") return box(data, w, h, title, o);
   if (kind === "radar") return radar(data, w, h, title, o);
   if (kind === "histogram" || kind === "waterfall" || kind === "funnel") return special(kind, data, w, h, title, o);
   return kind === "pie" ? pie(data, w, h, title, 0, o) : kind === "doughnut" ? pie(data, w, h, title, 0.5, o) : kind.startsWith("scatter") || kind === "bubble" ? xy(kind, data, w, h, title, o) : axes(kind, data, w, h, title, o);

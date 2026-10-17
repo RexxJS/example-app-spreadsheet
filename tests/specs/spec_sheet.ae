@@ -1729,6 +1729,19 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("a treemap of a two-level range from the Charts panel, its groups and items drawn") callback {
+            g.command("sheet.add name=Tree")
+            g.script("LET r = SETCELL('A1', 'Fruit'); LET r = SETCELL('B1', 'Apples'); LET r = SETCELL('C1', 6); LET r = SETCELL('B2', 'Pears'); LET r = SETCELL('C2', 2); LET r = SETCELL('A3', 'Veg'); LET r = SETCELL('B3', 'Kale'); LET r = SETCELL('C3', 4)")
+            spec.assert_true(g.wait_cell("C", 3, "4"), "the data")
+            g.command("view.panel name=chart")
+            g.command("view.select range=A1:C3")
+            b.click("Treemap")
+            spec.assert_true(b.wait_for_text("Chart 1: treemap chart of A1:C3"), "inserted")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Veg\"") == 1, "a group")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Kale\"") == 1, "an item")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

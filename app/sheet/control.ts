@@ -381,7 +381,7 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // Charts: INSERTCHART("A1:C9", "barStacked", "Sales") (bar, barStacked,
   // bar100, hbar, hbarStacked, hbar100, line, lineStacked, area,
   // areaStacked, pie, doughnut, scatter, scatterLines, bubble, radar,
-  // histogram, waterfall, funnel);
+  // histogram, waterfall, funnel, treemap, sunburst, box);
   // LISTCHARTS(), DELETECHART(n).
   INSERTCHART: async (exec, r, kind, title) => (await must(exec, "chart.insert", { range: text(r), kind: text(kind) || "bar", ...(text(title).trim() ? { title: text(title) } : {}) })).message,
   // SETCHARTOPTION(1, "legend", "right"), (1, "xTitle", "Quarter"),
