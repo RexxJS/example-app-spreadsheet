@@ -302,6 +302,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
       : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
     return done.message;
   },
+  // A sparkline: INSERTSPARKLINE("A1:A9", "B1", "winloss", "axis").
+  INSERTSPARKLINE: async (exec, r, at, type, options) => (await must(exec, "insert.sparkline", { range: text(r), at: text(at), ...(text(type).trim() ? { type: text(type) } : {}), ...(text(options).trim() ? { options: text(options) } : {}) })).message,
   // Data bars and icon sets with Excel's options, as name=value pairs:
   // ADDDATABAR("B1:B9", "#638ec6", "fill=solid;showValue=0;min=0;max=100"),
   // ADDICONSET("C1:C9", "arrows", "thresholds=80,50;by=percentile;reverse=1;showValue=0").

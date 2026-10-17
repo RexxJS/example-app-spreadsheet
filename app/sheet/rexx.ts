@@ -19,7 +19,8 @@ import { RexxInterpreter, parse } from "./rexxjs.js";
 import { CellError } from "./values.ts";
 import type { Result, Value } from "./values.ts";
 import { colName } from "./address.ts";
-import { sparkline } from "./charts.ts";
+import { SPARKLINE_TYPES, sparkline, sparklineOptions } from "./charts.ts";
+import type { SparklineType } from "./charts.ts";
 
 // A cell name, or a range of two, anywhere in a formula (in a string too:
 // SUM_RANGE("A1:A3") reads A1 to A3), perhaps on another sheet
@@ -301,7 +302,7 @@ export function rangeFunctions(read: (key: string) => unknown, names: () => Name
     AVG: (q: unknown, column: string) => aggregated(aggregate(query(q, "AVG"), "avg", column)),
     COUNT: (q: unknown) => aggregated(aggregate(query(q, "COUNT"), "count")),
     RESULT: (q: unknown) => rowsOf(result(query(q, "RESULT"))),
-    SPARKLINE_RANGE: (r: string) => sparkline(numbers(values(r))),
+    SPARKLINE_RANGE: (r: string, type: unknown, options: unknown) => sparkline(numbers(values(r)), (SPARKLINE_TYPES as readonly string[]).includes(String(type ?? "").toLowerCase()) ? String(type).toLowerCase() as SparklineType : "line", sparklineOptions(String(options ?? "")) ?? {}),
   };
 }
 

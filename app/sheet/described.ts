@@ -87,6 +87,7 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   ADDRULE: fn([p("range", "range"), p("kind", "text", "formula, greater, less, between, notBetween, equal, notEqual, greaterOrEqual, lessOrEqual, contains, notContains, beginsWith, endsWith, blanks, noBlanks, errors, noErrors, date, top, bottom, topPercent, bottomPercent, above, below, duplicates, unique, dataBar or iconSet (their value the colour or the icons, their style ADDDATABAR's or ADDICONSET's options)"),
     opt("value", "text", "the formula (\"=A1>B1\", for the range's top-left), the value compared, the period (today, yesterday, tomorrow, last7days, lastWeek, thisWeek, nextWeek, lastMonth, thisMonth, nextMonth) or the count"), opt("style", "text", "e.g. \"bold;color:red\"; Excel's light red fill by default"), opt("value2", "text", "between's other end")],
     "Adds a conditional-format rule after the sheet's others", "the rule, as Manage Rules lists it"),
+  INSERTSPARKLINE: fn([p("range", "range", "the numbers"), p("at", "cell", "where it goes"), opt("type", "text", "line (the default), column or winloss"), opt("options", "text", "Excel's Show: high;low;first;last, and axis (win/loss: a zero on the axis)")], "A sparkline at a cell, as a formula", "the cell and what it shows"),
   ADDDATABAR: fn([p("range", "range"), opt("color", "text", "#rrggbb; Excel's blue by default"), opt("options", "text", "name=value pairs split by ';': fill=gradient|solid, showValue=0 (the bar only), min=, max= (the shortest and longest bar's numbers)")], "Adds a data bar rule", "the rule"),
   ADDICONSET: fn([p("range", "range"), opt("icons", "text", "arrows, triangles or ratings"), opt("options", "text", "name=value pairs split by ';': thresholds=67,33 (high, middle), by=percent|percentile|number, reverse=1, showValue=0 (icons only)")], "Adds an icon set rule", "the rule"),
   LISTRULES: fn([], "The sheet's conditional-format rules, the first winning", "a stem of \"n. range: what\" lines"),
@@ -206,7 +207,7 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   PRODUCT_RANGE: fn([RANGE], "Multiplies a range's numbers", "the product, or 0"),
   SUMIF_RANGE: fn([RANGE, p("condition", "text", "\">100\", \"<=5\", \"=3\", \"<>0\"")], "Adds the numbers that meet a condition", "the sum"),
   COUNTIF_RANGE: fn([RANGE, p("condition", "text", "\">100\", \"<=5\", \"=3\", \"<>0\"")], "Counts the numbers that meet a condition", "the count"),
-  SPARKLINE_RANGE: fn([RANGE], "A range's numbers as a sparkline", "text of block characters"),
+  SPARKLINE_RANGE: fn([RANGE, opt("type", "text", "line (the default), column or winloss"), opt("options", "text", "high;low;first;last;axis")], "A range's numbers as a sparkline", "text of block characters"),
   // ---- queries: RANGE("A1:D9") |> WHERE("amount > 100") |> GROUP_BY("region") |> SUM("amount")
   RANGE: fn([p("ref", "range", "\"A1:D9\", \"Costs!A1:D9\" or a name")], "Starts a query over a range's rows", "a query to pipe on"),
   TABLE: fn([NAME], "Starts a query over a table's rows", "a query to pipe on"),

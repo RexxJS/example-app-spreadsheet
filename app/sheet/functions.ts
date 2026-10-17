@@ -7,7 +7,8 @@ import { CellError, array, compare, fail, finite, isArray, scalar, toNumber, toT
 import { numberFormat } from "./numfmt.ts";
 import type { ArrayValue, Comparison, Result, Value } from "./values.ts";
 import { sortOrder } from "./sortfind.ts";
-import { sparkline } from "./charts.ts";
+import { SPARKLINE_TYPES, sparkline, sparklineOptions } from "./charts.ts";
+import type { SparklineType } from "./charts.ts";
 import { addMonths, dateDif, days360, endOfMonth, isoWeek, now, parseDate, parseTime, parts, serial, weekOfYear, weekendOf, workdayFrom, workdaysBetween, yearFraction } from "./dates.ts";
 import { db, depreciation, fv, ipmt, irr, mirr, nper, npv, pmt, ppmt, pv, rate, vdb, xirr, xnpv } from "./finance.ts";
 import * as D from "./distributions.ts";
@@ -461,8 +462,15 @@ def("TEXTJOIN", 3, Infinity, (args) => {
   const skip = num(args, 1) !== 0;
   return every(args.slice(2)).map(toText).filter((s) => !(skip && s === "")).join(str(args, 0));
 });
-// A range's numbers as a line of blocks (as Google Sheets' SPARKLINE, in text).
-def("SPARKLINE", 1, 1, (args) => sparkline(numbers(args)));
+// A range's numbers as a line of blocks (as Google Sheets' SPARKLINE, in
+// text): SPARKLINE(range, [type: line, column or winloss], [options:
+// "high;low;first;last;axis"]).
+def("SPARKLINE", 1, 3, (args) => {
+  const type = (args.length > 1 ? str(args, 1).trim().toLowerCase() : "line") || "line";
+  if (!(SPARKLINE_TYPES as readonly string[]).includes(type)) return fail("#VALUE!", `${type} is not a sparkline type (line, column, winloss)`);
+  const o = sparklineOptions(args.length > 2 ? str(args, 2) : "");
+  return o ? sparkline(numbers([args[0]]), type as SparklineType, o) : fail("#VALUE!", `${str(args, 2)} is not sparkline options (high, low, first, last, axis)`);
+});
 def("LEN", 1, 1, (args) => str(args, 0).length);
 def("UPPER", 1, 1, (args) => str(args, 0).toUpperCase());
 def("LOWER", 1, 1, (args) => str(args, 0).toLowerCase());

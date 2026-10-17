@@ -145,8 +145,38 @@ export function layout(kind: ChartKind, data: ChartData, title: string, w: numbe
 
 const BLOCKS = "▁▂▃▄▅▆▇█";
 
-// Numbers as a line of blocks, lowest ▁ to highest █ (all alike, ▄).
-export function sparkline(ns: readonly number[]): string {
+export const SPARKLINE_TYPES = ["line", "column", "winloss"] as const;
+export type SparklineType = (typeof SPARKLINE_TYPES)[number];
+// Excel's Show group and its axis: the high and low points marked, the
+// first and last, and (win/loss) a zero drawn on the axis.
+export interface SparklineOptions {
+  readonly high?: boolean;
+  readonly low?: boolean;
+  readonly first?: boolean;
+  readonly last?: boolean;
+  readonly axis?: boolean;
+}
+
+// The options as written: "high;low;axis" (or "high=1;axis=0").
+export function sparklineOptions(text: string): SparklineOptions | null {
+  const out: Record<string, boolean> = {};
+  for (const part of text.split(/[;,]/).map((x) => x.trim().toLowerCase()).filter((x) => x)) {
+    const [k, v = "1"] = part.split("=").map((x) => x.trim());
+    if (!["high", "low", "first", "last", "axis", "markers"].includes(k)) return null;
+    out[k === "markers" ? "high" : k] = /^(1|true|yes|on)$/.test(v);
+    if (k === "markers") out.low = out.high;
+  }
+  return out;
+}
+
+// Numbers as a line of blocks, lowest ▁ to highest █ (all alike, ▄): a
+// line or a column sparkline in text, the marked points ▲ (high), ▼ (low),
+// ◆ (first, last). Win/loss: ▀ a gain, ▄ a loss, a zero blank or, on the
+// axis, ─.
+export function sparkline(ns: readonly number[], type: SparklineType = "line", o: SparklineOptions = {}): string {
+  if (type === "winloss") return ns.map((n) => (n > 0 ? "▀" : n < 0 ? "▄" : o.axis ? "─" : " ")).join("");
   const lo = Math.min(...ns), hi = Math.max(...ns);
-  return ns.map((n) => BLOCKS[hi === lo ? 3 : Math.round(((n - lo) / (hi - lo)) * 7)]).join("");
+  const hiAt = ns.indexOf(hi), loAt = ns.indexOf(lo);
+  return ns.map((n, i) => (o.high && i === hiAt ? "▲" : o.low && i === loAt ? "▼" : (o.first && i === 0) || (o.last && i === ns.length - 1) ? "◆"
+    : BLOCKS[hi === lo ? 3 : Math.round(((n - lo) / (hi - lo)) * 7)])).join("");
 }

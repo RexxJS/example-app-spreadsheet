@@ -25,12 +25,16 @@ export function chartPanel(v: SheetView): void {
     v.btn("Bar chart", insert("bar"));
     v.btn("Line chart", insert("line"));
     v.btn("Pie chart", insert("pie"));
-    v.btn("Sparkline", () => {
+    // A sparkline in the cell right of the selection's top row.
+    const spark = (type: string, options = "") => () => {
       const s = v.selection();
       if (!s) return;
       const right = Math.max(s[0].col, s[1].col) + 1, top = Math.min(s[0].row, s[1].row);
-      return v.run("insert.sparkline", { range: v.range(), at: keyOf({ col: right, row: top }) });
-    });
+      return v.run("insert.sparkline", { range: v.range(), at: keyOf({ col: right, row: top }), ...(type !== "line" ? { type } : {}), ...(options ? { options } : {}) });
+    };
+    v.btn("Sparkline", spark("line"));
+    v.btn("Win/loss sparkline", spark("winloss", "axis"));
+    v.btn("Sparkline with high and low", spark("line", "high;low"));
   });
   each(v.charts, (c: ChartView & { n: number }) => `${c.n}`, (c: ChartView & { n: number }) => {
     ui.hstack(() => {

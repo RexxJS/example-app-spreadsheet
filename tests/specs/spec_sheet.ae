@@ -1477,6 +1477,16 @@ main() {
             spec.assert_true(g.wait_cell("C", 2, "↓"), "the highest gets the down arrow, its value still hidden")
             g.command("view.panel name=none")
         }
+        spec.it("a win/loss sparkline from the Charts panel, beside the selection") callback {
+            g.command("cell.set cell=G1 input=3")
+            g.command("cell.set cell=G2 input=-1")
+            g.command("cell.set cell=G3 input=0")
+            g.command("view.panel name=chart")
+            g.command("view.select range=G1:G3")
+            b.click("Win/loss sparkline")
+            spec.assert_true(g.wait_cell("H", 1, "▀▄─"), "a gain, a loss, a zero on the axis")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

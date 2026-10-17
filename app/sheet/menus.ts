@@ -53,7 +53,7 @@ export const MENUS: readonly Menu[] = [
   ] },
   { label: "Insert", items: [
     i("Insert row", "rows.insert"), i("Insert column", "columns.insert"), i("Add sheet", "sheet.add"), "-",
-    i("Bar chart", "chart.insert"), i("Line chart", "chart.insert"), i("Pie chart", "chart.insert"), i("Sparkline", "insert.sparkline"), "-",
+    i("Bar chart", "chart.insert"), i("Line chart", "chart.insert"), i("Pie chart", "chart.insert"), i("Sparkline", "insert.sparkline"), i("Win/loss sparkline", "insert.sparkline"), i("Sparkline with high and low", "insert.sparkline"), "-",
     i("Name the selection", "names.define"), i("Name the formula", "names.define"), i("Delete name", "names.delete"),
   ] },
   { label: "Format", items: [

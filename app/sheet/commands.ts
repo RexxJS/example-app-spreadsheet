@@ -28,7 +28,7 @@ import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
 import type { Look } from "./formats.ts";
-import { CHART_KINDS } from "./charts.ts";
+import { CHART_KINDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
 import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
@@ -1656,10 +1656,15 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "insert.sparkline", label: "Sparkline", params: ["range", "at"], journaled: true,
+    // A sparkline at a cell over a range: line, column or winloss, with
+    // Excel's Show options (high, low, first, last; axis), as a formula.
+    id: "insert.sparkline", label: "Sparkline", params: ["range", "at"], optional: ["type", "options"], journaled: true,
     run: async (wb, p) => {
-      const r = rangeOf(p.range), key = cellOf(p.at);
-      const formula = wb.sheet.language.name === "Excel" ? `=SPARKLINE(${named(r)})` : `=SPARKLINE_RANGE("${named(r)}")`;
+      const r = rangeOf(p.range), key = cellOf(p.at), type = (p.type ?? "line").trim().toLowerCase(), options = (p.options ?? "").trim();
+      if (!(SPARKLINE_TYPES as readonly string[]).includes(type)) refuse(`${p.type} is not a sparkline type (${SPARKLINE_TYPES.join(", ")})`);
+      if (!sparklineOptions(options)) refuse(`${p.options} is not sparkline options (high, low, first, last, axis)`);
+      const extra = type === "line" && !options ? "" : options ? `, "${type}", "${options}"` : `, "${type}"`;
+      const formula = wb.sheet.language.name === "Excel" ? `=SPARKLINE(${named(r)}${extra})` : `=SPARKLINE_RANGE("${named(r)}"${extra})`;
       const changed = await wb.sheet.set(key, formula);
       return changedBy(wb, changed, `${key} = ${show(wb.sheet.value(key))}`);
     },
