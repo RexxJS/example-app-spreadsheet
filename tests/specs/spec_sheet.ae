@@ -31,6 +31,34 @@ wait_formula(want: string) -> int {
     return 0
 }
 
+// How many of the grid's cells carry the cursor's box (the driver's
+// borderWidth 2): one, the selected cell, when none is left behind.
+cursor_boxes() -> int {
+    v, _jerr = json.parse(uidriver.get_body("/widgets"))
+    if v == null { return 0 - 1 }
+    n = 0
+    i = 0
+    while i < json.json_array_size(v) {
+        w = json.json_array_get_raw(v, i)
+        cls = uidriver.field_str(w, "classes")
+        if (string.contains(cls, "aui-grid-cell") == 1 || string.contains(cls, "aui-grid-frozen") == 1) && uidriver.field_int(w, "borderWidth") == 2 { n = n + 1 }
+        i = i + 1
+    }
+    json.json_free(v)
+    return n
+}
+
+// 1 once the cursor's box is on one cell alone.
+wait_one_box() -> int {
+    i = 0
+    while i < 40 {
+        if cursor_boxes() == 1 { return 1 }
+        sleep(50)
+        i = i + 1
+    }
+    return 0
+}
+
 // 1 once there is a button reading `label`.
 wait_button(label: string) -> int {
     i = 0
@@ -1741,6 +1769,40 @@ main() {
             spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"Kale\"") == 1, "an item")
             b.click("Delete chart 1")
             g.command("view.panel name=none")
+        }
+        spec.it("no cursor box left behind: after a cell's style changes under it, an edit with references, Escape, freeze and split") callback {
+            g.command("sheet.add name=Boxes")
+            g.command("cell.set cell=B3 input=5")
+            g.command("cell.set cell=C4 input=1000")
+            g.goto("C4")
+            g.pick("C", 4)
+            g.command("format.number range=C4 format=currency")
+            g.pick("E", 6)
+            spec.assert_true(wait_one_box(), "C4's style changed under the cursor: its box goes when the cursor leaves (${cursor_boxes()})")
+            g.pick("D", 5)
+            g.key("equal")
+            g.pick("B", 3)
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.editor()}", "=B3", 40), "pointed at B3")
+            uidriver.post_ok("/widget/${g.editor()}/submit", "Return in the editor")
+            spec.assert_true(g.wait_cell("D", 5, "5"), "entered")
+            g.pick("F", 8)
+            spec.assert_true(wait_one_box(), "after the edit, one box (${cursor_boxes()})")
+            spec.assert_eq(g.cell_has("B", 3, "1f6fd1"), 0, "B3's reference outline gone")
+            g.pick("G", 8)
+            g.key("equal")
+            g.pick("C", 4)
+            g.key("Escape")
+            g.pick("H", 9)
+            spec.assert_true(wait_one_box(), "after Escape, one box (${cursor_boxes()})")
+            spec.assert_eq(g.cell_has("C", 4, "1f6fd1"), 0, "C4's reference outline gone")
+            g.command("view.freezePanes cell=B2")
+            g.command("view.freezePanes cell=A1")
+            g.pick("C", 7)
+            spec.assert_true(wait_one_box(), "after freeze and unfreeze, one box (${cursor_boxes()})")
+            g.command("view.split")
+            g.command("view.split off=1")
+            g.pick("D", 9)
+            spec.assert_true(wait_one_box(), "after split and unsplit, one box (${cursor_boxes()})")
         }
     }
     return spec.run_summary(fw)
