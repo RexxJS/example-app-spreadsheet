@@ -1878,6 +1878,23 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("Solver from the Data panel: Wyndor Glass solved, its Answer Report written") callback {
+            g.command("sheet.add name=Wyndor")
+            g.command("formulas.use language=Excel")
+            g.command("cell.set cell=B1 input=0")
+            g.command("cell.set cell=B2 input=0")
+            g.command("cell.set cell=B4 input=\"=3*B1+5*B2\"")
+            g.command("cell.set cell=B5 input=\"=3*B1+2*B2\"")
+            g.command("view.panel name=data")
+            g.command("view.select range=B4")
+            b.set_field_by("by changing", "B1:B2")
+            b.set_field_by("criteria range", "B1<=4;B2<=6;B5<=18")
+            b.click("Solver")
+            spec.assert_true(b.wait_for_console("sheet: Solver found a solution: B4 = 36 at B1=2, B2=6"), "solved")
+            spec.assert_true(g.wait_cell("B", 4, "36"), "kept on the sheet")
+            spec.assert_true(wait_button("Answer Report 1"), "the report's sheet tab")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

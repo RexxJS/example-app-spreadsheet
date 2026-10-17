@@ -343,6 +343,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   IMPORTJSON: async (exec, at, t) => (await must(exec, "file.importJson", { at: text(at), text: text(t) })).message,
   IMPORTHTML: async (exec, at, t, n) => (await must(exec, "file.importHtml", { at: text(at), text: text(t), ...(text(n).trim() ? { table: text(n) } : {}) })).message,
   EXPORTHTML: async (exec, r, header) => (await must(exec, "file.exportHtml", { ...(text(r).trim() ? { range: text(r) } : {}), ...(yes(header) ? { header: "1" } : {}) })).output,
+  // Solver (RexxJS has a SOLVE of its own): SOLVER("B10", "max", "B1:B3", "B5<=40;B6<=60;B1:B3=int", "report=1").
+  SOLVER: async (exec, objective, goal, changing, constraints, opts) => {
+    const g = text(goal).trim(), value = isFinite(Number(g)) && g !== "" ? g : "";
+    return (await must(exec, "solver.solve", { objective: text(objective), changing: text(changing), goal: value ? "value" : g || "max", ...(value ? { value } : {}), ...(text(constraints).trim() ? { constraints: text(constraints) } : {}), ...pairs(opts) })).message;
+  },
   // Scenario Manager: ADDSCENARIO("Best", "B1,B2", "10,0.2"), SHOWSCENARIO("Best"),
   // SCENARIOSUMMARY("B5"), LISTSCENARIOS(), DELETESCENARIO("Best").
   ADDSCENARIO: async (exec, n, cells, values) => (await must(exec, "scenario.add", { name: text(n), cells: text(cells), ...(text(values).trim() ? { values: text(values) } : {}) })).message,

@@ -51,6 +51,8 @@ import { TABLE_STYLE_NAMES, styleNamed } from "./styles.ts";
 import { BAND, bandedKeys, slicedRows, slicerValues } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
 import { CONSOLIDATE_FUNCTIONS, consolidate } from "./consolidate.ts";
+import { solveLp } from "./solver.ts";
+import type { LpRow, Relation } from "./solver.ts";
 import { MOST_LEVELS, SUBTOTAL_FUNCTIONS, depth, detailOf, hiddenAtLevel, regrouped, runs } from "./outline.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows, sortedRowsBy } from "./sortfind.ts";
 import type { SortKey } from "./sortfind.ts";
@@ -2079,6 +2081,101 @@ const SPECS: readonly Spec[] = [
     run: async (wb) => {
       const views = wb.slicerViews(), listed = views.map((x) => `${x.caption}: ${x.tiles.map((t) => (t.picked ? `[${t.value}]` : t.value)).join(" ")}`);
       return { ok: true, message: listed.length ? listed.join("; ") : "no slicers", changed: [], output: listed };
+    },
+  },
+  {
+    // Solver, Simplex LP: set objective= to max, min or value= by changing
+    // changing= (cells or ranges, comma-separated) subject to constraints=
+    // ("B5<=40;B6>=B7;B1:B3=int;B4=bin", a range against a number or a
+    // range of the same size); the sheet's formulas must be linear in the
+    // changing cells (each read off by setting them, as Excel's Simplex
+    // does). nonneg=0 frees the unconstrained ones. The solution kept (one
+    // step of undo) unless restore=1; report=1 writes Excel's Answer
+    // Report on a sheet of its own.
+    id: "solver.solve", label: "Solver", params: ["objective", "changing"], optional: ["goal", "value", "constraints", "nonneg", "restore", "report"], journaled: true,
+    run: async (wb, p) => {
+      const obj = cellOf(p.objective), goal = (p.goal ?? "max").trim().toLowerCase();
+      if (!["max", "min", "value"].includes(goal)) refuse(`${p.goal} is not max, min or value`);
+      if (goal === "value" && !isFinite(Number(p.value))) refuse("goal=value needs value= a number");
+      const vars = [...new Set(p.changing.split(",").flatMap((x) => [...range(...rangeOf(x.trim()))]))];
+      if (!vars.length || vars.length > 200) refuse("Solver changes 1 to 200 cells, as Excel's");
+      for (const k of vars) if (wb.sheet.input(k).startsWith("=")) refuse(`${k} holds a formula, not a value Solver can change`);
+      const was = vars.map((k): [string, string] => [k, wb.sheet.input(k)]);
+      const num = (k: string) => { const v = wb.sheet.value(k); return typeof v === "number" ? v : v === null || v === "" ? 0 : NaN; };
+      const at = async (x: readonly number[]) => { await wb.sheet.setMany(vars.map((k, i): [string, string] => [k, String(x[i])])); await wb.settle(); };
+      // The constraints: each a cell's (or each of a range's cells') relation.
+      const ints = new Set<string>(), bins = new Set<string>();
+      const cons: { lhs: string; rel: Relation; rhs: string | number; said: string }[] = [];
+      for (const part of (p.constraints ?? "").split(";").map((x) => x.trim()).filter((x) => x)) {
+        const m = /^(.+?)\s*(<=|>=|=)\s*(.+)$/.exec(part) ?? refuse(`${part} is not a constraint (B5<=40, B1:B3=int)`);
+        const lhs = [...range(...rangeOf(m[1].trim()))];
+        if (/^(int|bin)$/i.test(m[3].trim()) && m[2] === "=") { for (const k of lhs) (m[3].trim().toLowerCase() === "int" ? ints : bins).add(k); continue; }
+        const rhsCells = parseRange(m[3].trim()) ? [...range(...rangeOf(m[3].trim()))] : null;
+        if (rhsCells && rhsCells.length !== 1 && rhsCells.length !== lhs.length) refuse(`${part}: the two sides differ in size`);
+        if (!rhsCells && !isFinite(Number(m[3]))) refuse(`${part}: ${m[3]} is not a number or a cell`);
+        lhs.forEach((k, i) => cons.push({ lhs: k, rel: m[2] as Relation, rhs: rhsCells ? rhsCells[rhsCells.length === 1 ? 0 : i] : Number(m[3]), said: `${k} ${m[2]} ${rhsCells ? rhsCells[rhsCells.length === 1 ? 0 : i] : m[3]}` }));
+      }
+      for (const k of [...ints, ...bins]) if (!vars.includes(k)) refuse(`${k} is int or bin but not a changing cell`);
+      const origValues = vars.map(num), origObj = num(obj);
+      // Each formula's coefficients, read off: its value with every
+      // changing cell 0, then each one 1; then a check at another point.
+      const watched = [obj, ...cons.flatMap((c) => [c.lhs, ...(typeof c.rhs === "string" ? [c.rhs] : [])])];
+      const read = () => watched.map(num);
+      try {
+        await at(vars.map(() => 0));
+        const base = read(), coef = watched.map(() => vars.map(() => 0));
+        for (let j = 0; j < vars.length; j++) {
+          await at(vars.map((_, i) => (i === j ? 1 : 0)));
+          read().forEach((v, w) => (coef[w][j] = v - base[w]));
+        }
+        const probe = vars.map((_, i) => i + 2);
+        await at(probe);
+        const now = read();
+        const linear = watched.every((_, w) => { const want = base[w] + coef[w].reduce((s, c, j) => s + c * probe[j], 0); return Math.abs(now[w] - want) <= 1e-7 * (1 + Math.abs(want)); });
+        if (watched.some((_, w) => !isFinite(base[w]))) refuse(`${watched.find((_, w) => !isFinite(base[w]))} is not a number with the changing cells at 0`);
+        if (!linear) refuse(`the problem is not linear in ${vars.join(", ")}: Simplex LP needs linear formulas`);
+        const wi = (k: string) => watched.indexOf(k);
+        const rows: LpRow[] = cons.map((c) => {
+          const l = coef[wi(c.lhs)], lb = base[wi(c.lhs)];
+          if (typeof c.rhs === "number") return { a: l, rel: c.rel, b: c.rhs - lb };
+          const r = coef[wi(c.rhs)], rb = base[wi(c.rhs)];
+          return { a: l.map((v, j) => v - r[j]), rel: c.rel, b: rb - lb };
+        });
+        for (const k of bins) rows.push({ a: vars.map((v) => (v === k ? 1 : 0)), rel: "<=", b: 1 });
+        if (goal === "value") rows.push({ a: coef[0], rel: "=", b: Number(p.value) - base[0] });
+        const free = vars.map(() => p.nonneg !== undefined && !flag(p.nonneg));
+        const result = solveLp({ c: goal === "value" ? vars.map(() => 0) : coef[0], maximise: goal !== "min", rows, free, integer: vars.map((k) => ints.has(k) || bins.has(k)) });
+        if (result.status !== "optimal") {
+          await wb.sheet.setMany(was);
+          await wb.settle();
+          refuse(result.status === "infeasible" ? "Solver could not find a feasible solution" : "the objective's cells do not converge: the problem is unbounded");
+        }
+        const x = (result as { x: number[] }).x.map((v) => Number(v.toPrecision(12)));
+        if (flag(p.restore)) { await wb.sheet.setMany(was); await wb.settle(); }
+        else await at(x);
+        const finalObj = base[0] + coef[0].reduce((s, c, j) => s + c * x[j], 0);
+        if (flag(p.report)) {
+          const source = wb.active;
+          let name = "Answer Report 1";
+          for (let i = 2; wb.page(name); i++) name = `Answer Report ${i}`;
+          await wb.add(name);
+          const lines: string[][] = [["Answer Report"], [], ["Objective Cell (" + (goal === "value" ? `Value Of ${p.value}` : goal === "max" ? "Max" : "Min") + ")"], ["Cell", "Original Value", "Final Value"], [`${source}!${obj}`, show(origObj), String(Number(finalObj.toPrecision(12)))], [],
+            ["Variable Cells"], ["Cell", "Original Value", "Final Value", "Integer"], ...vars.map((k, i) => [`${source}!${k}`, show(origValues[i]), String(x[i]), ints.has(k) ? "Integer" : bins.has(k) ? "Binary" : "Contin"]), [],
+            ["Constraints"], ["Cell", "Cell Value", "Formula", "Status", "Slack"],
+            ...cons.map((c, i) => {
+              const lhs = base[wi(c.lhs)] + coef[wi(c.lhs)].reduce((s, v, j) => s + v * x[j], 0), slackV = Math.abs(rows[i].b - rows[i].a.reduce((s, v, j) => s + v * x[j], 0));
+              return [`${source}!${c.lhs}`, String(Number(lhs.toPrecision(12))), c.said, slackV < 1e-7 || c.rel === "=" ? "Binding" : "Not Binding", String(Number(slackV.toPrecision(12)))];
+            })];
+          await wb.sheet.setMany(lines.flatMap((l, r) => l.map((v, c): [string, string] => [keyOf({ col: c, row: r }), /^[=']/.test(v) || /^[-+]?\d/.test(v) && !NUMERIC_TEXT.test(v) ? `'${v}` : v])));
+          wb.activate(source);
+        }
+        await wb.settle();
+        return { ok: true, message: `Solver found a solution: ${obj} = ${Number(finalObj.toPrecision(12))} at ${vars.map((k, i) => `${k}=${x[i]}`).join(", ")}${flag(p.restore) ? " (the cells as they were)" : ""}`, changed: wb.sheet.keys(), output: x };
+      } catch (e) {
+        await wb.sheet.setMany(was);
+        await wb.settle();
+        throw e;
+      }
     },
   },
   {

@@ -108,6 +108,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   IMPORTJSON: fn([p("at", "cell"), p("text", "json", "an array of objects (their keys the header row) or of arrays")], "Imports JSON rows at a cell", "what was done"),
   IMPORTHTML: fn([p("at", "cell"), p("text", "text", "an HTML page"), opt("table", "number", "which of its tables, from 1")], "Imports an HTML page's table at a cell", "what was done"),
   EXPORTHTML: fn([opt("range", "range", "the used range when left out"), opt("header", "flag", "1: the first row th")], "The cells as an HTML table, as they show, their looks inline", "the HTML"),
+  SOLVER: fn([p("objective", "cell"), p("goal", "text", "max, min, or a number to reach"), p("changing", "text", "the cells Solver changes, \"B1:B3\" or \"B1,C4\""), opt("constraints", "text", "split by ';': B5<=40, B6>=B7, B1:B3=int, B4=bin"), opt("options", "text", "name=value pairs: nonneg=0 (free the unconstrained), restore=1 (keep the cells as they were), report=1 (an Answer Report sheet)")],
+    "Solver, Simplex LP: the sheet's formulas linear in the changing cells", "what it found"),
   ADDSCENARIO: fn([p("name", "text"), p("cells", "text", "its changing cells, \"B1,B2\" or \"B1:B3\""), opt("values", "text", "their values, comma-separated; the cells' own when left out")], "Scenario Manager's Add (the same name again edits it)", "the scenario"),
   SHOWSCENARIO: fn([p("name", "text")], "Puts a scenario's values in its cells", "what was done"),
   SCENARIOSUMMARY: fn([p("results", "text", "the result cells, \"B5\" or \"B5,B7\""), opt("to", "text", "the new sheet's name; Scenario Summary by default")], "A sheet of each scenario's changing cells and results, beside the current values", "what was done"),

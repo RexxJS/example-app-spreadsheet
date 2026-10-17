@@ -31,6 +31,9 @@ export function dataBar(v: SheetView): void {
     v.btn("Add scenario", () => v.run("scenario.add", { name: goal.value, cells: v.range() }));
     v.btn("Show scenario", () => v.run("scenario.show", { name: goal.value }));
     v.btn("Scenario summary", () => v.run("scenario.summary", { results: v.range() }));
+    // Solver: the selected cell maximised by changing the "by changing"
+    // field's cells, under the criteria range field's constraints.
+    v.btn("Solver", () => v.run("solver.solve", { objective: v.here(), changing: by.value, ...(criteria.value.trim() ? { constraints: criteria.value } : {}), report: "1" }));
     bind(ui.textfield("row input", () => {}), rowInput);
     bind(ui.textfield("column input", () => {}), columnInput);
     v.btn("Data table", () => v.run("data.table", { range: v.range(), ...given({ row: rowInput.value, column: columnInput.value }) }));
