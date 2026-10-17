@@ -66,7 +66,7 @@ const resolvedColour = (c: string | null): string | null => (c === null ? null :
 const NUMERIC_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
-import type { Direction, Filter, LanguageName, Page, Pivot, Workbook } from "./workbook.ts";
+import type { Direction, Filter, LanguageName, Page, Pivot, Scenario, Workbook } from "./workbook.ts";
 import { statsLine } from "./workbook.ts";
 import { AGGREGATES, pivoted } from "./pivot.ts";
 import type { Aggregate } from "./pivot.ts";
@@ -231,6 +231,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
     page.rowLevels = new Map(s.view.rowLevels);
     page.colLevels = new Map(s.view.colLevels);
     page.slicers = [...s.slicers];
+    page.scenarios = [...s.scenarios];
     page.autoId = s.autoId;
     page.pivots = new Map(s.pivots);
     page.merges = s.merges.map((m) => parseRange(m)!);
@@ -443,6 +444,9 @@ function sort(ascending: boolean) {
     return setting(wb, entries, `sorted ${named(r)} by ${colName(by)}, ${ascending ? "ascending" : "descending"}`);
   };
 }
+
+const scenarioNamed = (wb: Workbook, n: string): Scenario =>
+  wb.page(wb.active)!.scenarios.find((x) => x.name.toLowerCase() === n.trim().toLowerCase()) ?? refuse(`no scenario ${n}`);
 
 // The rows the page's slicers hide, as its filter's (the AutoFilter's
 // taken off: a table's slicers are its filter).
@@ -2073,6 +2077,81 @@ const SPECS: readonly Spec[] = [
     run: async (wb) => {
       const views = wb.slicerViews(), listed = views.map((x) => `${x.caption}: ${x.tiles.map((t) => (t.picked ? `[${t.value}]` : t.value)).join(" ")}`);
       return { ok: true, message: listed.length ? listed.join("; ") : "no slicers", changed: [], output: listed };
+    },
+  },
+  {
+    // Scenario Manager's Add: a name, its changing cells ("B1,B2" or
+    // "B1:B3"), their values (comma-separated; the cells' own when left
+    // out); the same name again edits it.
+    id: "scenario.add", label: "Add Scenario", params: ["name", "cells"], optional: ["values", "comment"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, name = p.name.trim() || refuse("a scenario has a name");
+      const cells = p.cells.split(",").flatMap((x) => [...range(...rangeOf(x.trim()))]);
+      if (!cells.length || cells.length > 32) refuse("a scenario changes 1 to 32 cells, as Excel's");
+      const values = p.values === undefined ? cells.map((k) => wb.sheet.input(k)) : p.values.split(",").map((x) => x.trim());
+      if (values.length !== cells.length) refuse(`${cells.length} cells and ${values.length} values`);
+      const sc: Scenario = { name, cells, values, ...(p.comment ? { comment: p.comment } : {}) };
+      const i = page.scenarios.findIndex((x) => x.name.toLowerCase() === name.toLowerCase());
+      page.scenarios = i < 0 ? [...page.scenarios, sc] : page.scenarios.map((x, j) => (j === i ? sc : x));
+      return changedBy(wb, [], `scenario ${name}: ${cells.map((k, j) => `${k}=${values[j]}`).join(", ")}`);
+    },
+  },
+  {
+    // Show: its values put in its cells (one step of undo).
+    id: "scenario.show", label: "Show Scenario", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const sc = scenarioNamed(wb, p.name);
+      return setting(wb, sc.cells.map((k, i): [string, string] => [k, sc.values[i]]), `showed scenario ${sc.name}`);
+    },
+  },
+  {
+    id: "scenario.delete", label: "Delete Scenario", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, sc = scenarioNamed(wb, p.name);
+      page.scenarios = page.scenarios.filter((x) => x !== sc);
+      return changedBy(wb, [], `deleted scenario ${sc.name}`);
+    },
+  },
+  {
+    id: "scenario.list", label: "Scenarios", params: [], journaled: false,
+    run: async (wb) => {
+      const listed = wb.page(wb.active)!.scenarios.map((x) => `${x.name}: ${x.cells.map((k, j) => `${k}=${x.values[j]}`).join(", ")}`);
+      return { ok: true, message: listed.length ? listed.join("; ") : "no scenarios", changed: [], output: listed };
+    },
+  },
+  {
+    // Summary: a sheet "Scenario Summary" (or to=), a row a changing cell
+    // and a result cell (results=), a column for the current values and
+    // one a scenario, each scenario's results worked out with its values
+    // in, the sheet as it was after.
+    id: "scenario.summary", label: "Scenario Summary", params: ["results"], optional: ["to"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, scs = page.scenarios;
+      if (!scs.length) refuse("no scenarios");
+      const results = p.results.split(",").flatMap((x) => [...range(...rangeOf(x.trim()))]);
+      const changing = [...new Set(scs.flatMap((x) => x.cells))];
+      const was = changing.map((k): [string, string] => [k, wb.sheet.input(k)]);
+      const read = (ks: readonly string[]) => ks.map((k) => wb.sheet.value(k));
+      const columns: { name: string; inputs: Value[]; results: Value[] }[] = [{ name: "Current Values", inputs: read(changing), results: read(results) }];
+      for (const sc of scs) {
+        await wb.sheet.setMany(sc.cells.map((k, i): [string, string] => [k, sc.values[i]]));
+        await wb.settle();
+        columns.push({ name: sc.name, inputs: read(changing), results: read(results) });
+        await wb.sheet.setMany(was);
+        await wb.settle();
+      }
+      const target = (p.to ?? "Scenario Summary").trim(), source = wb.active;
+      if (wb.page(target)) refuse(`${target} is a sheet already`);
+      await wb.add(target);
+      const cell = (c: number, r: number) => keyOf({ col: c, row: r });
+      const text = (v: Value) => (v === null ? "" : typeof v === "number" ? String(v) : show(v));
+      const entries: [string, string][] = [[cell(0, 0), "Scenario Summary"], [cell(1, 1), "Cell"], ...columns.map((c, j): [string, string] => [cell(2 + j, 1), c.name]), [cell(0, 2), "Changing Cells:"]];
+      changing.forEach((k, i) => { entries.push([cell(1, 3 + i), `${source}!${k}`]); columns.forEach((c, j) => entries.push([cell(2 + j, 3 + i), text(c.inputs[i])])); });
+      const r0 = 4 + changing.length;
+      entries.push([cell(0, r0 - 1), "Result Cells:"]);
+      results.forEach((k, i) => { entries.push([cell(1, r0 + i), `${source}!${k}`]); columns.forEach((c, j) => entries.push([cell(2 + j, r0 + i), text(c.results[i])])); });
+      wb.activate(target);
+      return setting(wb, entries.map(([k, v]): [string, string] => [k, /^[=']/.test(v) ? `'${v}` : v]), `scenario summary on ${target}`);
     },
   },
   {

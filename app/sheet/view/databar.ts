@@ -26,6 +26,11 @@ export function dataBar(v: SheetView): void {
     bind(ui.textfield("goal", () => {}), goal);
     bind(ui.textfield("by changing", () => {}), by);
     v.btn("Goal seek", () => v.run("data.goalSeek", { set: v.here(), to: goal.value, by: by.value }));
+    // Scenario Manager: the selection's values kept under the goal field's
+    // text as a name; shown again; a summary of the selected result cell.
+    v.btn("Add scenario", () => v.run("scenario.add", { name: goal.value, cells: v.range() }));
+    v.btn("Show scenario", () => v.run("scenario.show", { name: goal.value }));
+    v.btn("Scenario summary", () => v.run("scenario.summary", { results: v.range() }));
     bind(ui.textfield("row input", () => {}), rowInput);
     bind(ui.textfield("column input", () => {}), columnInput);
     v.btn("Data table", () => v.run("data.table", { range: v.range(), ...given({ row: rowInput.value, column: columnInput.value }) }));

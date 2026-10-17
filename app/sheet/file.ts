@@ -27,7 +27,7 @@ import type { CfRule } from "./rules.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
 import type { TableDef } from "./language.ts";
-import type { Slicer } from "./workbook.ts";
+import type { Scenario, Slicer } from "./workbook.ts";
 import type { Look } from "./formats.ts";
 import { CELL_STYLES } from "./styles.ts";
 import { ROLES, THEMES } from "./themes.ts";
@@ -60,6 +60,7 @@ export interface FileSheet {
   };
   readonly merges: readonly string[];
   readonly slicers: readonly Slicer[];
+  readonly scenarios: readonly Scenario[];
   readonly tables: readonly TableDef[];
   readonly autoId: AutoId | null;
   readonly pivots: readonly [string, Pivot][];
@@ -189,6 +190,8 @@ function sheetOf(name: string, s: any): FileSheet {
     tables: tablesOf(s?.tables),
     slicers: Array.isArray(s?.slicers) ? s.slicers.filter((x: any) => x && typeof x.name === "string" && typeof x.table === "string" && typeof x.column === "string")
       .map((x: any): Slicer => ({ name: x.name, table: x.table, column: x.column, picked: Array.isArray(x.picked) ? x.picked.map(String) : [] })) : [],
+    scenarios: Array.isArray(s?.scenarios) ? s.scenarios.filter((x: any) => x && typeof x.name === "string" && Array.isArray(x.cells) && Array.isArray(x.values))
+      .map((x: any): Scenario => ({ name: x.name, cells: x.cells.map(String), values: x.values.map(String), ...(x.comment ? { comment: String(x.comment) } : {}) })) : [],
     autoId: autoIdOf(s?.autoId),
     pivots: pivotsOf(s?.pivots),
   };
@@ -286,7 +289,7 @@ const viewIn = (page: Page) => ({
 
 // A sheet's parts as the file has them.
 const sheetIn = (p: Page) => ({
-  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p), ...(p.slicers.length ? { slicers: p.slicers } : {}),
+  cells: cellsOf(p), names: namesOf(p), rules: rulesIn(p), charts: chartsIn(p), view: viewIn(p), merges: p.merges.map(rangeName), tables: tablesIn(p), ...(p.slicers.length ? { slicers: p.slicers } : {}), ...(p.scenarios.length ? { scenarios: p.scenarios } : {}),
   ...(p.autoId ? { autoId: { column: colName(p.autoId.column), next: p.autoId.next, prefix: p.autoId.prefix } } : {}),
   ...(p.pivots.size ? {
     pivots: [...p.pivots].map(([id, pv]) => ({

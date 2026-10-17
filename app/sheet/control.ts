@@ -343,6 +343,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   IMPORTJSON: async (exec, at, t) => (await must(exec, "file.importJson", { at: text(at), text: text(t) })).message,
   IMPORTHTML: async (exec, at, t, n) => (await must(exec, "file.importHtml", { at: text(at), text: text(t), ...(text(n).trim() ? { table: text(n) } : {}) })).message,
   EXPORTHTML: async (exec, r, header) => (await must(exec, "file.exportHtml", { ...(text(r).trim() ? { range: text(r) } : {}), ...(yes(header) ? { header: "1" } : {}) })).output,
+  // Scenario Manager: ADDSCENARIO("Best", "B1,B2", "10,0.2"), SHOWSCENARIO("Best"),
+  // SCENARIOSUMMARY("B5"), LISTSCENARIOS(), DELETESCENARIO("Best").
+  ADDSCENARIO: async (exec, n, cells, values) => (await must(exec, "scenario.add", { name: text(n), cells: text(cells), ...(text(values).trim() ? { values: text(values) } : {}) })).message,
+  SHOWSCENARIO: async (exec, n) => (await must(exec, "scenario.show", { name: text(n) })).message,
+  SCENARIOSUMMARY: async (exec, results, to) => (await must(exec, "scenario.summary", { results: text(results), ...(text(to).trim() ? { to: text(to) } : {}) })).message,
+  LISTSCENARIOS: async (exec) => stem((await must(exec, "scenario.list")).output as string[]),
+  DELETESCENARIO: async (exec, n) => (await must(exec, "scenario.delete", { name: text(n) })).message,
   // Slicers: ADDSLICER("Sales", "region"), SLICE("region", "north,south"),
   // SLICE("region", "west", 1) to add it; CLEARSLICER(slicer),
   // DELETESLICER(slicer), LISTSLICERS().

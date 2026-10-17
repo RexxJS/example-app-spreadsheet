@@ -109,6 +109,15 @@ export interface Page {
   // Its slicers: tiles of a table column's values, filtering the table's
   // rows to those picked (none picked: every row).
   slicers: Slicer[];
+  // Its scenarios (Scenario Manager): named sets of values for some cells.
+  scenarios: Scenario[];
+}
+
+export interface Scenario {
+  readonly name: string;
+  readonly cells: readonly string[];
+  readonly values: readonly string[];
+  readonly comment?: string;
 }
 
 export interface Slicer {
@@ -204,7 +213,7 @@ const viewOf = (p: Omit<Page, "name" | "sheet" | "notes">): Omit<Page, "name" | 
   rules: [...p.rules], charts: [...p.charts], hiddenRows: new Set(p.hiddenRows), hiddenCols: new Set(p.hiddenCols),
   filtered: p.filtered && new Set(p.filtered), filter: p.filter, frozen: p.frozen, frozenCols: p.frozenCols, merges: [...p.merges],
   heights: new Map(p.heights), widths: new Map(p.widths), autoId: p.autoId, pivots: new Map(p.pivots),
-  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels), slicers: [...p.slicers],
+  tabColor: p.tabColor, hiddenSheet: p.hiddenSheet, rowLevels: new Map(p.rowLevels), colLevels: new Map(p.colLevels), slicers: [...p.slicers], scenarios: [...p.scenarios],
 });
 
 // A name for the whole workbook: a range of one of its sheets, or a
@@ -417,7 +426,7 @@ export class Workbook {
       keys.add(key);
     };
     page = { name, sheet: new Sheet({ changed }, language, context), notes: new CellNotes(), rules: [], charts: [],
-      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map(), slicers: [] };
+      hiddenRows: new Set(), hiddenCols: new Set(), filtered: null, filter: null, frozen: 0, frozenCols: 0, merges: [], heights: new Map(), widths: new Map(), autoId: null, pivots: new Map(), tabColor: null, hiddenSheet: false, rowLevels: new Map(), colLevels: new Map(), slicers: [], scenarios: [] };
     return page;
   }
 

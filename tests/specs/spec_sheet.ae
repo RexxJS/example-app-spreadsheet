@@ -1844,6 +1844,24 @@ main() {
             b.click("Delete chart 1")
             g.command("view.panel name=none")
         }
+        spec.it("Scenario Manager from the Data panel: a scenario added, shown, and summarised on its own sheet") callback {
+            g.command("sheet.add name=Plans")
+            g.command("formulas.use language=Excel")
+            g.command("cell.set cell=B1 input=100")
+            g.command("cell.set cell=B2 input=\"=B1*2\"")
+            g.command("view.panel name=data")
+            g.command("scenario.add name=Big cells=B1 values=500")
+            b.set_field_by("goal", "Big")
+            b.click("Show scenario")
+            spec.assert_true(g.wait_cell("B", 2, "1000"), "shown: its value in, worked out")
+            g.command("edit.undo")
+            spec.assert_true(g.wait_cell("B", 2, "200"), "undone")
+            g.command("view.select range=B2")
+            b.click("Scenario summary")
+            spec.assert_true(b.wait_for_console("sheet: scenario summary on Scenario Summary"), "summarised")
+            spec.assert_true(g.wait_cell("D", 6, "1000"), "Big's result beside the current one")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }
