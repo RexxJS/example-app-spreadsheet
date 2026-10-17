@@ -1605,6 +1605,19 @@ main() {
             spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("B", 3)}", "\"bg\":\"#4472c4\"", 40), "its header row in accent 1")
             g.command("view.panel name=none")
         }
+        spec.it("a theme from the Looks panel re-colours a fill that names accent 1") callback {
+            g.command("sheet.add name=Themed")
+            g.command("cell.set cell=A1 input=x")
+            g.command("format.fill range=A1 color=accent1")
+            g.command("view.select range=D5")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#4472c4\"", 40), "Office's accent 1")
+            g.command("view.panel name=looks")
+            b.click("Theme Harbour")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#0f6fc6\"", 40), "Harbour's")
+            b.click("Theme Office")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#4472c4\"", 40), "and back")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

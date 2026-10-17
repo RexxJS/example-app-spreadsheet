@@ -45,5 +45,7 @@ export function lookBar(v: SheetView): void {
   // Cell Styles: the gallery's commonest, on the selection.
   ui.hstack(() => {
     for (const name of ["Normal", "Good", "Bad", "Neutral", "Title", "Heading 1", "Total", "Input", "Note"]) v.btn(`Style ${name}`, () => v.run("style.apply", { range: v.range(), name }));
+    // Themes: what names a theme's colours re-coloured.
+    for (const name of ["Office", "Greyscale", "Harbour", "Ember"]) v.btn(`Theme ${name}`, () => v.run("theme.set", { name }));
   });
 }

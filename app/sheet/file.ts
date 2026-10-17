@@ -29,6 +29,8 @@ import type { ChartKind } from "./charts.ts";
 import type { TableDef } from "./language.ts";
 import type { Look } from "./formats.ts";
 import { CELL_STYLES } from "./styles.ts";
+import { ROLES, THEMES } from "./themes.ts";
+import type { Theme } from "./themes.ts";
 import type { ChartSpec } from "./workbook.ts";
 import { show } from "./format.ts";
 import type { Note } from "./notes.ts";
@@ -71,6 +73,8 @@ export interface SheetFile {
   readonly dateSystem: 1900 | 1904;
   // The cell styles that are not the gallery's as it comes (styles.ts).
   readonly cellStyles: readonly [string, Look][];
+  // Its theme, whole (themes.ts), when not Office.
+  readonly theme: Theme;
 }
 
 interface FileCell {
@@ -218,6 +222,7 @@ export function readSheetFile(data: any): SheetFile {
     bookNames: Object.entries((data?.bookNames ?? {}) as Record<string, unknown>).map(([n, r]): [string, string] => [n.toUpperCase(), String(r)]),
     calculation: calcOf(data?.calculation),
     dateSystem: Number(data?.dateSystem) === 1904 ? 1904 : 1900,
+    theme: themeOf(data?.theme),
     cellStyles: data?.cellStyles && typeof data.cellStyles === "object" && !Array.isArray(data.cellStyles)
       ? Object.entries(data.cellStyles as Record<string, unknown>).filter(([, l]) => l && typeof l === "object").map(([n, l]): [string, Look] => [n, l as Look]) : [],
   };
@@ -301,7 +306,17 @@ export function writeSheetFile(wb: Workbook) {
     ...calcIn(wb.calculation),
     ...(wb.dateSystem === 1904 ? { dateSystem: 1904 } : {}),
     ...(ownStyles(wb).length ? { cellStyles: Object.fromEntries(ownStyles(wb)) } : {}),
+    ...(JSON.stringify(wb.theme) !== JSON.stringify(THEMES.Office) ? { theme: THEMES[wb.theme.name] === wb.theme ? wb.theme.name : wb.theme } : {}),
   };
+}
+
+// A theme as written: a name of one there is, or its colours and fonts.
+function themeOf(t: any): Theme {
+  if (typeof t === "string") return THEMES[t] ?? THEMES.Office;
+  if (!t || typeof t !== "object") return THEMES.Office;
+  const base = THEMES[String(t.name)] ?? THEMES.Office;
+  const colors = Object.fromEntries(ROLES.map((r) => [r, /^#[0-9a-f]{6}$/i.test(String(t.colors?.[r] ?? "")) ? String(t.colors[r]).toLowerCase() : base.colors[r]])) as Theme["colors"];
+  return { name: String(t.name ?? "Custom"), colors, fonts: { major: String(t.fonts?.major ?? base.fonts.major), minor: String(t.fonts?.minor ?? base.fonts.minor) } };
 }
 
 // The styles a workbook has that the gallery has not, or has otherwise.

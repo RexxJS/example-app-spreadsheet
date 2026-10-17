@@ -320,6 +320,12 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
   CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
   SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
+  // Themes: SETTHEME("Harbour"), GETTHEME(), SETTHEMECOLOR("accent1",
+  // "#123456"), SETTHEMEFONTS("Georgia", "Verdana").
+  SETTHEME: async (exec, n) => (await must(exec, "theme.set", { name: text(n) })).message,
+  GETTHEME: async (exec) => ((await must(exec, "theme.get")).output as { name: string }).name,
+  SETTHEMECOLOR: async (exec, role, c) => (await must(exec, "theme.color", { role: text(role), color: text(c) })).message,
+  SETTHEMEFONTS: async (exec, major, minor) => (await must(exec, "theme.fonts", { ...(text(major).trim() ? { major: text(major) } : {}), ...(text(minor).trim() ? { minor: text(minor) } : {}) })).message,
   // Cell and table styles: DEFINESTYLE("Money", "bold=1;fill=#e2efda;number=$#,##0.00"),
   // DEFINESTYLE("Mine", "from=B2"); APPLYSTYLE("B2:B9", "Good"); LISTSTYLES();
   // DELETESTYLE("Mine"); SETTABLESTYLE("Sales", "Medium", "firstColumn=1;bandedColumns=1").

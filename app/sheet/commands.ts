@@ -27,7 +27,8 @@ import { ICONS, PERIODS, THRESHOLDS, describeRule as describeCf, rangeName } fro
 import type { CfRule, Comparison, IconSet, Threshold } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
-import { resolved } from "./themes.ts";
+import { ROLES, THEMES, isRole, resolved } from "./themes.ts";
+import type { Role, Theme } from "./themes.ts";
 import type { Look } from "./formats.ts";
 import { CHART_KINDS, SPARKLINE_TYPES, sparklineOptions } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
@@ -192,6 +193,7 @@ async function open(wb: Workbook, file: SheetFile): Promise<Outcome> {
   wb.reset(file.sheets[0].name);
   if (file.dateSystem === 1904) await wb.setDateSystem(1904);
   for (const [n, l] of file.cellStyles) wb.styles.set(n, l);
+  wb.theme = file.theme;
   // Worked out as it opens, iterating if the file does; manual after.
   wb.calculation = { ...file.calculation, manual: false };
   const failed = file.language === "RexxJS" ? await wb.rexx.setup(file.setupScript) : null;
@@ -411,6 +413,9 @@ function sort(ascending: boolean) {
     return setting(wb, entries, `sorted ${named(r)} by ${colName(by)}, ${ascending ? "ascending" : "descending"}`);
   };
 }
+
+// A theme as words: its accents and fonts.
+const themeSaid = (t: Theme): string => `accents ${["accent1", "accent2", "accent3", "accent4", "accent5", "accent6"].map((r) => t.colors[r as Role]).join(" ")}, headings ${t.fonts.major}, body ${t.fonts.minor}`;
 
 // A look as words: "bold, size 15, fill accent1, bottom border thick accent1".
 function describeLook(l: Look): string {
@@ -1913,6 +1918,41 @@ const SPECS: readonly Spec[] = [
       const options = [def.banded ? "banded rows" : "", def.bandedColumns ? "banded columns" : "", def.firstColumn ? "first column" : "", def.lastColumn ? "last column" : ""].filter((x) => x);
       return changedBy(wb, [...range(t.range[0], t.range[1])], `${t.name}: ${def.style ?? "no"} style${options.length ? `, ${options.join(", ")}` : ""}`);
     },
+  },
+  {
+    // Page Layout's Themes: a theme by name (Office, Greyscale, Harbour,
+    // Ember), its colour roles and fonts; whatever names a role (a look's
+    // fill=accent1, a cell style's, a table style's) re-coloured.
+    id: "theme.set", label: "Themes", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const name = styleNamed(Object.keys(THEMES), p.name) ?? refuse(`${p.name} is not a theme (${Object.keys(THEMES).join(", ")})`);
+      wb.theme = THEMES[name];
+      return changedBy(wb, wb.sheet.keys(), `theme ${name}: ${themeSaid(wb.theme)}`);
+    },
+  },
+  {
+    // Customize Colors: one role's colour (a #rrggbb), the theme renamed
+    // Custom; and Customize Fonts: its major (headings) and minor (body).
+    id: "theme.color", label: "Theme Colors", params: ["role", "color"], journaled: true,
+    run: async (wb, p) => {
+      const role = (ROLES as readonly string[]).find((r) => r === p.role.trim().toLowerCase()) ?? refuse(`${p.role} is not a theme colour (${ROLES.join(", ")})`);
+      const c = colour(p.color);
+      if (!c || isRole(c)) refuse(`${p.color} is not a colour (#rrggbb, or a name)`);
+      wb.theme = { ...wb.theme, name: "Custom", colors: { ...wb.theme.colors, [role]: c } };
+      return changedBy(wb, wb.sheet.keys(), `theme Custom: ${role} ${c}`);
+    },
+  },
+  {
+    id: "theme.fonts", label: "Theme Fonts", params: [], optional: ["major", "minor"], journaled: true,
+    run: async (wb, p) => {
+      const font = (f: string | undefined, was: string) => (f === undefined ? was : f.trim() || refuse("a font has a name"));
+      wb.theme = { ...wb.theme, name: wb.theme.name === "Custom" || p.major !== undefined || p.minor !== undefined ? "Custom" : wb.theme.name, fonts: { major: font(p.major, wb.theme.fonts.major), minor: font(p.minor, wb.theme.fonts.minor) } };
+      return changedBy(wb, wb.sheet.keys(), `theme ${wb.theme.name}: headings ${wb.theme.fonts.major}, body ${wb.theme.fonts.minor}`);
+    },
+  },
+  {
+    id: "theme.get", label: "About the Theme", params: [], journaled: false,
+    run: async (wb) => ({ ok: true, message: `theme ${wb.theme.name}: ${themeSaid(wb.theme)}`, changed: [], output: wb.theme }),
   },
   {
     // A cell style defined or edited: its look from a cell's (from=A1, as

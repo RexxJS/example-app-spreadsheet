@@ -24,7 +24,8 @@ import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
 import type { Language, TableDef } from "./language.ts";
 import { dataRows } from "./structured.ts";
 import { CELL_STYLES, TABLE_STYLES, under } from "./styles.ts";
-import { resolved } from "./themes.ts";
+import { THEMES, resolved, setTheme, theme } from "./themes.ts";
+import type { Theme } from "./themes.ts";
 import type { Look } from "./formats.ts";
 import { CellNotes } from "./notes.ts";
 import type { Note } from "./notes.ts";
@@ -167,6 +168,7 @@ interface Saved {
   readonly name: string;
   readonly setupScript: string;
   readonly styles: ReadonlyMap<string, Look>;
+  readonly theme: Theme;
 }
 
 interface SavedPage {
@@ -228,6 +230,10 @@ export class Workbook {
   // The cell styles by name (styles.ts's gallery, then the workbook's own
   // and their edits): a cell names one, drawn under its own look.
   styles = new Map<string, Look>(Object.entries(CELL_STYLES));
+  // Its theme (themes.ts): the colour roles and fonts looks may name; the
+  // page's, set as the workbook's is.
+  get theme(): Theme { return theme(); }
+  set theme(t: Theme) { setTheme(t); }
   readonly rexx = new RexxLanguage();
   readonly #turns = new Turns();
   // How Excel formulas are shown and typed (a view of them: they are
@@ -464,6 +470,7 @@ export class Workbook {
     this.#dateSystem = 1900;
     setDates(1900);
     this.styles = new Map(Object.entries(CELL_STYLES));
+    this.theme = THEMES.Office;
     this.#pending.clear();
     this.#undo.length = 0;
     this.#redo.length = 0;
@@ -474,7 +481,7 @@ export class Workbook {
     return {
       pages: this.#pages.map((p) => ({ page: p, name: p.name, sheet: p.sheet.saved(), notes: p.notes.saved(), view: viewOf(p) })),
       names: new Map(this.#names),
-      active: this.#active, name: this.name, setupScript: this.setupScript, styles: new Map(this.styles),
+      active: this.#active, name: this.name, setupScript: this.setupScript, styles: new Map(this.styles), theme: this.theme,
     };
   }
 
@@ -562,6 +569,7 @@ export class Workbook {
     this.name = step.name;
     this.setupScript = step.setupScript;
     this.styles = new Map(step.styles);
+    this.theme = step.theme;
     let changed: string[] = [];
     for (const s of step.pages) {
       s.page.name = s.name;
