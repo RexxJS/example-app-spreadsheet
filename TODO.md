@@ -110,7 +110,7 @@ change the specs check through the driver, and REXX loses nothing.
 
 | # | Step | Tests prove | REXX |
 |---|---|---|---|
-| 5.1 | TSV and delimiter detection, BOM and encodings on CSV import; CSV export of displayed values keeping the separator | headless `sheet_csv` | `IMPORTCSV`, `EXPORTCSV` already? extend |
+| 5.1 | ~~TSV and delimiter detection, BOM and encodings on CSV import; CSV export of displayed values keeping the separator~~ (done 2026-10-17: `csv.ts`: `detectDelimiter` (comma, tab, semicolon or bar, the one giving the first lines the same number of fields, outside quotes), a byte-order mark left out, `decode` (UTF-8, UTF-16 LE and BE by their marks, Windows-1252, Latin-1; auto: a mark, else UTF-8 if the bytes are, else Windows-1252), base64 both ways; `file.importCsv` takes `base64=` bytes with `encoding=` and `delimiter=` (auto by default); `file.exportCsv delimiter=` (a field holding it quoted; the cells as they show, their own decimal and thousands separators kept); the File panel's Export TSV, Open file taking .tsv) | headless `sheet_csv` | `IMPORTCSV`, `EXPORTCSV` already? extend |
 | 5.2 | JSON (rows of objects) and HTML table import; HTML export | headless | `IMPORTJSON`, `EXPORTHTML` |
 | 5.3 | XLSX read: cells, formulas (stored text), number formats, merges, names, sheets (a zip + XML reader in the app or an aether `contrib`) | headless on fixture files made by hand (not GridCraft's) | `OPENFILE("x.xlsx")` through documents |
 | 5.4 | XLSX write of the same, and round-trip tests | headless: write, read, equal | `SAVEAS("x.xlsx")` |

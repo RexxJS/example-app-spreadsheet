@@ -1,7 +1,7 @@
 // Files: the workbook saved to and opened from the page's storage by name
 // (every sheet, its notes and names, in the Tauri app's format), the saved
 // files listed; a new workbook; CSV out (what the selection, or everything
-// used, shows) and in (at the selected cell); the Excel example, the Tauri
+// used, shows; or TSV) and in (at the selected cell, its delimiter detected); the Excel example, the Tauri
 // app's three sample sheets (RexxJS formulas), an empty sheet, and the way
 // home. As an installed app with `documents`, files the person picks too:
 // a workbook in the Tauri app's format (.json, .rexxsheet) or CSV opened,
@@ -27,6 +27,11 @@ export function fileBar(v: SheetView): void {
     v.btn("Export CSV", async () => {
       const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
       const o = await v.run("file.exportCsv", many ? { range: v.range() } : {});
+      shown.set(String(o.output ?? ""));
+    });
+    v.btn("Export TSV", async () => {
+      const s = v.selection(), many = s && (s[0].col !== s[1].col || s[0].row !== s[1].row);
+      const o = await v.run("file.exportCsv", { ...(many ? { range: v.range() } : {}), delimiter: "tab" });
       shown.set(String(o.output ?? ""));
     });
     bind(ui.textarea("CSV"), csv);
@@ -60,7 +65,7 @@ function documentsRow(v: SheetView): void {
       const d = await documents.pick_open("Open a workbook or a CSV file");
       if (!d) return;
       const text = await d.read_text();
-      if (/\.csv$/i.test(d.name)) await v.run("file.importCsv", { at: v.here(), text });
+      if (/\.(csv|tsv|tab|txt)$/i.test(d.name)) await v.run("file.importCsv", { at: v.here(), text, ...(/\.(tsv|tab)$/i.test(d.name) ? { delimiter: "tab" } : {}) });
       else await v.run("file.import", { text });
     }));
     v.btn("Save file", tried(async () => {

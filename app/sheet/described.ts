@@ -97,6 +97,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   CLEAROUTLINE: fn([opt("axis", "text", "rows (the default) or columns")], "Clears the outline, showing what it hid", "what was done"),
   SUBTOTALS: fn([p("range", "range", "a sorted list, its first row the header"), p("by", "column", "at each change in it"), p("columns", "text", "the columns totalled, \"C,D\""), opt("function", "text", "sum (the default), count, counta, average, max, min, product, stdev, stdevp, var, varp")],
     "Excel's Subtotal: a total row under each run, a grand total, and the outline in three levels", "what was done"),
+  IMPORTCSV: fn([p("at", "cell", "the top-left"), p("text", "text", "the CSV or TSV, or (with an encoding) its bytes in base64"), opt("delimiter", "text", "auto (the default: detected), comma, tab, semicolon, bar, space"), opt("encoding", "text", "the text is base64 bytes in auto, utf-8, utf-16le, utf-16be, windows-1252 or latin1")], "Imports CSV or TSV at a cell", "what was done"),
+  EXPORTCSV: fn([opt("range", "range", "the used range when left out"), opt("delimiter", "text", "comma (the default), tab, semicolon, bar")], "What the cells show, as CSV or TSV", "the text"),
   ADDSLICER: fn([p("table", "text"), p("column", "text", "a column's name"), opt("name", "text", "the slicer's; the column's when left out")], "Inserts a slicer: the column's values as tiles", "the slicer and its values"),
   SLICE: fn([p("slicer", "text"), p("values", "text", "\"north,south\": the tiles picked, the table's other rows hidden"), opt("add", "flag", "1: added to those picked (Multi-Select)")], "Picks a slicer's tiles", "what is picked and how many rows hidden"),
   CLEARSLICER: fn([p("slicer", "text")], "Clear Filter: every row shown", "what was done"),

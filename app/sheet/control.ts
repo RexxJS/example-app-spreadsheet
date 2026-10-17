@@ -320,6 +320,11 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SHOWDETAIL: async (exec, at) => (await must(exec, "outline.showDetail", /^\d+$/.test(text(at).trim()) ? { range: `${text(at).trim()}:${text(at).trim()}`, axis: "rows" } : { range: `${col(at, "SHOWDETAIL")}:${col(at, "SHOWDETAIL")}`, axis: "columns" })).message,
   CLEAROUTLINE: async (exec, axis) => (await must(exec, "outline.clear", text(axis).trim() ? { axis: text(axis) } : {})).message,
   SUBTOTALS: async (exec, r, by, cols, fn) => (await must(exec, "data.subtotal", { range: text(r), by: text(by), columns: text(cols), ...(text(fn).trim() ? { function: text(fn) } : {}) })).message,
+  // CSV and TSV: IMPORTCSV("A1", text) (its delimiter detected), ("A1",
+  // text, "tab"), ("A1", base64, "auto", "windows-1252") bytes in an
+  // encoding; EXPORTCSV("A1:C9", "tab").
+  IMPORTCSV: async (exec, at, t, d, enc) => (await must(exec, "file.importCsv", { at: text(at), ...(text(enc).trim() ? { base64: text(t), encoding: text(enc) } : { text: text(t) }), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).message,
+  EXPORTCSV: async (exec, r, d) => (await must(exec, "file.exportCsv", { ...(text(r).trim() ? { range: text(r) } : {}), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).output,
   // Slicers: ADDSLICER("Sales", "region"), SLICE("region", "north,south"),
   // SLICE("region", "west", 1) to add it; CLEARSLICER(slicer),
   // DELETESLICER(slicer), LISTSLICERS().

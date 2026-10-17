@@ -13,7 +13,7 @@ import { evaluationSteps } from "./audit.ts";
 import type { Addr } from "./address.ts";
 import { copied, filled, pasted } from "./copy.ts";
 import type { FillWay } from "./copy.ts";
-import { fromCsv, toCsv } from "./csv.ts";
+import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toCsv } from "./csv.ts";
 import { readSheetFile, writeSheetFile } from "./file.ts";
 import type { SheetFile } from "./file.ts";
 import { show } from "./format.ts";
@@ -268,6 +268,9 @@ const savedNames = (store: Store): string[] => {
 };
 const savedName = (store: Store, name: string): string =>
   savedNames(store).find((n) => n.toUpperCase() === name.trim().toUpperCase()) ?? refuse(`no saved file ${name}`);
+
+// A delimiter by name (comma, tab, semicolon, bar, space) or as itself.
+const delimiterOf = (s: string): string => CSV_DELIMITERS[s.trim().toLowerCase()] ?? (s.length === 1 && !/[A-Za-z0-9"\r\n]/.test(s) ? s : refuse(`${s} is not a delimiter (${Object.keys(CSV_DELIMITERS).join(", ")})`));
 
 // The used part of the sheet: A1 to its last row and column.
 function usedRange(wb: Workbook): [Addr, Addr] {
@@ -2747,24 +2750,38 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "file.exportCsv", label: "Export CSV", params: [], optional: ["range"], journaled: false,
+    // What cells show, as CSV: delimiter= comma (the default), tab (TSV),
+    // semicolon or bar, a field holding it quoted.
+    id: "file.exportCsv", label: "Export CSV", params: [], optional: ["range", "delimiter"], journaled: false,
     run: async (wb, p) => {
       const r = p.range === undefined ? usedRange(wb) : rangeOf(p.range), tl = topLeft(r);
+      const d = delimiterOf(p.delimiter ?? "comma");
       const rows = Math.abs(r[0].row - r[1].row) + 1, cols = Math.abs(r[0].col - r[1].col) + 1;
       const csv = wb.sheet.keys().length || p.range !== undefined ? toCsv(Array.from({ length: rows }, (_, i) =>
-        Array.from({ length: cols }, (_, j) => wb.textOf(keyOf({ col: tl.col + j, row: tl.row + i }))))) : "";
-      return { ok: true, message: `${named(r)} as CSV: ${csv ? rows : 0} rows`, changed: [], output: csv };
+        Array.from({ length: cols }, (_, j) => wb.textOf(keyOf({ col: tl.col + j, row: tl.row + i })))), d) : "";
+      return { ok: true, message: `${named(r)} as ${d === "\t" ? "TSV" : "CSV"}: ${csv ? rows : 0} rows`, changed: [], output: csv };
     },
   },
   {
-    id: "file.importCsv", label: "Import CSV", params: ["at", "text"], journaled: true,
+    // CSV or TSV in at a cell: text=, or base64= bytes in encoding= (auto:
+    // a byte-order mark, else UTF-8, else Windows-1252); delimiter= comma,
+    // tab, semicolon, bar, space or auto (the default: detected).
+    id: "file.importCsv", label: "Import CSV", params: ["at"], optional: ["text", "base64", "encoding", "delimiter"], journaled: true,
     run: (wb, p) => {
-      const at = rangeOf(p.at)[0], rows = fromCsv(p.text);
+      if ((p.text === undefined) === (p.base64 === undefined)) refuse("Import CSV takes text= or base64=");
+      let text: string;
+      try {
+        text = p.text ?? decode(fromBase64(p.base64!), p.encoding ?? "auto");
+      } catch (e) {
+        return refuse((e as Error).message);
+      }
+      const d = (p.delimiter ?? "auto").trim().toLowerCase() === "auto" ? detectDelimiter(text) : delimiterOf(p.delimiter!);
+      const at = rangeOf(p.at)[0], rows = fromCsv(text, d);
       const cols = Math.max(0, ...rows.map((r) => r.length));
       if (at.col + cols > COLS) refuse(`${cols} columns from ${keyOf(at)} do not fit on the sheet`);
       if (at.row + rows.length > ROWS) refuse(`${rows.length} rows from ${keyOf(at)} do not fit on the sheet`);
       const entries = rows.flatMap((row, i) => row.map((input, j): [string, string] => [keyOf({ col: at.col + j, row: at.row + i }), input]));
-      return setting(wb, entries, `imported ${rows.length} rows at ${keyOf(at)}`);
+      return setting(wb, entries, `imported ${rows.length} rows at ${keyOf(at)}${d === "," ? "" : `, split by ${Object.entries(CSV_DELIMITERS).find(([, x]) => x === d)?.[0] ?? d}`}`);
     },
   },
   {

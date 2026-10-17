@@ -1646,6 +1646,19 @@ main() {
             spec.assert_true(b.wait_for_console("sheet: Region: all (0 rows hidden)"), "cleared")
             g.command("view.panel name=none")
         }
+        spec.it("TSV pasted into the File panel's CSV box comes in split by its tabs; Export TSV") callback {
+            g.command("sheet.add name=Tabbed")
+            g.command("view.panel name=file")
+            g.command("view.select range=A1")
+            b.set_field_by("CSV", "item\tqty\npens\t3")
+            b.click("Import CSV")
+            spec.assert_true(b.wait_for_console("sheet: imported 2 rows at A1, split by tab: 4 cells set, 4 changed"), "detected")
+            spec.assert_true(g.wait_cell("B", 2, "3"), "the qty in B")
+            g.command("view.select range=A1:B2")
+            b.click("Export TSV")
+            spec.assert_true(b.wait_for_text("item\tqty\npens\t3"), "out as TSV")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }
