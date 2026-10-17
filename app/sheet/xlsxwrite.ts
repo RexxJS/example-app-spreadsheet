@@ -136,10 +136,11 @@ export function writeXlsx(wb: Workbook): XlsxWritten {
   const entries: [string, Uint8Array][] = [["[Content_Types].xml", utf8Bytes(types)], ["_rels/.rels", utf8Bytes(rootRels)], ["xl/workbook.xml", utf8Bytes(book)],
     ["xl/_rels/workbook.xml.rels", utf8Bytes(bookRels)], ["xl/styles.xml", utf8Bytes(styles)], ["xl/sharedStrings.xml", utf8Bytes(shared)],
     ...sheetXml.map((x, i): [string, Uint8Array] => [`xl/worksheets/sheet${i + 1}.xml`, utf8Bytes(x)])];
-  sheetParts.forEach(({ comments, tables, relBase }, i) => {
-    if (!comments.length && !tables.length) return;
+  sheetParts.forEach(({ comments, tables, relBase, urls }, i) => {
+    if (!comments.length && !tables.length && !urls.length) return;
     const relsXml = [...(comments.length ? [`<Relationship Id="rId1" Type="${REL}/comments" Target="../comments${i + 1}.xml"/>`, `<Relationship Id="rId2" Type="${REL}/vmlDrawing" Target="../drawings/vmlDrawing${i + 1}.vml"/>`] : []),
-      ...tables.map((t, j) => `<Relationship Id="rId${relBase + j}" Type="${REL}/table" Target="../tables/table${t.id}.xml"/>`)].join("");
+      ...tables.map((t, j) => `<Relationship Id="rId${relBase + j}" Type="${REL}/table" Target="../tables/table${t.id}.xml"/>`),
+      ...urls.map((u, j) => `<Relationship Id="rId${relBase + tables.length + j}" Type="${REL}/hyperlink" Target="${escapeXml(u)}" TargetMode="External"/>`)].join("");
     entries.push([`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, utf8Bytes(`${HEAD}<Relationships xmlns="${PKG}">${relsXml}</Relationships>`)]);
     if (comments.length) entries.push([`xl/comments${i + 1}.xml`, utf8Bytes(commentsXml(comments))], [`xl/drawings/vmlDrawing${i + 1}.vml`, utf8Bytes(vmlXml(comments))]);
     for (const t of tables) entries.push([`xl/tables/table${t.id}.xml`, utf8Bytes(t.xml)]);
@@ -216,10 +217,18 @@ function sheetOf(page: Page, wb: Workbook, sst: (s: string) => number, styleOf: 
     return { id, xml: tableXml(t, id, columns) };
   });
   const relBase = comments.length ? 3 : 1;
+  // Its hyperlinks: a URL by an external relationship (after the tables'),
+  // a place in the workbook as its location.
+  const urls: string[] = [];
+  const links = keys.filter((k) => page.notes.get(k).hyperlink).map((k) => {
+    const h = page.notes.get(k).hyperlink!, tip = h.tip ? ` tooltip="${escapeXml(h.tip)}"` : "";
+    if (/^[a-z][a-z0-9+.-]*:/i.test(h.target)) { urls.push(h.target); return `<hyperlink ref="${k}" r:id="rId${relBase + tables.length + urls.length - 1}"${tip}/>`; }
+    return `<hyperlink ref="${k}" location="${escapeXml(h.target.replace(/^#/, ""))}"${tip}/>`;
+  });
   const xml = `${HEAD}<worksheet xmlns="${MAIN}" xmlns:r="${REL}"><sheetViews><sheetView workbookViewId="0">${pane}</sheetView></sheetViews>${cols ? `<cols>${cols}</cols>` : ""}<sheetData>${rowXml}</sheetData>${
-    merges ? `<mergeCells count="${page.merges.length}">${merges}</mergeCells>` : ""}${cf}${dvs.length ? `<dataValidations count="${dvs.length}">${dvs.join("")}</dataValidations>` : ""}${comments.length ? '<legacyDrawing r:id="rId2"/>' : ""}${
+    merges ? `<mergeCells count="${page.merges.length}">${merges}</mergeCells>` : ""}${cf}${dvs.length ? `<dataValidations count="${dvs.length}">${dvs.join("")}</dataValidations>` : ""}${links.length ? `<hyperlinks>${links.join("")}</hyperlinks>` : ""}${comments.length ? '<legacyDrawing r:id="rId2"/>' : ""}${
     tables.length ? `<tableParts count="${tables.length}">${tables.map((_, i) => `<tablePart r:id="rId${relBase + i}"/>`).join("")}</tableParts>` : ""}</worksheet>`;
-  return { xml, comments, tables, relBase, sparks };
+  return { xml, comments, tables, relBase, sparks, urls };
 }
 
 // A rule as a dataValidation over its cells.

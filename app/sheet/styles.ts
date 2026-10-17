@@ -28,6 +28,7 @@ export const CELL_STYLES: Readonly<Record<string, Look>> = {
   "Comma": { number: "#,##0.00" },
   "Currency": { number: "$#,##0.00" },
   "Percent": { number: "0%" },
+  "Hyperlink": { color: "hyperlink", underline: true },
 };
 
 // A style's look under a cell's own: the cell's parts win, its borders

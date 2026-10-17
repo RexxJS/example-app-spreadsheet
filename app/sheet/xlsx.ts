@@ -257,6 +257,24 @@ export function readXlsx(bytes: Uint8Array, fileName = "Workbook"): XlsxRead {
         cells[k] = typeof was === "object" && was ? { ...(was as object), comment: t } : { content: typeof was === "string" ? was : "", comment: t };
       }
     }
+    // Its hyperlinks: a URL by its relationship (its Target as written), a
+    // place in the workbook by its location.
+    const rawRels = new Map<string, string>();
+    {
+      const dir = path.split("/").slice(0, -1).join("/"), file = path.split("/").pop()!, r = parts.get(`${dir}/_rels/${file}.rels`);
+      if (r) for (const e of all(parseXml(utf8Text(r)), "Relationship")) rawRels.set(attr(e, "Id") ?? "", attr(e, "Target") ?? "");
+    }
+    for (const h of all(ws, "hyperlink")) {
+      const id = attr(h, "r:id") ?? attr(h, "id"), location = attr(h, "location"), tip = attr(h, "tooltip");
+      const target = id && rawRels.has(id) ? `${rawRels.get(id)}${location ? `#${location}` : ""}` : location;
+      if (!target) continue;
+      const [a, b = a] = (attr(h, "ref") ?? "").split(":").map((x) => addrOf(x.replace(/\$/g, "")));
+      if (!a || !b) continue;
+      for (let r = Math.min(a.row, b.row); r <= Math.max(a.row, b.row); r++) for (let cc = Math.min(a.col, b.col); cc <= Math.max(a.col, b.col); cc++) {
+        const k = keyOf({ col: cc, row: r }), was = cells[k], link = { target, ...(tip ? { tip } : {}) };
+        cells[k] = typeof was === "object" && was ? { ...(was as object), hyperlink: link } : { content: typeof was === "string" ? was : "", hyperlink: link };
+      }
+    }
     // Its data validation, as the app's rules where they are one.
     for (const dv of all(ws, "dataValidation")) {
       const rule = ruleOf(dv);

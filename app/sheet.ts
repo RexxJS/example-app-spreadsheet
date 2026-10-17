@@ -1,6 +1,7 @@
 "seeks documents, reduced functionality without";
 "seeks clipboard, reduced functionality without";
 "seeks control-bus, reduced functionality without";
+"seeks open-urls, reduced functionality without";
 // Spreadsheet (sae/docs/roadmap.md demo 18), declared as panels over a seam.
 //
 // app/sheet/ is the spreadsheet with no ui: two formula languages (Excel's,
@@ -30,6 +31,7 @@ import { auditBar } from "./sheet/view/auditbar.ts";
 import { rulesBar } from "./sheet/view/rulesbar.ts";
 import { chartPanel } from "./sheet/view/chartpanel.ts";
 import { dataBar } from "./sheet/view/databar.ts";
+import { insertBar } from "./sheet/view/insertbar.ts";
 import { commandBar } from "./sheet/view/commandbar.ts";
 import { fileBar } from "./sheet/view/filebar.ts";
 import { functionList, problemList, setupScript, statusBar, statusLine } from "./sheet/view/lists.ts";
@@ -66,6 +68,7 @@ sheet.panel("editors", () => editorBar(sheet));
 sheet.panel("data", () => dataBar(sheet));
 sheet.panel("find", () => findBar(sheet));
 sheet.panel("audit", () => auditBar(sheet));
+sheet.panel("insert", () => insertBar(sheet));
 sheet.panel("chart", () => chartPanel(sheet));
 sheet.panel("file", () => fileBar(sheet));
 sheet.panel("script", () => { languageBar(sheet); commandBar(sheet); setupScript(sheet); });

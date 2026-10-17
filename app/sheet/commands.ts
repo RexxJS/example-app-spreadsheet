@@ -164,6 +164,54 @@ const countOf = (s: string | undefined): number => {
 
 const inputs = (wb: Workbook) => (key: string) => wb.sheet.input(key);
 
+// A URL's scheme (https:, mailto:, file: ...), as against a place in the
+// workbook.
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+// A place in the workbook a link names: Sheet2!B3 or 'My sheet'!B3:C4 (a
+// "#" before it, as Excel writes one), B3 on the active sheet, a sheet's
+// own name or the workbook's.
+function placeOf(wb: Workbook, target: string): { page: string; area: [Addr, Addr] } {
+  const t = target.trim().replace(/^#/, "");
+  const m = /^(?:'((?:[^']|'')+)'|([^!']+))!(.+)$/.exec(t);
+  const sheet = m ? (m[1] ?? m[2]).replace(/''/g, "'") : wb.active, ref = m ? m[3] : t;
+  const page = wb.pages().map((x) => x.name).find((n) => n.toLowerCase() === sheet.toLowerCase()) ?? refuse(`no sheet ${sheet} for the link ${target}`);
+  try { return { page, area: rangeOf(ref) }; } catch (e) { if (!(e instanceof RangeError) && !(e instanceof Refused)) throw e; }
+  const own = wb.page(page)!.sheet.name(ref);
+  if (own) return { page, area: own };
+  const b = m ? null : wb.bookName(ref);
+  if (b && !("formula" in b)) return { page: b.page.name, area: b.range };
+  return refuse(`the link ${target} is not a cell, a range or a name in the workbook`);
+}
+
+// A cell's link: its own, or its HYPERLINK formula's first argument.
+async function linkOf(wb: Workbook, key: string): Promise<string | null> {
+  const own = wb.notes.get(key).hyperlink;
+  if (own) return own.target;
+  const input = wb.sheet.input(key), m = /^=\s*HYPERLINK\s*\(/i.exec(input);
+  if (!m) return null;
+  const [first] = topArgs(input.slice(m[0].length));
+  if (first === undefined || !first.trim()) return null;
+  const v = await wb.sheet.evaluate(first.trim());
+  return v instanceof CellError || v === null ? null : show(v);
+}
+
+// A call's arguments, its text after "(": split at its top-level commas.
+function topArgs(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0, quoted = false, at = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') quoted = !quoted;
+    else if (quoted) continue;
+    else if (c === "(" || c === "{") depth++;
+    else if ((c === ")" || c === "}") && depth-- === 0) { out.push(text.slice(at, i)); return out; }
+    else if (c === "," && depth === 0) { out.push(text.slice(at, i)); at = i + 1; }
+  }
+  out.push(text.slice(at));
+  return out;
+}
+
 async function setting(wb: Workbook, entries: readonly (readonly [string, string])[], what: string): Promise<Outcome> {
   const changed = await wb.sheet.setMany(entries);
   await wb.settle();
@@ -814,11 +862,12 @@ const SPECS: readonly Spec[] = [
     // GETMERGEDRANGE and the rest read it).
     id: "cell.about", label: "About a cell", params: ["cell"], journaled: false,
     run: async (wb, p) => {
-      const key = cellOf(p.cell), note = wb.notes.get(key), at = cellAddr(key)!;
+      const key = cellOf(p.cell), note = wb.notes.get(key), at = cellAddr(key)!, link = await linkOf(wb, key);
       const merge = wb.page(wb.active)!.merges.find((m) => overlap(m, [at, at]));
       const about = {
         cell: key, value: scripted(wb.sheet.value(key)), input: wb.sheet.input(key), format: note.format ?? "", comment: note.comment ?? "",
         wrap: note.look?.wrap ? 1 : 0, merged: merge ? rangeName(merge) : "", validation: note.validation ?? null, editor: note.editor ? asApp(note.editor) : null,
+        ...(link !== null ? { hyperlink: link } : {}),
       };
       return { ok: true, message: `${key}: ${JSON.stringify(about)}`, changed: [], output: about };
     },
@@ -855,6 +904,53 @@ const SPECS: readonly Spec[] = [
       const key = cellOf(p.cell);
       wb.notes.set(key, { comment: p.text });
       return changedBy(wb, [key], `${key} comment ${p.text}`);
+    },
+  },
+  {
+    // Insert Link (Ctrl+K): each cell of the range links to target= (a URL,
+    // or a place in the workbook: Sheet2!B3, B3, a name), text= shown in
+    // an empty cell (the target itself without), tip= on the pointer; a
+    // cell of no style of its own takes the Hyperlink style.
+    id: "cell.hyperlink", label: "Insert Link", params: ["range", "target"], optional: ["text", "tip"], journaled: true,
+    run: async (wb, p) => {
+      const target = p.target.trim() || refuse("a link has a target");
+      if (!URL_SCHEME.test(target)) placeOf(wb, target);
+      const r = rangeOf(p.range), keys = [...range(r[0], r[1])], empty: [string, string][] = [];
+      for (const k of keys) {
+        wb.notes.set(k, { hyperlink: { target, ...(p.tip ? { tip: p.tip } : {}) }, ...(wb.notes.get(k).cellStyle ? {} : { cellStyle: "Hyperlink" }) });
+        if (wb.sheet.input(k) === "") empty.push([k, p.text ?? target.replace(/^#/, "")]);
+      }
+      const changed = empty.length ? await wb.sheet.setMany(empty) : [];
+      await wb.settle();
+      return changedBy(wb, [...new Set([...keys, ...changed])], `${named(r)} links to ${target}`);
+    },
+  },
+  {
+    // Remove Hyperlinks: the links gone, and their Hyperlink style.
+    id: "cell.removeHyperlink", label: "Remove Hyperlinks", params: ["range"], journaled: true,
+    run: async (wb, p) => {
+      const r = rangeOf(p.range), keys = [...range(r[0], r[1])].filter((k) => wb.notes.get(k).hyperlink);
+      for (const k of keys) wb.notes.set(k, { hyperlink: undefined, ...(wb.notes.get(k).cellStyle === "Hyperlink" ? { cellStyle: undefined } : {}) });
+      return changedBy(wb, keys, `${keys.length} link${keys.length === 1 ? "" : "s"} removed from ${named(r)}`);
+    },
+  },
+  {
+    // Open Hyperlink: a cell's link (its own, or its HYPERLINK formula's)
+    // followed: a place in the workbook selected (its sheet the active
+    // one), a URL handed to the system.
+    id: "cell.followHyperlink", label: "Open Hyperlink", params: ["cell"], journaled: false,
+    run: async (wb, p) => {
+      const key = cellOf(p.cell), target = await linkOf(wb, key) ?? refuse(`${key} has no link`);
+      if (URL_SCHEME.test(target)) {
+        const why = wb.opener(target);
+        if (why) refuse(why);
+        return { ok: true, message: `opened ${target}`, changed: [], output: target };
+      }
+      const { page, area } = placeOf(wb, target), before = wb.sheet.keys(), switched = page !== wb.active;
+      if (switched) wb.activate(page);
+      wb.selection = rangeName(area);
+      wb.selecting = true;
+      return { ...(await changedBy(wb, switched ? shownKeys(wb, before) : [], `went to ${sheetPrefix(page)}${wb.selection}`)), output: `${sheetPrefix(page)}${wb.selection}` };
     },
   },
   {

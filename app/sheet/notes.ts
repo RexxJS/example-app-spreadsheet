@@ -23,6 +23,15 @@ export interface Note {
   readonly ignoreError?: true;
   // Its cell style's name (styles.ts), under its own look.
   readonly cellStyle?: string;
+  // A hyperlink: a URL (https:, mailto: ...) or a place in the workbook
+  // (Sheet2!B3, a name; "#" before it as Excel writes one), and the tip
+  // shown when the pointer rests on it.
+  readonly hyperlink?: Hyperlink;
+}
+
+export interface Hyperlink {
+  readonly target: string;
+  readonly tip?: string;
 }
 
 export class CellNotes {

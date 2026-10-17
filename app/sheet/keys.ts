@@ -33,6 +33,7 @@ export const KEYS: readonly Key[] = [
   { combo: "Ctrl+F", does: "Find (its panel, its field)", id: "view.panel" },
   { combo: "Ctrl+H", does: "Replace (its panel)", id: "view.panel" },
   { combo: "Ctrl+S", does: "Save", id: "file.save" },
+  { combo: "Ctrl+K", does: "Insert Link (its panel, its field)", id: "cell.hyperlink" },
   { combo: "F4", does: "the reference's $s, in the formula bar", id: "formulas.cycleRef" },
   { combo: "F9", does: "Calculate Now", id: "formulas.recalculate" },
   { combo: "Shift+F9", does: "Calculate Sheet", id: "formulas.calculateSheet" },

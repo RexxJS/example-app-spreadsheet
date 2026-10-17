@@ -336,6 +336,9 @@ export class Workbook {
   // command asked for (then `selecting`, for the page to make it so).
   selection = "A1";
   selecting = false;
+  // How a URL is handed to the system (a hyperlink followed): "" when it
+  // was, or why not. The app's view sets it to sae's shell.open.
+  opener: (url: string) => string = () => "no way to open a URL here";
   // Split: a second pane over the sheet (a view).
   split = false;
   // The zoom, in percent (10 to 400, as Excel's): a view of the sheet.
@@ -1027,7 +1030,8 @@ export class Workbook {
   // A cell's tooltip: its comment, and its rule's input prompt.
   tooltipOf(key: string): string {
     const n = this.notes.get(key);
-    return [n.comment ?? "", n.validation?.prompt ?? ""].filter((x) => x).join("\n");
+    const link = n.hyperlink ? n.hyperlink.tip || `${n.hyperlink.target.replace(/^#/, "")}\nOpen Hyperlink to follow it` : "";
+    return [link, n.comment ?? "", n.validation?.prompt ?? ""].filter((x) => x).join("\n");
   }
 
   // The rows (0-based) with a wrapped cell, to be as tall as their text.

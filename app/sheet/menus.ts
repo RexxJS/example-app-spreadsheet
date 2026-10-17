@@ -24,6 +24,7 @@ export const PANELS: readonly { readonly name: string; readonly label: string }[
   { name: "edit", label: "Edit" }, { name: "looks", label: "Looks" }, { name: "view", label: "View" }, { name: "names", label: "Names" },
   { name: "rules", label: "Rules" }, { name: "validation", label: "Validation" }, { name: "editors", label: "Editors" },
   { name: "data", label: "Data" }, { name: "find", label: "Find & replace" }, { name: "audit", label: "Audit" },
+  { name: "insert", label: "Insert" },
   { name: "chart", label: "Charts" }, { name: "file", label: "File" }, { name: "script", label: "Script" }, { name: "lists", label: "Lists" },
 ];
 export const panelItem = (label: string): string => `${label} panel`;
@@ -54,6 +55,7 @@ export const MENUS: readonly Menu[] = [
   { label: "Insert", items: [
     i("Insert row", "rows.insert"), i("Insert column", "columns.insert"), i("Add sheet", "sheet.add"), "-",
     i("Bar chart", "chart.insert"), i("Line chart", "chart.insert"), i("Pie chart", "chart.insert"), i("Stacked column chart", "chart.insert"), i("Horizontal bar chart", "chart.insert"), i("Area chart", "chart.insert"), i("Doughnut chart", "chart.insert"), i("Scatter chart", "chart.insert"), i("Radar chart", "chart.insert"), i("Histogram", "chart.insert"), i("Waterfall chart", "chart.insert"), i("Funnel chart", "chart.insert"), i("Treemap", "chart.insert"), i("Sunburst", "chart.insert"), i("Box and whisker", "chart.insert"), i("Stock chart", "chart.insert"), i("Combo chart", "chart.insert"), i("Sparkline", "insert.sparkline"), i("Win/loss sparkline", "insert.sparkline"), i("Sparkline with high and low", "insert.sparkline"), "-",
+    i("Link", "cell.hyperlink", "Ctrl+K"), i("Remove link", "cell.removeHyperlink"), i("Open link", "cell.followHyperlink"), "-",
     i("Name the selection", "names.define"), i("Name the formula", "names.define"), i("Delete name", "names.delete"),
   ] },
   { label: "Format", items: [

@@ -501,6 +501,9 @@ def("REPT", 2, 2, (args) => {
   const n = Math.trunc(num(args, 1));
   return n < 0 ? fail("#VALUE!", "REPT fewer than no times") : str(args, 0).repeat(n);
 });
+// HYPERLINK(link, [friendly name]): the friendly name shown (the link
+// itself without one); following the cell opens the link (cell.followHyperlink).
+def("HYPERLINK", 1, 2, (args) => (absent(args, 1) ? str(args, 0) : val(args, 1)));
 def("EXACT", 2, 2, (args) => str(args, 0) === str(args, 1));
 def("VALUE", 1, 1, (args) => num(args, 0));
 

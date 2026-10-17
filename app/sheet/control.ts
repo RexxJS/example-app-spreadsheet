@@ -27,6 +27,7 @@ interface About {
   readonly comment: string;
   readonly wrap: number;
   readonly merged: string;
+  readonly hyperlink?: string;
   readonly validation: Rule | null;
   readonly editor: { readonly type: string; readonly config: object } | null;
 }
@@ -349,6 +350,10 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     return (await must(exec, "solver.solve", { objective: text(objective), changing: text(changing), goal: value ? "value" : g || "max", ...(value ? { value } : {}), ...(text(constraints).trim() ? { constraints: text(constraints) } : {}), ...pairs(opts) })).message;
   },
   // Forecast Sheet: FORECASTSHEET("A2:A20", "B2:B20", 45700, "confidence=0.9;seasonality=12").
+  SETHYPERLINK: async (exec, r, t, shown, tip) => (await must(exec, "cell.hyperlink", { range: text(r), target: text(t), ...(text(shown) ? { text: text(shown) } : {}), ...(text(tip) ? { tip: text(tip) } : {}) })).message,
+  REMOVEHYPERLINK: async (exec, r) => (await must(exec, "cell.removeHyperlink", { range: text(r) })).message,
+  FOLLOWHYPERLINK: async (exec, c) => String((await must(exec, "cell.followHyperlink", { cell: text(c) })).output),
+  GETHYPERLINK: async (exec, c) => (await about(exec, c)).hyperlink ?? "",
   FORECASTSHEET: async (exec, t, v, end, opts) => (await must(exec, "data.forecastSheet", { timeline: text(t), values: text(v), end: text(end), ...pairs(opts) })).message,
   // Data Analysis: ANALYZE("regression", "A1:C20", "E1", "labels=1;alpha=0.05").
   ANALYZE: async (exec, tool, input, output, opts) => (await must(exec, "data.analyze", { tool: text(tool), input: text(input), output: text(output), ...pairs(opts) })).message,

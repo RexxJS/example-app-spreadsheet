@@ -3,6 +3,7 @@
   "start": "/sheet",
   "capabilities": {
     "documents": {},
+    "shell": { "open": ["https://", "http://", "mailto:"] },
     "controlBus": {
       "name": "spreadsheet"
     }

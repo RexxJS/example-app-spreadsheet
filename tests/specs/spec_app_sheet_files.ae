@@ -197,6 +197,24 @@ main() {
             uidriver.menu_activate_item("Run the setup script")
             spec.assert_true(b.wait_for_console("sheet: ran the setup script"), "a command with no button runs too")
         }
+        spec.it("a link to a URL from the Insert panel, opened by the system (app.json grants https:)") callback {
+            g.command("view.panel name=insert")
+            g.goto("H2")
+            b.set_field_by("link to", "https://example.org/sheet")
+            b.set_field_by("link text", "Example")
+            b.click("Link")
+            spec.assert_true(b.wait_for_console("sheet: H2:H2 links to https://example.org/sheet"), "linked")
+            spec.assert_true(g.wait_cell("H", 2, "Example"), "its text")
+            b.click("Open link")
+            spec.assert_true(b.wait_for_console("sheet: opened https://example.org/sheet"), "opened")
+            lg, _e = fs.read(os_getenv("SAE_SHELL_LOG"))
+            spec.assert_true(string.contains(lg, "https://example.org/sheet") == 1, "handed to the system (the shell log)")
+            g.command("cell.hyperlink range=H3 target=ftp://example.org/")
+            g.goto("H3")
+            b.click("Open link")
+            spec.assert_true(b.wait_for_console("sheet: refused: shell.open: this app may not open ftp://example.org/"), "a URL not granted is refused")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

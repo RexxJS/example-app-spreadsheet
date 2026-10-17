@@ -1907,6 +1907,25 @@ main() {
             spec.assert_true(g.wait_cell("D", 2, "4"), "the mean")
             g.command("view.panel name=none")
         }
+        spec.it("Insert Link from the Insert panel (Ctrl+K), followed to a place on another sheet") callback {
+            g.command("sheet.add name=Linked")
+            g.command("sheet.activate name=Sheet1")
+            g.pick("H", 9)
+            g.key("Ctrl+K")
+            spec.assert_true(b.wait_for_console("sheet: the insert panel"), "Ctrl+K opens the Insert panel")
+            b.set_field_by("link to", "Linked!C4")
+            b.click("Link")
+            spec.assert_true(b.wait_for_console("sheet: H9:H9 links to Linked!C4"), "linked")
+            spec.assert_true(g.wait_cell("H", 9, "Linked!C4"), "its text in the empty cell")
+            b.click("Open link")
+            spec.assert_true(b.wait_for_console("sheet: went to Linked!C4"), "followed")
+            g.command("view.selection")
+            spec.assert_true(b.wait_for_console("sheet: C4"), "the place selected")
+            g.command("sheet.activate name=Sheet1")
+            g.command("cell.removeHyperlink range=H9")
+            g.command("range.clear range=H9")
+            g.command("view.panel name=none")
+        }
         spec.it("Forecast sheet from the Data panel: a line forecast on a new sheet, with its chart") callback {
             g.command("sheet.add name=Line")
             g.command("formulas.use language=Excel")

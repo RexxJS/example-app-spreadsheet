@@ -21,6 +21,12 @@ export class SheetView {
   readonly wb = new Workbook();
   // Files are saved in the page's storage.
   readonly cmds = new Commands(this.wb, storage);
+  // A link's URL opened by the system: the installed app's shell.open
+  // (app.json grants https:, http: and mailto:); a web page has none.
+  readonly #opener = this.wb.opener = (url: string): string => {
+    if (typeof shell === "undefined") return "opening a URL needs the installed app (open-urls)";
+    try { shell.open(url); return ""; } catch (e) { return String((e as Error)?.message ?? e); }
+  };
   readonly address = state("A1");
   readonly input = state("");
   readonly status = state("");
