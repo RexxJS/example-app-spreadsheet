@@ -325,6 +325,10 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   // encoding; EXPORTCSV("A1:C9", "tab").
   IMPORTCSV: async (exec, at, t, d, enc) => (await must(exec, "file.importCsv", { at: text(at), ...(text(enc).trim() ? { base64: text(t), encoding: text(enc) } : { text: text(t) }), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).message,
   EXPORTCSV: async (exec, r, d) => (await must(exec, "file.exportCsv", { ...(text(r).trim() ? { range: text(r) } : {}), ...(text(d).trim() ? { delimiter: text(d) } : {}) })).output,
+  // XLSX: OPENXLSX(base64, "Book.xlsx") opens one; FILEREPORT() a stem of
+  // what it held that the app left out.
+  OPENXLSX: async (exec, b64, n) => (await must(exec, "file.importXlsx", { base64: text(b64), ...(text(n).trim() ? { name: text(n) } : {}) })).message,
+  FILEREPORT: async (exec) => stem((await must(exec, "file.report")).output as string[]),
   // JSON and HTML: IMPORTJSON("A1", text), IMPORTHTML("A1", html, 2) its
   // second table, EXPORTHTML("A1:C9", 1) the first row a header.
   IMPORTJSON: async (exec, at, t) => (await must(exec, "file.importJson", { at: text(at), text: text(t) })).message,

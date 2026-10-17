@@ -14,6 +14,8 @@ import type { Addr } from "./address.ts";
 import { copied, filled, pasted } from "./copy.ts";
 import type { FillWay } from "./copy.ts";
 import { fromHtml, fromJson, toHtml } from "./tabular.ts";
+import { readXlsx } from "./xlsx.ts";
+import type { XlsxRead } from "./xlsx.ts";
 import { DELIMITERS as CSV_DELIMITERS, decode, detectDelimiter, fromBase64, fromCsv, toCsv } from "./csv.ts";
 import { readSheetFile, writeSheetFile } from "./file.ts";
 import type { SheetFile } from "./file.ts";
@@ -2793,6 +2795,28 @@ const SPECS: readonly Spec[] = [
       const entries = rows.flatMap((row, i) => row.map((input, j): [string, string] => [keyOf({ col: at.col + j, row: at.row + i }), input]));
       return setting(wb, entries, `imported ${rows.length} rows at ${keyOf(at)}${d === "," ? "" : `, split by ${Object.entries(CSV_DELIMITERS).find(([, x]) => x === d)?.[0] ?? d}`}`);
     },
+  },
+  {
+    // An XLSX file opened (base64= its bytes): its sheets, cells, formulas,
+    // number formats, merges, sizes, frozen panes and names (xlsx.ts), as
+    // a workbook opened is; what it held that the app does not, reported.
+    id: "file.importXlsx", label: "Open XLSX", params: ["base64"], optional: ["name"], journaled: true, unstepped: true,
+    run: async (wb, p) => {
+      let read: XlsxRead;
+      try {
+        read = readXlsx(fromBase64(p.base64), p.name ?? "Workbook");
+      } catch (e) {
+        return refuse((e as Error).message);
+      }
+      wb.fileReport = read.report;
+      const o = await open(wb, readSheetFile(read.file));
+      return { ...o, message: `${o.message}${read.report.length ? `; left out: ${read.report.join("; ")}` : ""}`, output: read.report };
+    },
+  },
+  {
+    // What the last file opened held that the app left out (FILEREPORT).
+    id: "file.report", label: "File Report", params: [], journaled: false,
+    run: async (wb) => ({ ok: true, message: wb.fileReport.length ? wb.fileReport.join("; ") : "nothing left out", changed: [], output: wb.fileReport }),
   },
   {
     // JSON rows in at a cell: an array of objects (their keys the header

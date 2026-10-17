@@ -280,6 +280,8 @@ export class Workbook {
   // The cell styles by name (styles.ts's gallery, then the workbook's own
   // and their edits): a cell names one, drawn under its own look.
   styles = new Map<string, Look>(Object.entries(CELL_STYLES));
+  // What the last file opened held that the app left out (file.report).
+  fileReport: string[] = [];
   // Its theme (themes.ts): the colour roles and fonts looks may name; the
   // page's, set as the workbook's is.
   get theme(): Theme { return theme(); }

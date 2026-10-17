@@ -99,6 +99,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
     "Excel's Subtotal: a total row under each run, a grand total, and the outline in three levels", "what was done"),
   IMPORTCSV: fn([p("at", "cell", "the top-left"), p("text", "text", "the CSV or TSV, or (with an encoding) its bytes in base64"), opt("delimiter", "text", "auto (the default: detected), comma, tab, semicolon, bar, space"), opt("encoding", "text", "the text is base64 bytes in auto, utf-8, utf-16le, utf-16be, windows-1252 or latin1")], "Imports CSV or TSV at a cell", "what was done"),
   EXPORTCSV: fn([opt("range", "range", "the used range when left out"), opt("delimiter", "text", "comma (the default), tab, semicolon, bar")], "What the cells show, as CSV or TSV", "the text"),
+  OPENXLSX: fn([p("bytes", "text", "the XLSX file's bytes, in base64"), opt("name", "text", "its file name, the workbook's name")], "Opens an XLSX workbook: its sheets, cells, formulas, number formats, merges, sizes, frozen panes and names", "what was opened, and what was left out"),
+  FILEREPORT: fn([], "What the last file opened held that the app left out", "a stem of lines"),
   IMPORTJSON: fn([p("at", "cell"), p("text", "json", "an array of objects (their keys the header row) or of arrays")], "Imports JSON rows at a cell", "what was done"),
   IMPORTHTML: fn([p("at", "cell"), p("text", "text", "an HTML page"), opt("table", "number", "which of its tables, from 1")], "Imports an HTML page's table at a cell", "what was done"),
   EXPORTHTML: fn([opt("range", "range", "the used range when left out"), opt("header", "flag", "1: the first row th")], "The cells as an HTML table, as they show, their looks inline", "the HTML"),

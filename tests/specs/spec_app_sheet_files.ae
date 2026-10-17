@@ -5,6 +5,7 @@
 import std.spec
 import std.string
 import std.fs
+import std.encoding
 import std.os (os_getenv)
 import saedriver as b
 import griddriver as g
@@ -24,6 +25,9 @@ main() {
     _m = fs.mkdir_p(dir)
     _w1 = fs.write("${dir}/book.json", "{\"name\": \"Spec book\", \"formulas\": \"excel\", \"cells\": {\"A1\": \"2\", \"B1\": {\"content\": \"=A1*21\"}}}")
     _w2 = fs.write("${dir}/more.csv", "7,8\n9,10\n")
+    // An XLSX made by hand (tests/headless/lib/xlsx_fixtures.ts's STORED).
+    xlsx, _xe = encoding.base64_decode("UEsDBBQAAAAAAG1DUV1nZmmzpgEAAKYBAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9IlVURi04IiBzdGFuZGFsb25lPSJ5ZXMiPz4KPFR5cGVzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L2NvbnRlbnQtdHlwZXMiPjxEZWZhdWx0IEV4dGVuc2lvbj0icmVscyIgQ29udGVudFR5cGU9ImFwcGxpY2F0aW9uL3ZuZC5vcGVueG1sZm9ybWF0cy1wYWNrYWdlLnJlbGF0aW9uc2hpcHMreG1sIi8+PERlZmF1bHQgRXh0ZW5zaW9uPSJ4bWwiIENvbnRlbnRUeXBlPSJhcHBsaWNhdGlvbi94bWwiLz48T3ZlcnJpZGUgUGFydE5hbWU9Ii94bC93b3JrYm9vay54bWwiIENvbnRlbnRUeXBlPSJhcHBsaWNhdGlvbi92bmQub3BlbnhtbGZvcm1hdHMtb2ZmaWNlZG9jdW1lbnQuc3ByZWFkc2hlZXRtbC5zaGVldC5tYWluK3htbCIvPjwvVHlwZXM+UEsDBBQAAAAAAG1DUV0cSfe+FgEAABYBAAALAAAAX3JlbHMvLnJlbHM8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJVVEYtOCI/PjxSZWxhdGlvbnNoaXBzIHhtbG5zPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvcGFja2FnZS8yMDA2L3JlbGF0aW9uc2hpcHMiPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFR5cGU9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9vZmZpY2VEb2N1bWVudC8yMDA2L3JlbGF0aW9uc2hpcHMvb2ZmaWNlRG9jdW1lbnQiIFRhcmdldD0ieGwvd29ya2Jvb2sueG1sIi8+PC9SZWxhdGlvbnNoaXBzPlBLAwQUAAAAAABtQ1FdaYr4q4IAAACCAAAADwAAAHhsL3dvcmtib29rLnhtbDx3b3JrYm9vayB4bWxucz0ieCIgeG1sbnM6cj0iciI+PHdvcmtib29rUHIgZGF0ZTE5MDQ9IjEiLz48c2hlZXRzPjxzaGVldCBuYW1lPSJPbmx5IiBzaGVldElkPSIxIiByOmlkPSJySWQxIi8+PC9zaGVldHM+PC93b3JrYm9vaz5QSwMEFAAAAAAAbUNRXaGZTnNSAAAAUgAAABoAAAB4bC9fcmVscy93b3JrYm9vay54bWwucmVsczxSZWxhdGlvbnNoaXBzPjxSZWxhdGlvbnNoaXAgSWQ9InJJZDEiIFRhcmdldD0id29ya3NoZWV0cy9hLnhtbCIvPjwvUmVsYXRpb25zaGlwcz5QSwMEFAAAAAAAbUNRXdzvexhVAAAAVQAAABMAAAB4bC93b3Jrc2hlZXRzL2EueG1sPHdvcmtzaGVldD48c2hlZXREYXRhPjxyb3cgcj0iMSI+PGMgcj0iQTEiPjx2PjE8L3Y+PC9jPjwvcm93Pjwvc2hlZXREYXRhPjwvd29ya3NoZWV0PlBLAQIUAxQAAAAAAG1DUV1nZmmzpgEAAKYBAAATAAAAAAAAAAAAAACAAQAAAABbQ29udGVudF9UeXBlc10ueG1sUEsBAhQDFAAAAAAAbUNRXRxJ974WAQAAFgEAAAsAAAAAAAAAAAAAAIAB1wEAAF9yZWxzLy5yZWxzUEsBAhQDFAAAAAAAbUNRXWmK+KuCAAAAggAAAA8AAAAAAAAAAAAAAIABFgMAAHhsL3dvcmtib29rLnhtbFBLAQIUAxQAAAAAAG1DUV2hmU5zUgAAAFIAAAAaAAAAAAAAAAAAAACAAcUDAAB4bC9fcmVscy93b3JrYm9vay54bWwucmVsc1BLAQIUAxQAAAAAAG1DUV3c73sYVQAAAFUAAAATAAAAAAAAAAAAAACAAU8EAAB4bC93b3Jrc2hlZXRzL2EueG1sUEsFBgAAAAAFAAUAQAEAANUEAAAAAA==")
+    _w3 = fs.write_binary("${dir}/one.xlsx", string.bytes(xlsx))
     _d1 = fs.delete("${dir}/saved.json")
     _d2 = fs.delete("${dir}/out.csv")
     spec.describe(fw, "demo 18 as an app: files the person picks") {
@@ -59,6 +63,15 @@ main() {
             uidriver.answer_prompt("open", "")
             b.click("Open file")
             spec.assert_true(g.wait_cell("B", 1, "42"), "still the same workbook")
+        }
+        spec.it("Open file reads an XLSX workbook, its bytes through documents") callback {
+            uidriver.answer_prompt("open", "${dir}/one.xlsx")
+            b.click("Open file")
+            spec.assert_true(b.wait_for_console("sheet: opened one: 1 cells, Excel formulas"), "opened")
+            spec.assert_true(g.wait_cell("A", 1, "1"), "its cell")
+            uidriver.answer_prompt("open", "${dir}/book.json")
+            b.click("Open file")
+            spec.assert_true(g.wait_cell("B", 1, "42"), "and the workbook before it again, for what follows")
         }
     }
     spec.describe(fw, "the menu bar (an installed app's)") {
