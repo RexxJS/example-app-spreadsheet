@@ -61,11 +61,11 @@ main() {
             spec.assert_true(b.wait_for_console("sae: control bus: listening"), "listening")
             out = ok_("spreadsheet_list_commands", "{}", "list")
             spec.assert_contains(out, "\"signature\":\"SETCELL(cell, value)\"", "SETCELL")
-            spec.assert_contains(out, "\"signature\":\"SORTRANGE(range, by, [ascending])\"", "SORTRANGE, its optional one in brackets")
+            spec.assert_contains(out, "\"signature\":\"SORTRANGE(range, by, [ascending], [headers])\"", "SORTRANGE, its optional one in brackets")
             spec.assert_contains(out, "\"signature\":\"LISTCOMMANDS([described])\"", "LISTCOMMANDS itself")
             one = ok_("spreadsheet_list_commands", "{\"name\": \"SETCELLVALIDATION\"}", "one")
             spec.assert_contains(one, "\"signature\":\"SETCELLVALIDATION(range, type, [limits...])\"", "one in full")
-            spec.assert_contains(one, "\"about\":\"list, number or text\"", "with what its type takes")
+            spec.assert_contains(one, "\"about\":\"list, number, whole, date, time, custom or text\"", "with what its type takes")
         }
         spec.it("writes rows of expenses, a backslash and quotes in them as they are, and a total") callback {
             out = ok_("spreadsheet_write_cells", "@tests/mcp/args/expenses.json", "write")

@@ -154,7 +154,7 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
   FILLRIGHT: fn([p("source", "range"), p("target", "range")], "Fills the target from the source left of it", "\"OK\""),
   FILLLEFT: fn([p("source", "range"), p("target", "range")], "Fills the target from the source right of it", "\"OK\""),
   AUTOFILL: fn([p("source", "range"), p("target", "range", "beside the source, on any side")], "Fills the target from the source, whichever way it lies", "\"\""),
-  SORTRANGE: fn([RANGE, p("by", "column", "a column; or several keys, \"B desc, C asc\", or a stem of them, a key \"C fill=#ffff00\" or \"C font=red\" putting that colour on top"), opt("ascending", "flag", "1 or left out: ascending; 0: descending (one column)"), opt("headers", "flag", "1: the first row stays (several keys)")], "Sorts a range's rows by a column, or by several in turn", "\"OK\""),
+  SORTRANGE: fn([RANGE, p("by", "text", "a column; or several keys, \"B desc, C asc\", or a stem of them, a key \"C fill=#ffff00\" or \"C font=red\" putting that colour on top"), opt("ascending", "flag", "1 or left out: ascending; 0: descending (one column)"), opt("headers", "flag", "1: the first row stays (several keys)")], "Sorts a range's rows by a column, or by several in turn", "\"OK\""),
   FIND: fn([p("text", "text"), opt("matchCase", "flag"), opt("wholeCell", "flag"), opt("inFormulas", "flag")], "Finds the cells holding some text", "a stem of cell references"),
   REPLACE: fn([p("text", "text"), p("with", "text"), opt("matchCase", "flag"), opt("wholeCell", "flag"), opt("inFormulas", "flag")],
     "Replaces some text everywhere it is found, as one step of undo", "how many cells changed"),

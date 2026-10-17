@@ -80,7 +80,7 @@ to drive the sae app:
   RexxJS's `should be string` does, so those checks became `should equal`.
 - **LISTCOMMANDS** lists 130 names, not the Tauri app's 26 (all 26 among
   them). `LISTCOMMANDS(1)` describes each: `{name, signature, params,
-  does, gives}`, the signature as `SORTRANGE(range, by, [ascending])`
+  does, gives}`, the signature as `SORTRANGE(range, by, [ascending], [headers])`
   (`app/sheet/described.ts`).
 - **`spreadsheet-row-column-ops.rexx`** only printed what each test should
   do; it now runs those cases against the sheet.
