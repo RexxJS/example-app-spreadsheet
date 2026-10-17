@@ -471,6 +471,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     for (const part of text(opts).split(";").map((x) => x.trim()).filter((x) => x.includes("="))) ps[part.slice(0, part.indexOf("=")).trim()] = part.slice(part.indexOf("=") + 1).trim();
     return (await must(exec, "pivot.options", { id: text(id), ...ps })).message;
   },
+  // INSERTPIVOTCHART("byRegion", "bar", "Sales"): a chart following a pivot.
+  INSERTPIVOTCHART: async (exec, id, kind, title) => (await must(exec, "chart.pivot", { id: text(id), ...(text(kind).trim() ? { kind: text(kind) } : {}), ...(text(title).trim() ? { title: text(title) } : {}) })).message,
   UPDATEPIVOT: async (exec, id) => (await must(exec, "pivot.update", { id: text(id) }), text(id)),
   DELETEPIVOT: async (exec, id) => (await must(exec, "pivot.delete", { id: text(id) }), text(id)),
   GETPIVOT: async (exec, id) => {

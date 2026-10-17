@@ -64,6 +64,9 @@ export interface ChartSpec {
   readonly range: [Addr, Addr];
   readonly title: string;
   readonly options?: ChartOptions;
+  // A PivotChart's pivot (by its id): its range what the pivot last wrote,
+  // its grand totals left out, so it follows the pivot.
+  readonly pivot?: string;
 }
 
 // A chart as the page draws it, its shapes laid out in CHART_W x CHART_H.
@@ -857,8 +860,10 @@ export class Workbook {
   charts(): ChartView[] {
     const page = this.#active;
     return page.charts.map((c) => {
-      const data = chartData(c.range, (k) => page.sheet.value(k), c.options?.byRows);
-      return { kind: c.kind, title: c.title, range: rangeName(c.range), data, shapes: layout(c.kind, data, c.title, CHART_W, CHART_H, c.options ?? {}) };
+      const written = c.pivot ? page.pivots.get(c.pivot)?.written : null, r = written ?? c.range;
+      let data = chartData(r, (k) => page.sheet.value(k), c.options?.byRows);
+      if (c.pivot) data = { ...data, labels: data.labels.filter((l) => l !== "Grand Total"), series: data.series.filter((x) => x.name !== "Grand Total").map((x) => ({ ...x, values: x.values.filter((_, i) => data.labels[i] !== "Grand Total") })) };
+      return { kind: c.kind, title: c.title, range: c.pivot ? `pivot ${c.pivot}` : rangeName(r), data, shapes: layout(c.kind, data, c.title, CHART_W, CHART_H, c.options ?? {}) };
     });
   }
 

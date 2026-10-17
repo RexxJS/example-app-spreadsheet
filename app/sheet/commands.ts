@@ -2301,6 +2301,17 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // A PivotChart: a chart of a pivot, following it as it is written
+    // again (its grand totals left out).
+    id: "chart.pivot", label: "PivotChart", params: ["id"], optional: ["kind", "title"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, pv = page.pivots.get(p.id) ?? refuse(`no pivot ${p.id}`);
+      const kind = CHART_KINDS.find((k) => k.toLowerCase() === (p.kind ?? "bar").trim().toLowerCase()) ?? refuse(`${p.kind} is not a chart (${CHART_KINDS.join(", ")})`);
+      page.charts.push({ kind, range: pv.written ?? [pv.output, pv.output], title: p.title ?? `${pv.agg} of ${pv.value}`, pivot: p.id });
+      return changedBy(wb, [], `inserted a ${kind} PivotChart of pivot ${p.id}`);
+    },
+  },
+  {
     // Written again from its source (the app's UPDATEPIVOT).
     id: "pivot.update", label: "Refresh PivotTable", params: ["id"], journaled: true,
     run: async (wb, p) => writePivot(wb, p.id, wb.page(wb.active)!.pivots.get(p.id) ?? refuse(`no pivot ${p.id}`)),

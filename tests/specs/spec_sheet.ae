@@ -1862,6 +1862,22 @@ main() {
             spec.assert_true(g.wait_cell("D", 6, "1000"), "Big's result beside the current one")
             g.command("view.panel name=none")
         }
+        spec.it("a PivotChart in the Charts panel, following its pivot") callback {
+            g.command("sheet.add name=PivC")
+            g.script("LET r = SETCELL('A1', 'region'); LET r = SETCELL('B1', 'amount'); LET r = SETCELL('A2', 'North'); LET r = SETCELL('B2', 10); LET r = SETCELL('A3', 'South'); LET r = SETCELL('B3', 4)")
+            spec.assert_true(g.wait_cell("B", 3, "4"), "the data")
+            g.command("pivot.create id=pc source=A1:B3 value=amount agg=sum output=D1 rows=region")
+            g.command("view.panel name=chart")
+            g.command("chart.pivot id=pc kind=bar")
+            spec.assert_true(b.wait_for_text("SUM of amount: bar chart of pivot pc"), "listed")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"South\"") == 1, "the pivot's rows its categories")
+            g.command("cell.set cell=A3 input=West")
+            g.command("pivot.update id=pc")
+            spec.assert_true(g.wait_cell("D", 3, "West"), "the pivot written again")
+            spec.assert_true(string.contains(b.vg_nodes(), "\"text\":\"West\"") == 1, "and the chart follows it")
+            b.click("Delete chart 1")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }
