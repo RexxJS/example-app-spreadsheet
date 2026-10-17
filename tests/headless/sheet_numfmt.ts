@@ -4,9 +4,12 @@
 // scaling commas, percent, scientific, fractions; dates and times on
 // Excel's serial numbers. And formats.ts choosing between it and the Tauri
 // app's dialect.
-import { numberFormat } from "./sheet/numfmt.ts";
+import { general, numberFormat } from "./sheet/numfmt.ts";
+import { Commands } from "./sheet/commands.ts";
+import { Workbook } from "./sheet/workbook.ts";
 import { formatStyle, formatted } from "./sheet/formats.ts";
 import type { Value } from "./sheet/values.ts";
+import { show } from "./sheet/format.ts";
 import { eq } from "./lib/check.ts";
 
 const f = (v: Value, pattern: string) => numberFormat(v, pattern)?.text ?? null;
@@ -40,6 +43,23 @@ eq("formats.ts: Excel's language unless a part is the app's", [formatted(-5, "#,
   ["(5)", "50%", "$1,000.00", "<hi>"]);
 eq("and the colour a section gives is the cell's", [formatStyle(-5, "#,##0;[Red](#,##0)"), formatStyle(5, "#,##0;[Red](#,##0)"), formatStyle(5, "bold;color:red")],
   ["color: #ff0000", "", "font-weight: bold; color: #ff0000"]);
+
+// 4.1: General with Excel's rules, the categories, TEXT() and FORMATVALUE on the one formatter.
+eq("General: eleven characters, scientific from 1E+11 and below 1E-05", [general(123456789012), general(12345678901), general(1 / 3), general(1234567.891), general(-0.000001234), general(0.00001), general(2.5), general(0)],
+  ["1.23457E+11", "12345678901", "0.333333333", "1234567.891", "-1.234E-06", "0.00001", "2.5", "0"]);
+eq("General in a code, and in TEXT's", [f(123456789012, "General"), f(-1 / 3, '"x="General')], ["1.23457E+11", "-x=0.333333333"]);
+const wb = new Workbook();
+const cmds = new Commands(wb);
+const pre = async (value: string, format: string) => (await cmds.execute("format.preview", { value, format })).output;
+eq("the categories: accounting, fraction, scientific, percentage, dates, elapsed", [await pre("1234", "accounting"), await pre("-1234", "accounting"), await pre("0", "accounting"), await pre("1.75", "fraction"),
+  await pre("12345", "scientific"), await pre("0.256", "percentage"), await pre("45306", "long date"), await pre("1.5", "elapsed"), await pre("0.0625", "[mm]:ss"), await pre("pears", "text")],
+  [" $1,234.00 ", " $(1,234.00)", " $-   ", "1 3/4", "1.23E+04", "25.60%", "Monday, January 15, 2024", "36:00:00", "90:00", "pears"]);
+eq("a category set on cells, and its colour said", [(await cmds.execute("cell.set", { cell: "A1", input: "0.5" })).ok, (await cmds.execute("format.number", { range: "A1", format: "fraction" })).message, wb.textOf("A1"),
+  (await cmds.execute("format.preview", { value: "-5", format: "0;[Red]-0" })).message], [true, "A1: # ?/?", " 1/2", "-5 (#ff0000)"]);
+await cmds.execute("cell.set", { cell: "B1", input: "=TEXT(1234.5, \"#,##0.00\")" });
+const said: string[] = [];
+await cmds.script('SAY FORMATVALUE(1234.5, "#,##0.00")\nSAY FORMATVALUE(0.125, "fraction")\nSAY FORMATVALUE(1E12, "General")', (l) => said.push(l));
+eq("TEXT() and FORMATVALUE from REXX give the same", [show(wb.sheet.value("B1")), said], ["1,234.50", ["1,234.50", " 1/8", "1E+12"]]);
 // expect: ok decimals, rounded half away from zero
 // expect: ok thousands
 // expect: ok a negative section takes no sign of its own
@@ -60,3 +80,8 @@ eq("and the colour a section gives is the cell's", [formatStyle(-5, "#,##0;[Red]
 // expect: ok a date typed as text is the date
 // expect: ok formats.ts: Excel's language unless a part is the app's
 // expect: ok and the colour a section gives is the cell's
+// expect: ok General: eleven characters, scientific from 1E+11 and below 1E-05
+// expect: ok General in a code, and in TEXT's
+// expect: ok the categories: accounting, fraction, scientific, percentage, dates, elapsed
+// expect: ok a category set on cells, and its colour said
+// expect: ok TEXT() and FORMATVALUE from REXX give the same

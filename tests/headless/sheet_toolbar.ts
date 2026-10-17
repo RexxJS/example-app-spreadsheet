@@ -23,7 +23,7 @@ eq("Fill Color and Font Color, by name or #rrggbb; none takes it off", [await ms
   ["A1: fill #ffff00", true, "A1: text #cc0000", true, "A1: fill none", false, "mauve-ish is not a colour (a name such as red, or #rrggbb)"]);
 eq("Comma, Currency and Percent Style, and a pattern", [await msg("format.number", { range: "A1", format: "number" }), wb.textOf("A1"), await msg("format.number", { range: "A1", format: "currency" }), wb.textOf("A1"),
   await msg("format.number", { range: "A2", format: "percent" }), wb.textOf("A2"), await msg("format.number", { range: "A2", format: "0.0" }), wb.textOf("A2"), await msg("format.number", { range: "A2", format: "general" }), wb.textOf("A2"), await msg("format.number", { range: "A2", format: "bold" })],
-  ["A1: #,##0.00", "1,234.50", "A1: $#,##0.00", "$1,234.50", "A2: 0%", "25%", "A2: 0.0", "0.3", "A2: general", "0.25", "bold is not a number format (number, currency, percent, general, or a pattern such as 0.00)"]);
+  ["A1: #,##0.00", "1,234.50", "A1: $#,##0.00", "$1,234.50", "A2: 0%", "25%", "A2: 0.0", "0.3", "A2: general", "0.25", "bold is not a number format (number, currency, percent, accounting, fraction, scientific, date, time, text, general, or a pattern such as 0.00)"]);
 await cmds.run('cell.format cell=A1 format="0.000"');
 eq("the cell's own format field wins over the toolbar's", wb.textOf("A1"), "1234.500");
 await cmds.run('cell.format cell=A1 format=""');

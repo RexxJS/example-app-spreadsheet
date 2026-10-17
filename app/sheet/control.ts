@@ -279,6 +279,8 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SETALIGNMENT: async (exec, r, how) => (await must(exec, "format.align", { range: text(r), align: text(how) }), "OK"),
   SETFILLCOLOR: async (exec, r, c) => (await must(exec, "format.fill", { range: text(r), color: text(c) }), "OK"),
   SETTEXTCOLOR: async (exec, r, c) => (await must(exec, "format.color", { range: text(r), color: text(c) }), "OK"),
+  // A value in a number format: FORMATVALUE(1234.5, "#,##0.00"), FORMATVALUE(0.5, "fraction").
+  FORMATVALUE: async (exec, v, f) => (await must(exec, "format.preview", { value: text(v), format: text(f) })).output,
   SETNUMBERFORMAT: async (exec, r, f) => (await must(exec, "format.number", { range: text(r), format: text(f) }), "OK"),
   SETWRAPTEXT: async (exec, c, on) => (await must(exec, "format.wrap", yes(on) ? { range: text(c) } : { range: text(c), off: "1" }), "OK"),
   GETWRAPTEXT: async (exec, c) => (await about(exec, c)).wrap,

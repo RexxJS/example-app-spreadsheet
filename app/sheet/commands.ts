@@ -26,6 +26,7 @@ import { asApp, editorOf, refusal, toggled } from "./editors.ts";
 import { ICONS, describeRule as describeCf, rangeName } from "./rules.ts";
 import type { CfRule, Comparison, IconSet } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
+import { CATEGORIES, numberFormat } from "./numfmt.ts";
 import type { Look } from "./formats.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
@@ -1243,9 +1244,22 @@ const SPECS: readonly Spec[] = [
     id: "format.number", label: "Number Format", params: ["range", "format"], journaled: true,
     run: async (wb, p) => {
       const r = rangeOf(p.range), f = p.format.trim();
-      const pattern = ({ general: "", number: "#,##0.00", comma: "#,##0.00", currency: "$#,##0.00", percent: "0%" } as Record<string, string>)[f.toLowerCase()] ?? f;
-      if (pattern && !/[#0?@]/.test(pattern)) refuse(`${p.format} is not a number format (number, currency, percent, general, or a pattern such as 0.00)`);
+      const pattern = ({ general: "", number: "#,##0.00", comma: "#,##0.00", currency: "$#,##0.00", percent: "0%" } as Record<string, string>)[f.toLowerCase()] ?? CATEGORIES[f.toLowerCase()] ?? f;
+      if (pattern && !/[#0?@]|general/i.test(pattern) && !/^[^A-Za-z]*(?:(?:[ymdhs]+|AM\/PM)[^A-Za-z]*)+$/i.test(pattern)) refuse(`${p.format} is not a number format (number, currency, percent, accounting, fraction, scientific, date, time, text, general, or a pattern such as 0.00)`);
       return changedBy(wb, relook(wb, r, (look) => ({ ...look, number: pattern || undefined })), `${rangeName(r)}: ${pattern || "general"}`);
+    },
+  },
+  {
+    // A value in a number format, as a cell in it would show it, and as
+    // TEXT() gives it: a category's name (accounting, fraction ...) or a
+    // code. Text that reads as a number is the number.
+    id: "format.preview", label: "Format a value", params: ["value", "format"], journaled: false,
+    run: async (_wb, p) => {
+      const code = CATEGORIES[p.format.trim().toLowerCase()] ?? p.format;
+      const v: Value = NUMERIC_TEXT.test(p.value) || /^\s*[-+]?\d*\.?\d+[eE][-+]?\d+\s*$/.test(p.value) ? Number(p.value) : p.value;
+      const out = numberFormat(v, code);
+      const text = out?.text ?? show(v);
+      return { ok: true, message: out?.color ? `${text} (${out.color})` : text, changed: [], output: text };
     },
   },
   {

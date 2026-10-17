@@ -13,7 +13,6 @@
 //     h or s;
 //   - General, or @ (the text itself).
 import { parseDate, parts } from "./dates.ts";
-import { show } from "./format.ts";
 import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 
@@ -100,6 +99,40 @@ function section(text: string): Section {
   return { toks, color, cond };
 }
 
+// General, as Excel shows a number in a column of the standard width: at
+// most eleven characters besides the sign, in scientific notation (as
+// many mantissa digits as fit) from 1E+11 up, and below 1E-05 (Excel's
+// Format Cells > General).
+export function general(n: number): string {
+  if (!isFinite(n)) return "#NUM!";
+  if (n === 0) return "0";
+  const sign = n < 0 ? "-" : "", x = Math.abs(n);
+  const sci = (): string => {
+    let e = Math.floor(Math.log10(x));
+    for (let places = 5; places >= 0; places--) {
+      let m = round(x / 10 ** e, places);
+      if (m >= 10) { m /= 10; e++; }
+      const body = String(Number(m.toFixed(places)));
+      const text = `${body}E${e < 0 ? "-" : "+"}${String(Math.abs(e)).padStart(2, "0")}`;
+      if (text.length <= 11) return sign + text;
+    }
+    return `${sign}${Math.round(x / 10 ** e)}E${e < 0 ? "-" : "+"}${String(Math.abs(e)).padStart(2, "0")}`;
+  };
+  if (x >= 1e11 || x < 1e-5) return sci();
+  const intDigits = Math.max(1, Math.floor(Math.log10(x)) + 1);
+  const places = Math.max(0, 10 - intDigits);
+  const r = round(x, places);
+  if (r >= 1e11) return sci();
+  return sign + String(Number(r.toFixed(places)));
+}
+
+// Excel's Format Cells categories, as the codes each gives by default.
+export const CATEGORIES: Readonly<Record<string, string>> = {
+  general: "General", number: "0.00", currency: "$#,##0.00", accounting: '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)',
+  "short date": "m/d/yyyy", "long date": "dddd, mmmm d, yyyy", date: "m/d/yyyy", time: "h:mm:ss AM/PM", percentage: "0.00%",
+  fraction: "# ?/?", scientific: "0.00E+00", text: "@", elapsed: "[h]:mm:ss",
+};
+
 // n rounded to `places` decimals, half away from zero (by its decimal text,
 // so 1.005 is 1.01).
 const round = (n: number, places: number): number => Number(`${Math.round(Number(`${n}e${places}`))}e-${places}`);
@@ -178,7 +211,7 @@ function numeric(n: number, toks: readonly Tok[], signed: boolean): string {
     else if (t.t === "digit") text += out.get(i) ?? "";
     else if (t.t === "." || t.t === "%") text += t.t;
     else if (t.t === "E") text += `E${exp < 0 ? "-" : t.plus ? "+" : ""}`;
-    else if (t.t === "general") text += show(x);
+    else if (t.t === "general") text += general(x);
   });
   const zero = toks.some((t) => t.t === "general") ? x === 0 : r === 0;
   return signed && n < 0 && !zero ? `-${text}` : text;
@@ -249,7 +282,7 @@ function dated(serial: number, toks: readonly Tok[]): string | null {
   let text = "";
   toks.forEach((t, i) => {
     if (t.t === "lit") { text += t.s; return; }
-    if (t.t === "general") { text += show(serial); return; }
+    if (t.t === "general") { text += general(serial); return; }
     if (t.t === "," || t.t === "/" || t.t === "." || t.t === "%") { text += t.t; return; }
     if (t.t !== "date") return;
     const run = t.s, n = run.length;
