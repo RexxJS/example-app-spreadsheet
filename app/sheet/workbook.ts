@@ -21,7 +21,8 @@ import { setDateSystem as setDates } from "./dates.ts";
 import type { DateSystem } from "./dates.ts";
 import { describe, show } from "./format.ts";
 import { formatStyle, formatted, lookStyle, toStyle } from "./formats.ts";
-import type { Language } from "./language.ts";
+import type { Language, TableDef } from "./language.ts";
+import { dataRows } from "./structured.ts";
 import { CellNotes } from "./notes.ts";
 import type { Note } from "./notes.ts";
 import { RexxLanguage } from "./rexx.ts";
@@ -204,6 +205,16 @@ export interface Stats {
 export function statsLine(s: Stats): string {
   const n = (x: number | null) => show(x);
   return s.numbers ? `Average: ${n(s.average)}  Count: ${s.count}  Numerical Count: ${s.numbers}  Min: ${n(s.min)}  Max: ${n(s.max)}  Sum: ${n(s.sum)}` : `Count: ${s.count}`;
+}
+
+// A banded table's shade (Excel's light blue band), and the cells it
+// shades: the first data row and every other one after it.
+export const BAND = "#d9e1f2";
+export function bandedKeys(t: TableDef): string[] {
+  const [d1, d2] = dataRows(t), left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col);
+  const out: string[] = [];
+  for (let r = d1; r <= d2; r += 2) for (let c = left; c <= right; c++) out.push(keyOf({ col: c, row: r }));
+  return out;
 }
 
 export class Workbook {
@@ -816,10 +827,27 @@ export class Workbook {
   // and a comment's corner marker.
   styleOf(key: string): string {
     const v = this.sheet.value(key), n = this.notes.get(key);
+    const table = this.#tableLook(key);
     const zoomed = this.zoom === 100 ? "" : `font-size: ${Math.round((n.look?.size ?? 13) * this.zoom / 100)}px`;
-    return [typeof v === "number" ? "text-align: end" : "", toStyle(n.style), lookStyle(n.look), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
+    return [typeof v === "number" ? "text-align: end" : "", table, toStyle(n.style), lookStyle(n.look), formatStyle(v, n.format ?? ""), this.#conditional.get(key) ?? "", this.#marks.get(key)?.style ?? "", this.#traced.get(key) ?? "",
       this.#circled.has(key) ? "background: #ffd6d6" : "", v instanceof CellError ? "color: #c0392b" : "",
       n.comment ? "--corner: #d00000" : "", this.#typed.get(key) ?? "", zoomed].filter((p) => p).join("; ");
+  }
+
+  // What a table's style gives a cell of it: its banded rows shaded, a
+  // totals row bold over a line.
+  #tableLook(key: string): string {
+    const at = addrOf(key);
+    if (!at) return "";
+    for (const t of this.sheet.tables()) {
+      if (!t.banded && !t.totals) continue;
+      const [a, b] = t.range;
+      if (at.col < Math.min(a.col, b.col) || at.col > Math.max(a.col, b.col) || at.row < Math.min(a.row, b.row) || at.row > Math.max(a.row, b.row)) continue;
+      if (t.totals && at.row === Math.max(a.row, b.row)) return "font-weight: bold; border-top: 1px solid #4472c4";
+      if (t.banded && bandedKeys(t).includes(key)) return `background: ${BAND}`;
+      return "";
+    }
+    return "";
   }
 
   // The active sheet's rows (by hand or by its filter) and columns out of

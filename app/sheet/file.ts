@@ -153,7 +153,8 @@ function tablesOf(tables: unknown): TableDef[] {
     const r = parseRange(String(t?.range ?? ""));
     if (!r || !/^[A-Za-z][A-Za-z0-9_]*$/.test(String(t?.name ?? ""))) return [];
     const byName = (o: unknown) => (o && typeof o === "object" && !Array.isArray(o) ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, String(v)])) : undefined);
-    return [{ name: String(t.name), range: r, headers: t.headers !== false, columns: Array.isArray(t.columns) ? t.columns.map(String) : null, types: byName(t.types), descriptions: byName(t.descriptions) }];
+    return [{ name: String(t.name), range: r, headers: t.headers !== false, columns: Array.isArray(t.columns) ? t.columns.map(String) : null, types: byName(t.types), descriptions: byName(t.descriptions),
+      ...(byName(t.totals) ? { totals: byName(t.totals) } : {}), ...(t.banded === true ? { banded: true } : {}) }];
   });
 }
 
@@ -248,6 +249,7 @@ const rulesIn = (page: Page) => page.rules.map((r) => ({ ...r, range: rangeName(
 const tablesIn = (page: Page) => page.sheet.tables().map((t) => ({
   name: t.name, range: rangeName(t.range), headers: t.headers, columns: t.columns,
   ...(t.types && Object.keys(t.types).length ? { types: t.types } : {}), ...(t.descriptions && Object.keys(t.descriptions).length ? { descriptions: t.descriptions } : {}),
+  ...(t.totals ? { totals: t.totals } : {}), ...(t.banded ? { banded: true } : {}),
 }));
 const chartsIn = (page: Page) => page.charts.map((c) => ({ kind: c.kind, range: rangeName(c.range), title: c.title }));
 const up = (a: number, b: number) => a - b;

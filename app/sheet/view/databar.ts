@@ -1,8 +1,18 @@
 // What-if and data tools over the selection, as Excel's Data tab has them:
 // Goal Seek (the selected formula to the goal, by changing a cell), Data
 // Table (the selection, with a row input, a column input, or both), Remove
-// Duplicates, Text to Columns (split at the delimiter, a comma by default).
+// Duplicates, Text to Columns (split at the delimiter, a comma by default);
+// and for the table the selected cell is in, Table Design's Total Row and
+// Banded Rows (each on, or off when it has it) and Convert to Range.
 import type { SheetView } from "./view.ts";
+import { addrOf } from "../address.ts";
+
+// The table the selected cell is in, by name, or "" (the command refuses).
+function tableHere(v: SheetView): string {
+  const at = addrOf(v.here());
+  const t = at && v.wb.sheet.tables().find(({ range: [a, b] }) => at.col >= Math.min(a.col, b.col) && at.col <= Math.max(a.col, b.col) && at.row >= Math.min(a.row, b.row) && at.row <= Math.max(a.row, b.row));
+  return t ? t.name : "";
+}
 
 export function dataBar(v: SheetView): void {
   const goal = state(""), by = state(""), rowInput = state(""), columnInput = state(""), delimiter = state("");
@@ -18,5 +28,10 @@ export function dataBar(v: SheetView): void {
     bind(ui.textfield("delimiter", () => {}), delimiter);
     v.btn("Flash fill", () => v.run("data.flashFill", { range: v.range() }));
     v.btn("Text to columns", () => v.run("data.textToColumns", { range: v.range(), ...given({ delimiter: delimiter.value }) }));
+  });
+  ui.hstack(() => {
+    v.btn("Total row", () => v.run("table.totals", { name: tableHere(v), ...(v.wb.sheet.table(tableHere(v))?.totals ? { on: "0" } : {}) }));
+    v.btn("Banded rows", () => v.run("table.banding", { name: tableHere(v), rows: v.wb.sheet.table(tableHere(v))?.banded ? "0" : "1" }));
+    v.btn("Convert to range", () => v.run("table.toRange", { name: tableHere(v) }));
   });
 }

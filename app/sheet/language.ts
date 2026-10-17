@@ -35,6 +35,11 @@ export interface TableDef {
   readonly types?: Readonly<Record<string, string>>;
   readonly descriptions?: Readonly<Record<string, string>>;
   readonly sort?: TableSort;
+  // A totals row: the range's last row, each column's aggregate by its
+  // name (sum, average, count, counta, max, min, stdev, var; none for a
+  // blank, label for "Total"). Banded rows, as a table style draws them.
+  readonly totals?: Readonly<Record<string, string>>;
+  readonly banded?: boolean;
 }
 
 // A table sorted by a column, ascending or descending, and the row each of

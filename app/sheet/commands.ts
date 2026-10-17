@@ -33,6 +33,8 @@ import type { ChartKind } from "./charts.ts";
 import type { ChartSpec, Clip } from "./workbook.ts";
 import type { TableDef } from "./language.ts";
 import { blockMoved, deleted, inserted, movedBy, restructured, swapped } from "./shift.ts";
+import { TOTALS, dataRows, totalsInput, unstructured } from "./structured.ts";
+import { BAND, bandedKeys } from "./workbook.ts";
 import type { Edit, Scope } from "./shift.ts";
 import { found, rearranged, rearrangedMoves, replaced, sortedRows } from "./sortfind.ts";
 import { distinctRows, secant, splitText } from "./whatif.ts";
@@ -1548,13 +1550,98 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
+    // A table's totals row (Table Design's Total Row): the row under it
+    // taken in, which must be empty, each column's aggregate by its name
+    // (functions="Qty=sum,Price=average"; the first column "Total" and the
+    // last a sum by default, as Excel's); on=0 takes it off, clearing it.
+    id: "table.totals", label: "Total Row", params: ["name"], optional: ["on", "functions"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`), cols = tableColumns(wb, t);
+      const left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col), bottom = Math.max(t.range[0].row, t.range[1].row);
+      const top = Math.min(t.range[0].row, t.range[1].row);
+      const row = (r: number) => Array.from({ length: right - left + 1 }, (_, i) => keyOf({ col: left + i, row: r }));
+      if (p.on !== undefined && !flag(p.on)) {
+        if (!t.totals) refuse(`${t.name} has no totals row`);
+        const { totals: _gone, ...rest } = t;
+        await wb.sheet.defineTable(t.name, { ...rest, range: [{ col: left, row: top }, { col: right, row: bottom - 1 }] });
+        return setting(wb, row(bottom).map((k) => [k, ""]), `${t.name}: no totals row`);
+      }
+      const given: Record<string, string> = p.functions?.trim().startsWith("{") ? byName(p.functions, "functions") ?? {}
+        : Object.fromEntries((p.functions ?? "").split(",").map((x) => x.trim()).filter((x) => x).map((x) => (x.includes("=") ? [x.slice(0, x.indexOf("=")).trim(), x.slice(x.indexOf("=") + 1).trim()] : refuse(`${x} is not column=total`))));
+      const known = [...Object.keys(TOTALS), "none", "label"];
+      for (const [c, f] of Object.entries(given)) {
+        if (!cols.some((x) => x.toUpperCase() === c.toUpperCase())) refuse(`${t.name} has no column ${c}`);
+        if (!known.includes(f.toLowerCase())) refuse(`${f} is not a total (${known.join(", ")})`);
+      }
+      const at = t.totals ? bottom : bottom + 1;
+      if (at >= ROWS) refuse(`${t.name} has no row under it for totals`);
+      if (!t.totals && row(at).some((k) => wb.sheet.input(k) !== "")) refuse(`the row under ${t.name} (${at + 1}) is not empty`);
+      const functions: Record<string, string> = {};
+      cols.forEach((c, i) => {
+        const asked = Object.entries(given).find(([k]) => k.toUpperCase() === c.toUpperCase())?.[1].toLowerCase();
+        functions[c] = asked ?? t.totals?.[c] ?? (i === cols.length - 1 && cols.length > 1 ? "sum" : i === 0 ? "label" : "none");
+      });
+      const def: TableDef = { ...t, range: [{ col: left, row: top }, { col: right, row: at }], totals: functions };
+      const [d1, d2] = dataRows(def), excel = wb.sheet.language.name === "Excel";
+      await wb.sheet.defineTable(t.name, def);
+      const entries = cols.map((c, i): [string, string] => [keyOf({ col: left + i, row: at }),
+        totalsInput(functions[c], t.name, c, `${keyOf({ col: left + i, row: d1 })}:${keyOf({ col: left + i, row: d2 })}`, excel)]);
+      return setting(wb, entries, `${t.name}: totals in row ${at + 1} (${cols.map((c) => `${c} ${functions[c]}`).join(", ")})`);
+    },
+  },
+  {
+    // A calculated column: one formula in every data row of a column,
+    // written for the first and moved down as a fill is ([@Qty] reads each
+    // row's own).
+    id: "table.calculatedColumn", label: "Calculated Column", params: ["name", "column", "formula"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`), cols = tableColumns(wb, t);
+      const i = cols.findIndex((c) => c.toUpperCase() === p.column.trim().toUpperCase());
+      if (i < 0) refuse(`${t.name} has no column ${p.column}`);
+      // Excel's shorthand inside a table, [@Qty], is the table's own.
+      const written = (p.formula.trim().startsWith("=") ? p.formula.trim() : `=${p.formula.trim()}`).replace(/(^|[^A-Za-z0-9_.\]'])\[@/g, `$1${t.name}[@`);
+      const formula = written;
+      const [d1, d2] = dataRows(t), col = Math.min(t.range[0].col, t.range[1].col) + i;
+      if (d1 > d2) refuse(`${t.name} has no data rows`);
+      const entries = Array.from({ length: d2 - d1 + 1 }, (_, r): [string, string] => [keyOf({ col, row: d1 + r }), movedBy(wb.sheet.language, formula, { cols: 0, rows: r })]);
+      return setting(wb, entries, `${t.name}[${cols[i]}] = ${formula}`);
+    },
+  },
+  {
+    // Banded Rows: every other data row shaded (rows=0 takes it off).
+    id: "table.banding", label: "Banded Rows", params: ["name"], optional: ["rows"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`), on = p.rows === undefined || flag(p.rows);
+      const { banded: _was, ...rest } = t;
+      await wb.sheet.defineTable(t.name, on ? { ...rest, banded: true } : rest);
+      return changedBy(wb, [...range(t.range[0], t.range[1])], `${t.name}: ${on ? "banded rows" : "no banded rows"}`);
+    },
+  },
+  {
+    // Convert to Range: the table gone, its cells and looks kept (its
+    // banding as the cells' fill), each structured reference to it on the
+    // sheet written as the cells it came to ($B$2:$B$4; [@Qty] as $B2).
+    id: "table.toRange", label: "Convert to Range", params: ["name"], journaled: true,
+    run: async (wb, p) => {
+      const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`);
+      const header = (a: Addr) => show(wb.sheet.value(keyOf(a)));
+      const entries = wb.sheet.keys().flatMap((k): [string, string][] => {
+        const input = wb.sheet.input(k), now = unstructured(input, t, header, cellAddr(k)!.row);
+        return now === input ? [] : [[k, now]];
+      });
+      if (t.banded) for (const k of bandedKeys(t)) wb.notes.set(k, { look: { ...wb.notes.get(k).look, fill: BAND } });
+      await wb.sheet.defineTable(t.name, null);
+      return { ...await setting(wb, entries, `${t.name} is a range again`), changed: [...range(t.range[0], t.range[1]), ...entries.map(([k]) => k)] };
+    },
+  },
+  {
     // A table as the app's metadata has it (GETTABLE, GET_TABLE_METADATA).
     id: "table.get", label: "About a table", params: ["name"], journaled: false,
     run: async (wb, p) => {
       const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`);
       const about = {
         name: t.name, range: rangeName(t.range), headers: t.headers, columns: tableColumns(wb, t), types: t.types ?? {}, descriptions: t.descriptions ?? {},
-        sort: t.sort ? { column: colName(t.sort.column), direction: t.sort.direction } : null,
+        sort: t.sort ? { column: colName(t.sort.column), direction: t.sort.direction } : null, totals: t.totals ?? null, banded: !!t.banded,
       };
       return { ok: true, message: JSON.stringify(about), changed: [], output: about };
     },
@@ -1567,7 +1654,7 @@ const SPECS: readonly Spec[] = [
       const t = wb.sheet.table(p.name) ?? refuse(`no table ${p.name}`), col = columnOf(p.column);
       const left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col);
       if (col < left || col > right) refuse(`${colName(col)} is not a column of ${t.name}`);
-      const top = Math.min(t.range[0].row, t.range[1].row) + (t.headers ? 1 : 0), bottom = Math.max(t.range[0].row, t.range[1].row);
+      const [top, bottom] = dataRows(t);
       if (top > bottom) refuse(`${t.name} has no rows to sort`);
       const a = { col: left, row: top }, b = { col: right, row: bottom }, height = bottom - top + 1;
       const origin = t.sort?.origin ?? Array.from({ length: height }, (_, i) => top + i);

@@ -8,7 +8,7 @@
 //   Sales[Amount]             one column's data
 //   Sales[[Qty]:[Price]]      the columns from Qty to Price
 //   Sales[#All], [#Data], [#Headers], [#Totals]   an area (#Totals is
-//                             #REF!: a table here has no totals row)
+//                             #REF! for a table with no totals row)
 //   Sales[[#Headers],[#Data],[Qty]]   areas together, of a column
 //   Sales[@Amount], Sales[@[Unit Price]], Sales[[#This Row],[Amount]]
 //                             the formula's own row of a column
@@ -95,18 +95,18 @@ export function parseSpec(spec: string, at: number): TableSpec {
 export function resolve(t: TableDef, spec: TableSpec, header: (a: Addr) => string, row: number | null): [Addr, Addr] | CellError {
   const left = Math.min(t.range[0].col, t.range[1].col), right = Math.max(t.range[0].col, t.range[1].col);
   const top = Math.min(t.range[0].row, t.range[1].row), bottom = Math.max(t.range[0].row, t.range[1].row);
-  const dataTop = t.headers ? top + 1 : top;
+  const dataTop = t.headers ? top + 1 : top, totals = t.totals ? bottom : -1, dataBottom = t.totals ? bottom - 1 : bottom;
   let from: number, to: number;
   if (spec.thisRow) {
-    if (row === null || row < dataTop || row > bottom) return new CellError("#VALUE!", `[@...] is the formula's own row of ${t.name}, and this formula is not on one of its rows`);
+    if (row === null || row < dataTop || row > dataBottom) return new CellError("#VALUE!", `[@...] is the formula's own row of ${t.name}, and this formula is not on one of its rows`);
     from = to = row;
   } else {
     const rows = spec.areas.map((a): [number, number] | CellError => {
       switch (a) {
         case "all": return [top, bottom];
-        case "data": return [dataTop, bottom];
+        case "data": return [dataTop, dataBottom];
         case "headers": return t.headers ? [top, top] : new CellError("#REF!", `table ${t.name} has no header row`);
-        case "totals": return new CellError("#REF!", `table ${t.name} has no totals row`);
+        case "totals": return totals >= 0 ? [totals, totals] : new CellError("#REF!", `table ${t.name} has no totals row`);
       }
     });
     const bad = rows.find((r): r is CellError => r instanceof CellError);
@@ -129,4 +129,73 @@ export function resolve(t: TableDef, spec: TableSpec, header: (a: Addr) => strin
     [first, last] = [Math.min(a, b), Math.max(a, b)];
   }
   return [{ col: first, row: from }, { col: last, row: to }];
+}
+
+// A table's data rows, first and last (0-based): under its header row,
+// over its totals row.
+export function dataRows(t: TableDef): [number, number] {
+  const top = Math.min(t.range[0].row, t.range[1].row), bottom = Math.max(t.range[0].row, t.range[1].row);
+  return [t.headers ? top + 1 : top, t.totals ? bottom - 1 : bottom];
+}
+
+// Excel's SUBTOTAL numbers for a totals row's aggregates (the 100s skip
+// hidden rows, as a table's totals do).
+export const TOTALS: Readonly<Record<string, number>> = { average: 101, count: 102, counta: 103, max: 104, min: 105, product: 106, stdev: 107, stdevp: 108, sum: 109, var: 110, varp: 111 };
+const REXX_TOTALS: Readonly<Record<string, string>> = { average: "AVERAGE_RANGE", count: "COUNT_RANGE", counta: "COUNT_RANGE", max: "MAX_RANGE", min: "MIN_RANGE", product: "PRODUCT_RANGE",
+  stdev: "STDEV_RANGE", stdevp: "STDEVP_RANGE", sum: "SUM_RANGE", var: "VAR_RANGE", varp: "VARP_RANGE" };
+
+// A totals cell's input: Excel's SUBTOTAL over the column (Sales[Amount]),
+// or in RexxJS formulas its range function over the column's cells.
+export function totalsInput(aggregate: string, table: string, column: string, cells: string, excel: boolean): string {
+  if (aggregate === "label") return "Total";
+  if (aggregate === "none") return "";
+  const plain = /^[A-Za-z_][A-Za-z0-9_ ]*$/.test(column) && !column.includes(" ") ? column : `[${column.replace(/([\[\]#'])/g, "'$1")}]`;
+  return excel ? `=SUBTOTAL(${TOTALS[aggregate]},${table}[${plain}])` : `=${REXX_TOTALS[aggregate]}("${cells}")`;
+}
+
+// The structured references in a formula written as the cells they come to
+// (Convert to Range): $B$2:$B$4, or a row's own $B2; strings left alone.
+export function unstructured(input: string, table: TableDef, header: (a: Addr) => string, row: number): string {
+  if (!input.startsWith("=")) return input;
+  let out = "", i = 0;
+  const name = table.name.toUpperCase();
+  while (i < input.length) {
+    const c = input[i];
+    if (c === '"') {
+      const end = input.indexOf('"', i + 1);
+      const j = end < 0 ? input.length : end + 1;
+      out += input.slice(i, j);
+      i = j;
+      continue;
+    }
+    const m = /^[A-Za-z_][A-Za-z0-9_.]*/.exec(input.slice(i));
+    if (m && input[i + m[0].length] === "[" && m[0].toUpperCase() === name && !/[A-Za-z0-9_.$!]/.test(input[i - 1] ?? "")) {
+      // The brackets, balanced, ' making the next character plain.
+      let j = i + m[0].length, depth = 0;
+      for (; j < input.length; j++) {
+        if (input[j] === "'") { j++; continue; }
+        if (input[j] === "[") depth++;
+        else if (input[j] === "]" && --depth === 0) break;
+      }
+      const inner = input.slice(i + m[0].length + 1, j);
+      let written = "#REF!";
+      try {
+        const spec = parseSpec(inner, i);
+        const r = resolve(table, spec, header, row);
+        if (!(r instanceof CellError)) {
+          const [a, b] = r, abs = (x: Addr) => (spec.thisRow ? `$${colName(x.col)}${x.row + 1}` : `$${colName(x.col)}$${x.row + 1}`);
+          written = a.col === b.col && a.row === b.row ? abs(a) : `${abs(a)}:${abs(b)}`;
+        }
+      } catch (e) {
+        if (!(e instanceof FormulaError)) throw e;
+      }
+      out += written;
+      i = j + 1;
+      continue;
+    }
+    if (m) { out += m[0]; i += m[0].length; continue; }
+    out += c;
+    i++;
+  }
+  return out;
 }

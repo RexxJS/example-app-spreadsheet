@@ -302,6 +302,14 @@ export const CONTROL: Readonly<Record<string, Control>> = {
       : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
     return done.message;
   },
+  // A table's totals row, calculated columns, banding and Convert to
+  // Range: SETTABLETOTALS("Sales", "Qty=sum,Price=average"), ("Sales", 0)
+  // off; SETCALCULATEDCOLUMN("Sales", "Total", "=[@Qty]*[@Price]");
+  // SETTABLEBANDING("Sales", 1); TABLETORANGE("Sales").
+  SETTABLETOTALS: async (exec, n, fns) => (await must(exec, "table.totals", { name: text(n), ...(text(fns).trim() === "0" ? { on: "0" } : text(fns).trim() ? { functions: text(fns) } : {}) })).message,
+  SETCALCULATEDCOLUMN: async (exec, n, c, f) => (await must(exec, "table.calculatedColumn", { name: text(n), column: text(c), formula: text(f) })).message,
+  SETTABLEBANDING: async (exec, n, on) => (await must(exec, "table.banding", { name: text(n), rows: text(on).trim() === "" || yes(on) ? "1" : "0" })).message,
+  TABLETORANGE: async (exec, n) => (await must(exec, "table.toRange", { name: text(n) })).message,
   // A sparkline: INSERTSPARKLINE("A1:A9", "B1", "winloss", "axis").
   INSERTSPARKLINE: async (exec, r, at, type, options) => (await must(exec, "insert.sparkline", { range: text(r), at: text(at), ...(text(type).trim() ? { type: text(type) } : {}), ...(text(options).trim() ? { options: text(options) } : {}) })).message,
   // Data bars and icon sets with Excel's options, as name=value pairs:

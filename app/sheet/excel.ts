@@ -3,6 +3,7 @@
 // references and ranges name; it is rewritten token by token, so only
 // references change ($ fixes a column or row in a copy, and a reference
 // moved off the sheet, or into what was deleted, is #REF!).
+import { dataRows } from "./structured.ts";
 import { COLS, ROWS, cellAddr, colName, range, sheetPrefix, span, splitKey } from "./address.ts";
 import type { Addr } from "./address.ts";
 import { movedBy } from "./shift.ts";
@@ -27,11 +28,26 @@ export function* refsOf(e: Expr, seen: Set<string> = new Set()): Generator<strin
     case "range":
       yield* span(e.from, e.to)?.keys ?? [];
       return;
-    // The whole table: which of its cells a reference comes to depends on
-    // its header row then, so it is worked out again when any of them changes.
-    case "table":
-      yield* range(e.table.range[0], e.table.range[1]);
+    // Its header row (which of its cells a reference comes to depends on
+    // the header row then) and the rows the reference may come to: its
+    // own row for [@...], the data rows, the totals row only when asked
+    // for (so a totals row's SUBTOTAL over a column is no cycle).
+    case "table": {
+      const t = e.table, [a, b] = t.range, left = Math.min(a.col, b.col), right = Math.max(a.col, b.col);
+      const top = Math.min(a.row, b.row), bottom = Math.max(a.row, b.row), [d1, d2] = dataRows(t);
+      const rows = (r1: number, r2: number) => range({ col: left, row: r1 }, { col: right, row: r2 });
+      if (t.headers) yield* rows(top, top);
+      if (e.spec.thisRow) {
+        // Marked, so the formula's own cell is left out (compile below):
+        // a calculated column reads its row's other cells, not itself.
+        if (e.row !== null && e.row >= d1 && e.row <= d2) for (const k of rows(e.row, e.row)) yield `@${k}`;
+        return;
+      }
+      const areas = e.spec.areas;
+      if ((areas.includes("data") || areas.includes("all")) && d1 <= d2) yield* rows(d1, d2);
+      if (t.totals && (areas.includes("totals") || areas.includes("all"))) yield* rows(bottom, bottom);
       return;
+    }
     case "neg":
     case "at":
       return yield* refsOf(e.arg, seen);
@@ -262,7 +278,8 @@ export const EXCEL: Language = {
       const expr = parse(formula, names ?? (() => null), formulas, tables, at ? cellAddr(at)?.row ?? null : null);
       // One calling OFFSET or INDIRECT makes references at run time: it
       // is worked out again on every change.
-      return { kind: "formula", reads: [...refsOf(expr)], volatile: calls(expr, VOLATILE_FORMS), run: (env) => evaluate(expr, env, at ?? null) };
+      const reads = [...refsOf(expr)].flatMap((k) => (!k.startsWith("@") ? [k] : k.slice(1) === at ? [] : [k.slice(1)]));
+      return { kind: "formula", reads, volatile: calls(expr, VOLATILE_FORMS), run: (env) => evaluate(expr, env, at ?? null) };
     } catch (e) {
       if (!(e instanceof FormulaError)) throw e;
       return { kind: "broken", error: new CellError("#ERROR!", `parse error at ${e.at}: ${e.message}`) };

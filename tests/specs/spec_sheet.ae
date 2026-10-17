@@ -1487,6 +1487,30 @@ main() {
             spec.assert_true(g.wait_cell("H", 1, "▀▄─"), "a gain, a loss, a zero on the axis")
             g.command("view.panel name=none")
         }
+        spec.it("a table's Total Row and Banded Rows from the Data panel, then Convert to Range") callback {
+            g.command("sheet.add name=Totals")
+            g.command("formulas.use language=Excel")
+            g.command("cell.set cell=A1 input=Item")
+            g.command("cell.set cell=B1 input=Qty")
+            g.command("cell.set cell=A2 input=pens")
+            g.command("cell.set cell=B2 input=3")
+            g.command("cell.set cell=A3 input=ink")
+            g.command("cell.set cell=B3 input=4")
+            g.command("table.define name=Stock range=A1:B3 headers=1")
+            g.command("view.panel name=data")
+            g.command("view.select range=B2")
+            b.click("Total row")
+            spec.assert_true(g.wait_cell("A", 4, "Total"), "the label")
+            spec.assert_true(g.wait_cell("B", 4, "7"), "the last column's sum")
+            b.click("Banded rows")
+            spec.assert_true(b.wait_for_console("sheet: Stock: banded rows"), "banded")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 2)}", "\"bg\":\"#d9e1f2\"", 40), "the first data row shaded")
+            b.click("Convert to range")
+            spec.assert_true(b.wait_for_console("sheet: Stock is a range again"), "a range again")
+            g.command("cell.set cell=B3 input=10")
+            spec.assert_true(g.wait_cell("B", 4, "13"), "its total, as cells now, still adds up")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }
