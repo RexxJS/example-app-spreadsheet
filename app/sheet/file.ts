@@ -206,7 +206,8 @@ function pivotsOf(pivots: unknown): [string, Pivot][] {
     const source = parseRange(String(p?.sourceRange ?? "")), output = addrOf(String(p?.outputCell ?? "")), agg = String(p?.aggFunction ?? "").toUpperCase() as Aggregate;
     if (!p?.id || !source || !output || !AGGREGATES.includes(agg)) return [];
     const filters = p.filters && typeof p.filters === "object" ? Object.fromEntries(Object.entries(p.filters).map(([k, v]) => [k, String(v)])) : {};
-    return [[String(p.id), { source, output, rows: names(p.rowFields), cols: names(p.colFields), value: String(p.valueField ?? ""), agg, filters, written: parseRange(String(p.written ?? "")) }]];
+    return [[String(p.id), { source, output, rows: names(p.rowFields), cols: names(p.colFields), value: String(p.valueField ?? ""), agg, filters, written: parseRange(String(p.written ?? "")),
+      ...(p.options && typeof p.options === "object" ? { options: p.options } : {}) }]];
   });
 }
 
@@ -294,7 +295,7 @@ const sheetIn = (p: Page) => ({
   ...(p.pivots.size ? {
     pivots: [...p.pivots].map(([id, pv]) => ({
       id, sourceRange: rangeName(pv.source), rowFields: pv.rows, colFields: pv.cols, valueField: pv.value, aggFunction: pv.agg, outputCell: keyOf(pv.output), filters: pv.filters,
-      ...(pv.written ? { written: rangeName(pv.written) } : {}),
+      ...(pv.written ? { written: rangeName(pv.written) } : {}), ...(pv.options && Object.keys(pv.options).length ? { options: pv.options } : {}),
     })),
   } : {}),
 });

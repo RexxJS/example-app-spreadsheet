@@ -464,6 +464,13 @@ export const CONTROL: Readonly<Record<string, Control>> = {
     });
     return text(id);
   },
+  // PIVOTOPTIONS("byRegion", "layout=compact;subtotals=1;grandTotals=1;showAs=percentOfTotal;calculated=Tax=amount*0.2").
+  PIVOTOPTIONS: async (exec, id, opts) => {
+    // calculated's own '=' kept: "calculated=Tax=amount*0.2".
+    const ps: Record<string, string> = {};
+    for (const part of text(opts).split(";").map((x) => x.trim()).filter((x) => x.includes("="))) ps[part.slice(0, part.indexOf("=")).trim()] = part.slice(part.indexOf("=") + 1).trim();
+    return (await must(exec, "pivot.options", { id: text(id), ...ps })).message;
+  },
   UPDATEPIVOT: async (exec, id) => (await must(exec, "pivot.update", { id: text(id) }), text(id)),
   DELETEPIVOT: async (exec, id) => (await must(exec, "pivot.delete", { id: text(id) }), text(id)),
   GETPIVOT: async (exec, id) => {

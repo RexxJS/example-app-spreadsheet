@@ -68,7 +68,8 @@ import { CellError } from "./values.ts";
 import type { Value } from "./values.ts";
 import type { Direction, Filter, LanguageName, Page, Pivot, Scenario, Workbook } from "./workbook.ts";
 import { statsLine } from "./workbook.ts";
-import { AGGREGATES, pivoted } from "./pivot.ts";
+import { AGGREGATES, LAYOUTS, SHOW_AS, pivoted } from "./pivot.ts";
+import type { PivotOptions } from "./pivot.ts";
 import type { Aggregate } from "./pivot.ts";
 import { FormulaError } from "./lexer.ts";
 
@@ -715,6 +716,7 @@ async function writePivot(wb: Workbook, id: string, pivot: Pivot): Promise<Outco
 // A pivot as the app's GETPIVOT gives its configuration.
 const pivotConfig = (pv: Pivot) => ({
   sourceRange: rangeName(pv.source), rowFields: [...pv.rows], colFields: [...pv.cols], valueField: pv.value, aggFunction: pv.agg, outputCell: keyOf(pv.output), filters: { ...pv.filters },
+  ...(pv.options && Object.keys(pv.options).length ? { options: pv.options } : {}),
 });
 
 // A table's types or descriptions, as JSON: {"amount": "number"}.
@@ -2254,8 +2256,48 @@ const SPECS: readonly Spec[] = [
       const pivot: Pivot = {
         source: rangeOf(p.source), output: cellAddr(cellOf(p.output))!, rows: list(p.rows), cols: list(p.cols), value: p.value, agg,
         filters: byName(p.filters, "filters") ?? {}, written: page.pivots.get(p.id)?.written ?? null,
+        // The same id again keeps its options (PIVOTOPTIONS).
+        ...(page.pivots.get(p.id)?.options ? { options: page.pivots.get(p.id)!.options } : {}),
       };
       return writePivot(wb, p.id, pivot);
+    },
+  },
+  {
+    // Excel's PivotTable options (pivot.ts's PivotOptions), the pivot written
+    // again: layout= tabular, outline or compact; subtotals= and
+    // grandTotals= 1 or 0; sort= asc, desc, valueAsc, valueDesc or none;
+    // showAs= normal, percentOfTotal, percentOfRow, percentOfColumn,
+    // runningTotal, rank; group= a date field, by= year, quarter or month
+    // (group=none takes it off); calculated="Tax=amount*0.2" (adds or
+    // replaces one; "Tax=" removes it); collapse= and expand= an outer row
+    // group.
+    id: "pivot.options", label: "PivotTable Options", params: ["id"], optional: ["layout", "subtotals", "grandTotals", "sort", "showAs", "group", "by", "calculated", "collapse", "expand"], journaled: true,
+    run: async (wb, p) => {
+      const page = wb.page(wb.active)!, pv = page.pivots.get(p.id) ?? refuse(`no pivot ${p.id}`);
+      const o: Record<string, unknown> = { ...pv.options };
+      const set = (k: string, v: unknown) => { if (v === undefined || v === false || v === "none" || v === "normal") delete o[k]; else o[k] = v; };
+      if (p.layout !== undefined) { const l = p.layout.trim().toLowerCase(); if (!LAYOUTS.includes(l)) refuse(`${p.layout} is not a layout (${LAYOUTS.join(", ")})`); set("layout", l === "tabular" ? undefined : l); }
+      if (p.subtotals !== undefined) set("subtotals", flag(p.subtotals));
+      if (p.grandTotals !== undefined) set("grandTotals", flag(p.grandTotals));
+      if (p.sort !== undefined) { const v = ["asc", "desc", "valueAsc", "valueDesc", "none"].find((x) => x.toLowerCase() === p.sort!.trim().toLowerCase()) ?? refuse(`${p.sort} is not a sort (asc, desc, valueAsc, valueDesc, none)`); set("sort", v); }
+      if (p.showAs !== undefined) { const v = SHOW_AS.find((x) => x.toLowerCase() === p.showAs!.trim().toLowerCase()) ?? refuse(`${p.showAs} is not a way to show values (${SHOW_AS.join(", ")})`); set("showAs", v); }
+      if (p.group !== undefined) {
+        if (/^none$/i.test(p.group.trim())) set("dateGroup", undefined);
+        else { const by = (p.by ?? "month").trim().toLowerCase(); if (!["year", "quarter", "month"].includes(by)) refuse(`${p.by} is not year, quarter or month`); o.dateGroup = { field: p.group.trim(), by }; }
+      }
+      if (p.calculated !== undefined) {
+        const i = p.calculated.indexOf("="), name = p.calculated.slice(0, i).trim(), formula = p.calculated.slice(i + 1).trim();
+        if (i < 1 || !name) refuse(`${p.calculated} is not Name=formula`);
+        const calc: Record<string, string> = { ...(o.calculated as Record<string, string> | undefined) };
+        if (formula) calc[name] = formula; else delete calc[name];
+        set("calculated", Object.keys(calc).length ? calc : undefined);
+      }
+      const coll = new Set((o.collapsed as string[] | undefined) ?? []);
+      if (p.collapse !== undefined) coll.add(p.collapse);
+      if (p.expand !== undefined) coll.delete(p.expand);
+      set("collapsed", coll.size ? [...coll] : undefined);
+      const next = { ...pv, options: o as PivotOptions };
+      try { return await writePivot(wb, p.id, next); } catch (e) { if (e instanceof RangeError) refuse(e.message); throw e; }
     },
   },
   {

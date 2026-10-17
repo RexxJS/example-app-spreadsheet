@@ -246,6 +246,8 @@ export const DESCRIBED: Readonly<Record<string, Described>> = {
     "Makes a pivot table", "its id"),
   PIVOTCONFIG: fn([p("source", "range"), p("value", "text", "the column to total"), p("agg", "text", "SUM, COUNT, AVERAGE, MIN or MAX"), p("output", "cell"),
     opt("rows", "json", "a JSON array of columns"), opt("columns", "json", "a JSON array of columns")], "Makes a configuration for CREATEPIVOT", "JSON"),
+  PIVOTOPTIONS: fn([p("id", "text", "the pivot"), p("options", "text", "name=value pairs split by ';': layout=tabular|outline|compact, subtotals=1, grandTotals=1, sort=asc|desc|valueAsc|valueDesc, showAs=normal|percentOfTotal|percentOfRow|percentOfColumn|runningTotal|rank, group= (a date field) with by=year|quarter|month, calculated=Name=formula of fields, collapse= or expand= an outer row group")],
+    "Excel's PivotTable options, the pivot written again", "what was written"),
   UPDATEPIVOT: fn([p("id", "text")], "Works a pivot table out again", "its id"),
   DELETEPIVOT: fn([p("id", "text")], "Deletes a pivot table", "its id"),
   GETPIVOT: fn([p("id", "text")], "Reads a pivot table's configuration", "JSON, or \"\""),
