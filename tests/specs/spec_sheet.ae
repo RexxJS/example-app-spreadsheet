@@ -1440,6 +1440,27 @@ main() {
             spec.assert_eq(g.cell_has("D", 2, "borderBottom"), 0, "not every cell's")
             g.command("view.panel name=none")
         }
+        spec.it("conditional rules: a formula's rule from the Rules panel, moved to each cell; Stop If True") callback {
+            g.command("sheet.add name=Rules2")
+            g.command("cell.set cell=A1 input=5")
+            g.command("cell.set cell=A2 input=1")
+            g.command("cell.set cell=B1 input=3")
+            g.command("cell.set cell=B2 input=4")
+            g.command("view.panel name=rules")
+            g.goto("A1")
+            g.command("view.select range=A1:A2")
+            b.set_field_by("rule value", "=A1>B1")
+            b.click("Formula rule")
+            spec.assert_true(b.wait_for_console("sheet: A1:A2: formula =A1>B1"), "added from the panel")
+            g.command("view.select range=D5")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#ffc7ce\"", 40), "5 > 3: Excel's light red")
+            spec.assert_eq(g.cell_has("A", 2, "\"bg\":\"#ffc7ce\""), 0, "A2 reads B2, as moved: 1 > 4 is not")
+            g.command("format.blanks range=A1:A2 not=1 style=background:#c6efce")
+            g.command("format.moveRule index=2 to=1")
+            g.command("format.stopIfTrue index=1")
+            spec.assert_true(uidriver.wait_body_contains("/widget/${g.cell_id("A", 1)}", "\"bg\":\"#c6efce\"", 40), "the first rule, stopping the formula's")
+            g.command("view.panel name=none")
+        }
     }
     return spec.run_summary(fw)
 }

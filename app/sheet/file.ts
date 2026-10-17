@@ -22,7 +22,7 @@
 // date system (dateSystem: 1904; 1900 when left out).
 // writeSheetFile writes it all.
 import { addrOf, colName, keyOf, order, parseRange } from "./address.ts";
-import { ICONS, rangeName } from "./rules.ts";
+import { ICONS, RULE_KINDS, rangeName } from "./rules.ts";
 import type { CfRule } from "./rules.ts";
 import { CHART_KINDS } from "./charts.ts";
 import type { ChartKind } from "./charts.ts";
@@ -117,7 +117,7 @@ function noteOf(c: string | FileCell): Note {
 // Rules as written, read back; one that is not a rule is left out.
 function rulesOf(rules: unknown): CfRule[] {
   if (!Array.isArray(rules)) return [];
-  const kinds = ["cellValue", "top", "average", "duplicates", "colorScale", "iconSet"];
+  const kinds = RULE_KINDS;
   return rules.flatMap((r: any): CfRule[] => {
     const corners = parseRange(String(r?.range ?? ""));
     if (!corners || !kinds.includes(r?.kind) || (r.kind === "iconSet" && !(r.icons in ICONS))) return [];

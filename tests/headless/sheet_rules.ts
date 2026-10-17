@@ -55,7 +55,7 @@ await cmds.run("rows.insert at=1");
 eq("rows inserted move them", (await cmds.run("format.rules")).output?.[0], "1. A2:A6: cell value > 30");
 eq("saved with the sheet", writeSheetFile(wb).rules.length, 4);
 eq("format.deleteRule, and refusals", [await message("format.deleteRule index=4"), await message("format.deleteRule index=9"), await message("format.highlight range=A1 op=near value=1"), await message("format.colorScale range=A1:A3 colors=red")],
-  ["deleted A2:A6: top 1", "no rule 9", "near is not a comparison (greater, less, between, equal, notEqual, greaterOrEqual, lessOrEqual, contains)", "a colour scale takes 2 or 3 colours (#rrggbb)"]);
+  ["deleted A2:A6: top 1", "no rule 9", "near is not a comparison (greater, less, between, notBetween, equal, notEqual, greaterOrEqual, lessOrEqual, contains, notContains, beginsWith, endsWith)", "a colour scale takes 2 or 3 colours (#rrggbb)"]);
 eq("format.clearRules: the rules over a range", [await message("format.clearRules range=A3"), (await cmds.run("format.rules")).output], ["cleared 3 rules", []]);
 {
   const again = new Workbook();

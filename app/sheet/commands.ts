@@ -23,7 +23,7 @@ import { lambdaOf } from "./rexx.ts";
 import { continued } from "./series.ts";
 import { check, describeRule, ruleOf } from "./validation.ts";
 import { asApp, editorOf, refusal, toggled } from "./editors.ts";
-import { ICONS, describeRule as describeCf, rangeName } from "./rules.ts";
+import { ICONS, PERIODS, describeRule as describeCf, rangeName } from "./rules.ts";
 import type { CfRule, Comparison, IconSet } from "./rules.ts";
 import { colour, toStyle } from "./formats.ts";
 import { CATEGORIES, numberFormat } from "./numfmt.ts";
@@ -481,14 +481,17 @@ const DELIMITERS: Record<string, string> = { comma: ",", tab: "\t", space: " ", 
 
 const COMPARISONS: Record<string, Comparison> = {
   greater: ">", less: "<", between: "between", equal: "=", notequal: "<>", greaterorequal: ">=", lessorequal: "<=", contains: "contains",
+  notbetween: "notBetween", notcontains: "notContains", beginswith: "beginsWith", endswith: "endsWith",
   ">": ">", "<": "<", "=": "=", "<>": "<>", ">=": ">=", "<=": "<=",
 };
 // Excel's Light Red Fill with Dark Red Text.
 const HIGHLIGHT = "background: #ffc7ce; color: #9c0006";
 const styleParam = (p: Params): string => (p.style === undefined ? HIGHLIGHT : toStyle(p.style) || refuse(`${p.style} is not a style the grid can draw`));
 
-// A rule added to the active sheet's, last (so the earlier ones win).
-async function addRule(wb: Workbook, rule: CfRule): Promise<Outcome> {
+// A rule added to the active sheet's, last (so the earlier ones win);
+// stop=1 makes it Stop If True.
+async function addRule(wb: Workbook, rule: CfRule, p: Params = {}): Promise<Outcome> {
+  if (flag(p.stop)) rule = { ...rule, stop: true };
   wb.page(wb.active)!.rules.push(rule);
   return changedBy(wb, [...range(rule.range[0], rule.range[1])], describeCf(rule));
 }
@@ -518,7 +521,6 @@ function coloured(wb: Workbook, p: Params, part: "fill" | "color"): Promise<Outc
 const EDGES = ["outline", "all", "inside", "horizontal", "vertical", "top", "right", "bottom", "left", "none"];
 // A line's style, as Excel's Line Style list (formats.ts draws its width).
 const LINE_STYLES = ["thin", "medium", "thick", "double", "dashed", "dotted", "hair", "none"];
-
 
 // ---- Rows and columns out of view.
 
@@ -1112,24 +1114,24 @@ const SPECS: readonly Spec[] = [
     },
   },
   {
-    id: "format.highlight", label: "Highlight Cells Rules", params: ["range", "op", "value"], optional: ["value2", "style"], journaled: true,
+    id: "format.highlight", label: "Highlight Cells Rules", params: ["range", "op", "value"], optional: ["stop", "value2", "style"], journaled: true,
     run: (wb, p) => {
-      const op = COMPARISONS[p.op.toLowerCase()] ?? refuse(`${p.op} is not a comparison (greater, less, between, equal, notEqual, greaterOrEqual, lessOrEqual, contains)`);
-      if (op === "between" && p.value2 === undefined) refuse("between needs value2");
-      return addRule(wb, { kind: "cellValue", range: rangeOf(p.range), op, value: p.value, ...(op === "between" ? { value2: p.value2 } : {}), style: styleParam(p) });
+      const op = COMPARISONS[p.op.toLowerCase()] ?? refuse(`${p.op} is not a comparison (greater, less, between, notBetween, equal, notEqual, greaterOrEqual, lessOrEqual, contains, notContains, beginsWith, endsWith)`);
+      if ((op === "between" || op === "notBetween") && p.value2 === undefined) refuse(`${p.op} needs value2`);
+      return addRule(wb, { kind: "cellValue", range: rangeOf(p.range), op, value: p.value, ...(op === "between" || op === "notBetween" ? { value2: p.value2 } : {}), style: styleParam(p) }, p);
     },
   },
   {
-    id: "format.topBottom", label: "Top/Bottom Rules", params: ["range"], optional: ["n", "bottom", "percent", "style"], journaled: true,
-    run: (wb, p) => addRule(wb, { kind: "top", range: rangeOf(p.range), n: countOf(p.n ?? "10"), bottom: flag(p.bottom), percent: flag(p.percent), style: styleParam(p) }),
+    id: "format.topBottom", label: "Top/Bottom Rules", params: ["range"], optional: ["stop", "n", "bottom", "percent", "style"], journaled: true,
+    run: (wb, p) => addRule(wb, { kind: "top", range: rangeOf(p.range), n: countOf(p.n ?? "10"), bottom: flag(p.bottom), percent: flag(p.percent), style: styleParam(p) }, p),
   },
   {
-    id: "format.aboveAverage", label: "Above Average", params: ["range"], optional: ["below", "style"], journaled: true,
-    run: (wb, p) => addRule(wb, { kind: "average", range: rangeOf(p.range), below: flag(p.below), style: styleParam(p) }),
+    id: "format.aboveAverage", label: "Above Average", params: ["range"], optional: ["stop", "below", "style"], journaled: true,
+    run: (wb, p) => addRule(wb, { kind: "average", range: rangeOf(p.range), below: flag(p.below), style: styleParam(p) }, p),
   },
   {
-    id: "format.duplicates", label: "Duplicate Values", params: ["range"], optional: ["unique", "style"], journaled: true,
-    run: (wb, p) => addRule(wb, { kind: "duplicates", range: rangeOf(p.range), unique: flag(p.unique), style: styleParam(p) }),
+    id: "format.duplicates", label: "Duplicate Values", params: ["range"], optional: ["stop", "unique", "style"], journaled: true,
+    run: (wb, p) => addRule(wb, { kind: "duplicates", range: rangeOf(p.range), unique: flag(p.unique), style: styleParam(p) }, p),
   },
   {
     id: "format.colorScale", label: "Color Scales", params: ["range"], optional: ["colors"], journaled: true,
@@ -1145,6 +1147,62 @@ const SPECS: readonly Spec[] = [
       const icons = (p.icons ?? "arrows").toLowerCase();
       if (!(icons in ICONS)) refuse(`${p.icons} is not an icon set (${Object.keys(ICONS).join(", ")})`);
       return addRule(wb, { kind: "iconSet", range: rangeOf(p.range), icons: icons as IconSet });
+    },
+  },
+  {
+    // A formula's rule (Use a formula to determine which cells to format):
+    // written for the range's top-left, moved for each cell as a copy is,
+    // in the sheet's language; the cells it is true (or not 0) for.
+    id: "format.formulaRule", label: "Formula Rule", params: ["range", "formula"], optional: ["style", "stop"], journaled: true,
+    run: (wb, p) => {
+      const formula = p.formula.trim().replace(/^=/, "");
+      if (!formula) refuse("a formula rule needs a formula");
+      const compiled = wb.sheet.language.compile(formula);
+      if (compiled.kind === "broken") refuse(`${p.formula} is not a formula: ${compiled.error.why}`);
+      return addRule(wb, { kind: "formula", range: rangeOf(p.range), formula, style: styleParam(p) }, p);
+    },
+  },
+  {
+    // Format only cells that are blank (or, not=1, that are not); that
+    // hold an error (or not).
+    id: "format.blanks", label: "Blanks Rule", params: ["range"], optional: ["not", "style", "stop"], journaled: true,
+    run: (wb, p) => addRule(wb, { kind: "blanks", range: rangeOf(p.range), not: flag(p.not), style: styleParam(p) }, p),
+  },
+  {
+    id: "format.errors", label: "Errors Rule", params: ["range"], optional: ["not", "style", "stop"], journaled: true,
+    run: (wb, p) => addRule(wb, { kind: "errors", range: rangeOf(p.range), not: flag(p.not), style: styleParam(p) }, p),
+  },
+  {
+    // A Date Occurring: yesterday, today, tomorrow, last7days, lastWeek,
+    // thisWeek, nextWeek, lastMonth, thisMonth, nextMonth.
+    id: "format.datePeriod", label: "A Date Occurring", params: ["range", "period"], optional: ["style", "stop"], journaled: true,
+    run: (wb, p) => {
+      const period = PERIODS.find((x) => x.toLowerCase() === p.period.trim().toLowerCase()) ?? refuse(`${p.period} is not a period (${PERIODS.join(", ")})`);
+      return addRule(wb, { kind: "date", range: rangeOf(p.range), period, style: styleParam(p) }, p);
+    },
+  },
+  {
+    // Manage Rules' Move Up and Move Down: rule `index` (from 1) to place
+    // `to`, the first winning.
+    id: "format.moveRule", label: "Move Rule", params: ["index", "to"], journaled: true,
+    run: async (wb, p) => {
+      const rules = wb.page(wb.active)!.rules, i = Number(p.index) - 1, j = Number(p.to) - 1;
+      if (!Number.isInteger(i) || !rules[i]) refuse(`no rule ${p.index}`);
+      if (!Number.isInteger(j) || j < 0 || j >= rules.length) refuse(`${p.to} is not a place in the list (1 to ${rules.length})`);
+      const [r] = rules.splice(i, 1);
+      rules.splice(j, 0, r);
+      return changedBy(wb, [...range(r.range[0], r.range[1])], `rule ${i + 1} is now rule ${j + 1}: ${describeCf(r)}`);
+    },
+  },
+  {
+    // Stop If True on rule `index` (off=1 takes it off).
+    id: "format.stopIfTrue", label: "Stop If True", params: ["index"], optional: ["off"], journaled: true,
+    run: async (wb, p) => {
+      const rules = wb.page(wb.active)!.rules, i = Number(p.index) - 1;
+      if (!Number.isInteger(i) || !rules[i]) refuse(`no rule ${p.index}`);
+      const { stop: _was, ...rest } = rules[i];
+      rules[i] = (flag(p.off) ? rest : { ...rest, stop: true }) as CfRule;
+      return changedBy(wb, [...range(rules[i].range[0], rules[i].range[1])], describeCf(rules[i]));
     },
   },
   {

@@ -279,6 +279,31 @@ export const CONTROL: Readonly<Record<string, Control>> = {
   SETALIGNMENT: async (exec, r, how) => (await must(exec, "format.align", { range: text(r), align: text(how) }), "OK"),
   SETFILLCOLOR: async (exec, r, c) => (await must(exec, "format.fill", { range: text(r), color: text(c) }), "OK"),
   SETTEXTCOLOR: async (exec, r, c) => (await must(exec, "format.color", { range: text(r), color: text(c) }), "OK"),
+  // Conditional formatting: ADDRULE("A1:A9", "formula", "=A1>B1",
+  // "bold;color:red"), ("B1:B9", "greater", 10), ("C1:C9", "between", 1,
+  // style, 5), ("D1:D9", "blanks"), ("E1:E9", "date", "thisWeek"),
+  // ("F1:F9", "top", 3) ...; LISTRULES(), DELETERULE(n), MOVERULE(n, to),
+  // STOPIFTRUE(n, [0]), CLEARRULES(range).
+  ADDRULE: async (exec, r, kind, arg, style, arg2) => {
+    const k = text(kind).trim().toLowerCase(), a = text(arg), range = text(r);
+    const st = text(style).trim() ? { style: text(style) } : {};
+    const run = (id: string, ps: Record<string, string>) => must(exec, id, { range, ...ps, ...st });
+    const done = await (
+      k === "formula" ? run("format.formulaRule", { formula: a })
+      : k === "blanks" || k === "noblanks" ? run("format.blanks", k === "noblanks" ? { not: "1" } : {})
+      : k === "errors" || k === "noerrors" ? run("format.errors", k === "noerrors" ? { not: "1" } : {})
+      : k === "date" ? run("format.datePeriod", { period: a })
+      : /^(top|bottom)(percent)?$/.test(k) ? run("format.topBottom", { n: a || "10", ...(k.startsWith("bottom") ? { bottom: "1" } : {}), ...(k.endsWith("percent") ? { percent: "1" } : {}) })
+      : k === "above" || k === "below" ? run("format.aboveAverage", k === "below" ? { below: "1" } : {})
+      : k === "duplicates" || k === "unique" ? run("format.duplicates", k === "unique" ? { unique: "1" } : {})
+      : run("format.highlight", { op: k, value: a, ...(text(arg2).trim() ? { value2: text(arg2) } : {}) }));
+    return done.message;
+  },
+  LISTRULES: async (exec) => stem((await must(exec, "format.rules")).output as string[]),
+  DELETERULE: async (exec, n) => (await must(exec, "format.deleteRule", { index: text(n) })).message,
+  MOVERULE: async (exec, n, to) => (await must(exec, "format.moveRule", { index: text(n), to: text(to) })).message,
+  STOPIFTRUE: async (exec, n, on) => (await must(exec, "format.stopIfTrue", { index: text(n), ...(text(on).trim() !== "" && !yes(on) ? { off: "1" } : {}) })).message,
+  CLEARRULES: async (exec, r) => (await must(exec, "format.clearRules", { range: text(r) })).message,
   // Borders: SETBORDER("A1:C3", "outline", "thick", "red"), the edge
   // outline, all, inside, horizontal, vertical, top, right, bottom, left or
   // none; CLEARBORDERS("A1:C3").

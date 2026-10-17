@@ -11,7 +11,8 @@
 // and its status line.
 // Commands (commands.ts) change it; the page's panels read it.
 import { drawn } from "./editors.ts";
-import { COLS, ROWS, cellAddr, keyOf, order, parseRange, splitKey } from "./address.ts";
+import { COLS, ROWS, addrOf, cellAddr, keyOf, order, parseRange, range, splitKey } from "./address.ts";
+import { movedBy } from "./shift.ts";
 import { REFERENCE_COLOURS } from "./typing.ts";
 import type { Addr } from "./address.ts";
 import type { PivotFields } from "./pivot.ts";
@@ -765,7 +766,20 @@ export class Workbook {
     this.#conditional = next;
     this.#circled = new Set(this.circling ? this.invalid() : []);
     const page = this.#active;
-    this.#marks = applied(page.rules, (k) => page.sheet.value(k));
+    // A formula rule's formula, moved from the range's top-left to each
+    // cell as a copy would be, true there or not.
+    const hits = new Map<CfRule, Set<string>>();
+    for (const rule of page.rules) {
+      if (rule.kind !== "formula") continue;
+      const [a, b] = rule.range, top = { col: Math.min(a.col, b.col), row: Math.min(a.row, b.row) }, yes = new Set<string>();
+      for (const k of range(a, b)) {
+        const at = addrOf(k)!, moved = movedBy(page.sheet.language, `=${rule.formula.replace(/^=/, "")}`, { cols: at.col - top.col, rows: at.row - top.row });
+        const v = await page.sheet.evaluate(moved.slice(1));
+        if (v === true || (typeof v === "number" && v !== 0)) yes.add(k);
+      }
+      hits.set(rule, yes);
+    }
+    this.#marks = applied(page.rules, (k) => page.sheet.value(k), hits);
     this.#traces = this.#traces.filter((t) => this.#pages.includes(t.page));
     this.#traced = new Map();
     for (const t of this.#traces) {
